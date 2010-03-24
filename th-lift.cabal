@@ -12,9 +12,8 @@ Description:
 Category:           Language
 Tested-With:        GHC==6.6
 Build-Depends:      base, template-haskell
-Extensions:         TemplateHaskell
--- Can't see an extension for I#
-ghc-options:        -fglasgow-exts
+Extensions:         TemplateHaskell, MagicHash
+build-type:         Simple
 Extra-source-files: BSD3, GPL-2, Changelog, Foo.hs, Test.hs
 Exposed-modules:
     Language.Haskell.TH.Lift
