@@ -1,11 +1,10 @@
 Name:               th-lift
-Version:            0.2
+Version:            0.3
 License:            OtherLicense
 License-File:       COPYING
 Copyright:          Ian Lynagh, 2006
 Author:             Ian Lynagh
 Maintainer:         Mathieu Boespflug <mboes@tweag.net>
-Stability:          experimental
 Synopsis:           Derive Template Haskell's Lift class for datatypes.
 Description:
     Derive Template Haskell's Lift class for datatypes.
