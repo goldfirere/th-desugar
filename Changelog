@@ -1,5 +1,8 @@
+2010-03-24  Mathieu Boespflug  <mboes@tweag.net>
 
-0.1 6/9/2006:
+	* Port to Template Haskell 2.4.
+	* Maintainer is now Mathieu Boespflug.
 
-* Initial release.
+2006-09-06  Ian Lynagh <igloo@earth.li>
 
+	* Initial release.
