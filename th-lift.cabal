@@ -4,7 +4,7 @@ License:            OtherLicense
 License-File:       COPYING
 Copyright:          Ian Lynagh, 2006
 Author:             Ian Lynagh
-Maintainer:         igloo@earth.li
+Maintainer:         Mathieu Boespflug <mboes@tweag.net>
 Stability:          experimental
 Synopsis:           Derive Template Haskell's Lift class for datatypes.
 Description:
