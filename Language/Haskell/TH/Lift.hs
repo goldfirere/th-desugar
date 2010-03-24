@@ -2,22 +2,24 @@
 module Language.Haskell.TH.Lift where
 
 import GHC.Exts
-import Data.PackedString
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 
 modName :: String
 modName = "Language.Haskell.TH.Lift"
 
-deriveLift :: Name -> Q Dec
+deriveLift :: Name -> Q [Dec]
 deriveLift n
  = do i <- reify n
       case i of
-          TyConI (DataD _ _ vs cons _) ->
-              let ctxt = cxt [conT ''Lift `appT` varT v | v <- vs]
+          TyConI (DataD _ _ vsk cons _) ->
+              let unTyVarBndr (PlainTV v) = v
+                  unTyVarBndr (KindedTV v _) = v
+                  vs = map unTyVarBndr vsk
+                  ctxt = cxt [classP ''Lift [varT v] | v <- vs]
                   typ = foldl appT (conT n) $ map varT vs
                   fun = funD 'lift (map doCons cons)
-              in instanceD ctxt (conT ''Lift `appT` typ) [fun]
+              in instanceD ctxt (conT ''Lift `appT` typ) [fun] >>= return . (:[])
           _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
 
 doCons :: Con -> Q Clause
@@ -32,8 +34,14 @@ doCons c = error (modName ++ ".doCons: Unhandled constructor: " ++ pprint c)
 instance Lift Name where
     lift (Name occName nameFlavour) = [| Name occName nameFlavour |]
 
-instance Lift PackedString where
-    lift ps = [| packString $(lift $ unpackPS ps) |]
+instance Lift OccName where
+  lift n = [| mkOccName $(lift $ occString n) |]
+
+instance Lift PkgName where
+  lift n = [| mkPkgName $(lift $ pkgString n) |]
+
+instance Lift ModName where
+  lift n = [| mkModName $(lift $ modString n) |]
 
 instance Lift NameFlavour where
     lift NameS = [| NameS |]
