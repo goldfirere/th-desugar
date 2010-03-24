@@ -1,0 +1,21 @@
+Name:               th-lift
+Version:            0.2
+License:            OtherLicense
+License-File:       COPYING
+Copyright:          Ian Lynagh, 2006
+Author:             Ian Lynagh
+Maintainer:         igloo@earth.li
+Stability:          experimental
+Synopsis:           Derive Template Haskell's Lift class for datatypes.
+Description:
+    Derive Template Haskell's Lift class for datatypes.
+Category:           Language
+Tested-With:        GHC==6.6
+Build-Depends:      base, template-haskell
+Extensions:         TemplateHaskell
+-- Can't see an extension for I#
+ghc-options:        -fglasgow-exts
+Extra-source-files: BSD3, GPL-2, Changelog, Foo.hs, Test.hs
+Exposed-modules:
+    Language.Haskell.TH.Lift
+
