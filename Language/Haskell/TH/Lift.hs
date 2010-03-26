@@ -29,6 +29,14 @@ doCons (NormalC c sts) = do
       args = [ [| lift $(varE (mkName n)) |] | n <- ns ]
       e = foldl (\e1 e2 -> [| appE $e1 $e2 |]) con args
   clause [conP c (map (varP . mkName) ns)] (normalB e) []
+doCons (RecC c fields) = doCons (NormalC c (map dropFieldNames fields))
+    where dropFieldNames (_, s, ty) = (s, ty)
+doCons (InfixC sty1 c sty2) = do
+  let con = [| conE c |]
+      left = [| lift $(varE (mkName "x0")) |]
+      right = [| lift $(varE (mkName "x1")) |]
+      e = [| infixApp $left $con $right |]
+  clause [infixP (varP (mkName "x0")) c (varP (mkName "x1"))] (normalB e) []
 doCons c = error (modName ++ ".doCons: Unhandled constructor: " ++ pprint c)
 
 instance Lift Name where
@@ -57,4 +65,3 @@ instance Lift NameSpace where
     lift VarName = [| VarName |]
     lift DataName = [| DataName |]
     lift TcClsName = [| TcClsName |]
-
