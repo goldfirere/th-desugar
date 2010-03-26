@@ -9,26 +9,26 @@ modName :: String
 modName = "Language.Haskell.TH.Lift"
 
 deriveLift :: Name -> Q [Dec]
-deriveLift n
- = do i <- reify n
-      case i of
-          TyConI (DataD _ _ vsk cons _) ->
-              let unTyVarBndr (PlainTV v) = v
-                  unTyVarBndr (KindedTV v _) = v
-                  vs = map unTyVarBndr vsk
-                  ctxt = cxt [classP ''Lift [varT v] | v <- vs]
-                  typ = foldl appT (conT n) $ map varT vs
-                  fun = funD 'lift (map doCons cons)
-              in instanceD ctxt (conT ''Lift `appT` typ) [fun] >>= return . (:[])
-          _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
+deriveLift n = do
+  i <- reify n
+  case i of
+    TyConI (DataD _ _ vsk cons _) ->
+        let unTyVarBndr (PlainTV v) = v
+            unTyVarBndr (KindedTV v _) = v
+            vs = map unTyVarBndr vsk
+            ctxt = cxt [classP ''Lift [varT v] | v <- vs]
+            typ = foldl appT (conT n) $ map varT vs
+            fun = funD 'lift (map doCons cons)
+        in instanceD ctxt (conT ''Lift `appT` typ) [fun] >>= return . (:[])
+    _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
 
 doCons :: Con -> Q Clause
-doCons (NormalC c sts)
- = do let ns = zipWith (\_ i -> "x" ++ show i) sts [0..]
-          con = [| conE c |]
-          args = [ [| lift $(varE (mkName n)) |] | n <- ns ]
-          e = foldl (\e1 e2 -> [| appE $e1 $e2 |]) con args
-      clause [conP c (map (varP . mkName) ns)] (normalB e) []
+doCons (NormalC c sts) = do
+  let ns = zipWith (\_ i -> "x" ++ show i) sts [0..]
+      con = [| conE c |]
+      args = [ [| lift $(varE (mkName n)) |] | n <- ns ]
+      e = foldl (\e1 e2 -> [| appE $e1 $e2 |]) con args
+  clause [conP c (map (varP . mkName) ns)] (normalB e) []
 doCons c = error (modName ++ ".doCons: Unhandled constructor: " ++ pprint c)
 
 instance Lift Name where
