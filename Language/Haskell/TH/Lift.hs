@@ -65,3 +65,11 @@ instance Lift NameSpace where
     lift VarName = [| VarName |]
     lift DataName = [| DataName |]
     lift TcClsName = [| TcClsName |]
+
+-- These instances should really go in the template-haskell package.
+
+instance Lift () where
+  lift _ = [| () |]
+
+instance Lift Rational where
+  lift x = return (LitE (RationalL x))

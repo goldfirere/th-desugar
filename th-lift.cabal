@@ -12,7 +12,7 @@ Description:
 Category:           Language
 Tested-With:        GHC==6.12
 Build-Depends:      base >= 4 && < 5, template-haskell >= 2.4
-Extensions:         TemplateHaskell, MagicHash
+Extensions:         TemplateHaskell, MagicHash, TypeSynonymInstances
 build-type:         Simple
 Extra-source-files: BSD3, GPL-2, Changelog, Foo.hs, Test.hs
 Exposed-modules:
