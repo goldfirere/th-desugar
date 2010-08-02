@@ -1,4 +1,4 @@
-module Language.Haskell.TH.Lift where
+module Language.Haskell.TH.Lift (deriveLift, deriveLiftWith, Lift(..)) where
 
 import GHC.Exts
 import Language.Haskell.TH
@@ -7,8 +7,14 @@ import Language.Haskell.TH.Syntax
 modName :: String
 modName = "Language.Haskell.TH.Lift"
 
+-- | Derive Lift instances for the given datatype.
 deriveLift :: Name -> Q [Dec]
-deriveLift n = do
+deriveLift = deriveLiftWith reify
+
+-- | Obtain Info values through a custom reification function. This is useful
+-- when generating instances for datatypes that have not yet been declared.
+deriveLiftWith :: (Name -> Q Info) -> Name -> Q [Dec]
+deriveLiftWith n = do
   i <- reify n
   case i of
     TyConI (DataD _ _ vsk cons _) ->
