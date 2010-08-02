@@ -1,4 +1,3 @@
-
 module Language.Haskell.TH.Lift where
 
 import GHC.Exts
