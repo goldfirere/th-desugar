@@ -1,3 +1,10 @@
+2010-08-02  Mathieu Boespflug  <mboes@tweag.net>
+
+	* Add support for newtypes and records syntax, thanks to a patch
+	by Ben Millwood.
+	* Add support for infix constructors.
+	* deriveLift returns a list of declarations.
+
 2010-03-24  Mathieu Boespflug  <mboes@tweag.net>
 
 	* Port to Template Haskell 2.4.
