@@ -4,6 +4,8 @@
 	by Ben Millwood.
 	* Add support for infix constructors.
 	* deriveLift returns a list of declarations.
+	* New deriveLiftWith function with custom reification, following a
+	feature request by Jonas Duregård.
 
 2010-03-24  Mathieu Boespflug  <mboes@tweag.net>
 
