@@ -12,14 +12,16 @@ deriveLift n = do
   i <- reify n
   case i of
     TyConI (DataD _ _ vsk cons _) ->
-        let unTyVarBndr (PlainTV v) = v
-            unTyVarBndr (KindedTV v _) = v
-            vs = map unTyVarBndr vsk
-            ctxt = cxt [classP ''Lift [varT v] | v <- vs]
-            typ = foldl appT (conT n) $ map varT vs
-            fun = funD 'lift (map doCons cons)
-        in instanceD ctxt (conT ''Lift `appT` typ) [fun] >>= return . (:[])
+      liftInstance (map unTyVarBndr vsk) (map doCons cons)
+    TyConI (NewtypeD _ _ vsk con _) ->
+      liftInstance (map unTyVarBndr vsk) [doCons con]
     _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
+    where liftInstance vs cases =
+            fmap (:[]) $ instanceD (ctxt vs) (conT ''Lift `appT` typ vs) [funD 'lift cases]
+          unTyVarBndr (PlainTV v) = v
+          unTyVarBndr (KindedTV v _) = v
+          ctxt = cxt . map (\n -> classP ''Lift [varT n])
+          typ = foldl appT (conT n) . map varT
 
 doCons :: Con -> Q Clause
 doCons (NormalC c sts) = do
@@ -28,8 +30,7 @@ doCons (NormalC c sts) = do
       args = [ [| lift $(varE (mkName n)) |] | n <- ns ]
       e = foldl (\e1 e2 -> [| appE $e1 $e2 |]) con args
   clause [conP c (map (varP . mkName) ns)] (normalB e) []
-doCons (RecC c fields) = doCons (NormalC c (map dropFieldNames fields))
-    where dropFieldNames (_, s, ty) = (s, ty)
+doCons (RecC c sts) = doCons $ NormalC c [(s, t) | (_, s, t) <- sts]
 doCons (InfixC sty1 c sty2) = do
   let con = [| conE c |]
       left = [| lift $(varE (mkName "x0")) |]

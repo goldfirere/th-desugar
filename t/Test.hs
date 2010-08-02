@@ -7,4 +7,4 @@ import Language.Haskell.TH.Syntax
 main :: IO ()
 main = do print $( lift (Foo "str1" 'c') )
           print $( lift (Bar "str2") )
-
+          print $( lift (Rec {field = 'a'}) )
