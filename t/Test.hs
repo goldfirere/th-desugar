@@ -1,4 +1,4 @@
-
+{-# LANGUAGE TemplateHaskell #-}
 module Main (main) where
 
 import Foo
