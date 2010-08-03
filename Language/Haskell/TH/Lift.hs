@@ -1,33 +1,43 @@
-module Language.Haskell.TH.Lift (deriveLift, deriveLiftWith, Lift(..)) where
+module Language.Haskell.TH.Lift (deriveLift, deriveLiftMany, deriveLift', deriveLiftMany', Lift(..)) where
 
 import GHC.Exts
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
+import Control.Monad ((<=<))
 
 modName :: String
 modName = "Language.Haskell.TH.Lift"
 
 -- | Derive Lift instances for the given datatype.
 deriveLift :: Name -> Q [Dec]
-deriveLift = deriveLiftWith reify
+deriveLift = deriveLift' <=< reify
+
+-- | Derive Lift instances for many datatypes.
+deriveLiftMany :: [Name] -> Q [Dec]
+deriveLiftMany = deriveLiftMany' <=< mapM reify
 
 -- | Obtain Info values through a custom reification function. This is useful
 -- when generating instances for datatypes that have not yet been declared.
-deriveLiftWith :: (Name -> Q Info) -> Name -> Q [Dec]
-deriveLiftWith n = do
-  i <- reify n
+deriveLift' :: Info -> Q [Dec]
+deriveLift' = fmap (:[]) . deriveLiftOne
+
+deriveLiftMany' :: [Info] -> Q [Dec]
+deriveLiftMany' = mapM deriveLiftOne
+
+deriveLiftOne :: Info -> Q Dec
+deriveLiftOne i =
   case i of
-    TyConI (DataD _ _ vsk cons _) ->
-      liftInstance (map unTyVarBndr vsk) (map doCons cons)
-    TyConI (NewtypeD _ _ vsk con _) ->
-      liftInstance (map unTyVarBndr vsk) [doCons con]
+    TyConI (DataD _ n vsk cons _) ->
+      liftInstance n (map unTyVarBndr vsk) (map doCons cons)
+    TyConI (NewtypeD _ n vsk con _) ->
+      liftInstance n (map unTyVarBndr vsk) [doCons con]
     _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
-    where liftInstance vs cases =
-            fmap (:[]) $ instanceD (ctxt vs) (conT ''Lift `appT` typ vs) [funD 'lift cases]
-          unTyVarBndr (PlainTV v) = v
-          unTyVarBndr (KindedTV v _) = v
-          ctxt = cxt . map (\n -> classP ''Lift [varT n])
-          typ = foldl appT (conT n) . map varT
+  where liftInstance n vs cases =
+          instanceD (ctxt vs) (conT ''Lift `appT` typ n vs) [funD 'lift cases]
+        unTyVarBndr (PlainTV v) = v
+        unTyVarBndr (KindedTV v _) = v
+        ctxt = cxt . map (\n -> classP ''Lift [varT n])
+        typ n = foldl appT (conT n) . map varT
 
 doCons :: Con -> Q Clause
 doCons (NormalC c sts) = do
