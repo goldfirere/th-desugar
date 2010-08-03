@@ -3,7 +3,7 @@ module Foo where
 
 import Language.Haskell.TH.Lift
 
-data Foo a = Foo a Char | Bar a
+data (Eq a) => Foo a = Foo a Char | Bar a
     deriving Show
 
 newtype Rec a = Rec { field :: a }

@@ -27,16 +27,16 @@ deriveLiftMany' = mapM deriveLiftOne
 deriveLiftOne :: Info -> Q Dec
 deriveLiftOne i =
   case i of
-    TyConI (DataD _ n vsk cons _) ->
-      liftInstance n (map unTyVarBndr vsk) (map doCons cons)
-    TyConI (NewtypeD _ n vsk con _) ->
-      liftInstance n (map unTyVarBndr vsk) [doCons con]
+    TyConI (DataD dcx n vsk cons _) ->
+      liftInstance dcx n (map unTyVarBndr vsk) (map doCons cons)
+    TyConI (NewtypeD dcx n vsk con _) ->
+      liftInstance dcx n (map unTyVarBndr vsk) [doCons con]
     _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
-  where liftInstance n vs cases =
-          instanceD (ctxt vs) (conT ''Lift `appT` typ n vs) [funD 'lift cases]
+  where liftInstance dcx n vs cases =
+          instanceD (ctxt dcx vs) (conT ''Lift `appT` typ n vs) [funD 'lift cases]
         unTyVarBndr (PlainTV v) = v
         unTyVarBndr (KindedTV v _) = v
-        ctxt = cxt . map (\n -> classP ''Lift [varT n])
+        ctxt dcx = fmap (dcx ++) . cxt . map (\n -> classP ''Lift [varT n])
         typ n = foldl appT (conT n) . map varT
 
 doCons :: Con -> Q Clause
