@@ -1,6 +1,6 @@
 Name:               th-lift
 Version:            0.4
-Cabal-Version:	    >= 1.3
+Cabal-Version:	    >= 1.6
 License:            OtherLicense
 License-File:       COPYING
 Copyright:          Ian Lynagh, 2006
@@ -18,3 +18,6 @@ Extra-source-files: BSD3, GPL-2, Changelog, t/Foo.hs, t/Test.hs
 Exposed-modules:
     Language.Haskell.TH.Lift
 
+source-repository head
+  type:     git
+  location: git://github.com/mboes/th-lift
