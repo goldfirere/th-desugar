@@ -1,3 +1,10 @@
+2010-08-05  Mathieu Boespflug  <mboes@tweag.net>
+
+	* Support for contexts in datatypes, thanks to Ben Millwood.
+	* deriveLiftWith becomes deriveLift' and takes an Info structure
+	rather than a custom reification function.
+	* Add deriveLiftMany to derive many Lift instances in one go.
+
 2010-08-02  Mathieu Boespflug  <mboes@tweag.net>
 
 	* Add support for newtypes and records syntax, thanks to a patch
