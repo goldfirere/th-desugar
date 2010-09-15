@@ -1,4 +1,9 @@
+{-# LANGUAGE CPP, TemplateHaskell, MagicHash, TypeSynonymInstances #-}
 module Language.Haskell.TH.Lift (deriveLift, deriveLiftMany, deriveLift', deriveLiftMany', Lift(..)) where
+
+#if !MIN_VERSION_template_haskell(2,4,0)
+import Data.PackedString (PackedString, packString, unpackPS)
+#endif /* MIN_VERSION_template_haskell(2,4,0) */
 
 import GHC.Exts
 import Language.Haskell.TH
@@ -34,10 +39,16 @@ deriveLiftOne i =
     _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
   where liftInstance dcx n vs cases =
           instanceD (ctxt dcx vs) (conT ''Lift `appT` typ n vs) [funD 'lift cases]
+        typ n = foldl appT (conT n) . map varT
+        ctxt dcx = fmap (dcx ++) . cxt . map liftPred
+#if MIN_VERSION_template_haskell(2,4,0)
         unTyVarBndr (PlainTV v) = v
         unTyVarBndr (KindedTV v _) = v
-        ctxt dcx = fmap (dcx ++) . cxt . map (\n -> classP ''Lift [varT n])
-        typ n = foldl appT (conT n) . map varT
+        liftPred n = classP ''Lift [varT n]
+#else /* MIN_VERSION_template_haskell(2,4,0) */
+        unTyVarBndr v = v
+        liftPred n = conT ''Lift `appT` varT n
+#endif /* MIN_VERSION_template_haskell(2,4,0) */
 
 doCons :: Con -> Q Clause
 doCons (NormalC c sts) = do
@@ -58,6 +69,7 @@ doCons c = error (modName ++ ".doCons: Unhandled constructor: " ++ pprint c)
 instance Lift Name where
     lift (Name occName nameFlavour) = [| Name occName nameFlavour |]
 
+#if MIN_VERSION_template_haskell(2,4,0)
 instance Lift OccName where
   lift n = [| mkOccName $(lift $ occString n) |]
 
@@ -67,6 +79,11 @@ instance Lift PkgName where
 instance Lift ModName where
   lift n = [| mkModName $(lift $ modString n) |]
 
+#else /* MIN_VERSION_template_haskell(2,4,0) */
+instance Lift PackedString where
+  lift ps = [| packString $(lift $ unpackPS ps) |]
+
+#endif /* MIN_VERSION_template_haskell(2,4,0) */
 instance Lift NameFlavour where
     lift NameS = [| NameS |]
     lift (NameQ modName) = [| NameQ modName |]

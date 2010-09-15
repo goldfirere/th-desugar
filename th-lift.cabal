@@ -15,10 +15,16 @@ build-type:         Simple
 Extra-source-files: BSD3, GPL-2, Changelog, t/Foo.hs, t/Test.hs
 
 Library
-  Build-Depends:   base >= 3 && < 5, template-haskell >= 2.4 && < 2.5
   Exposed-modules: Language.Haskell.TH.Lift
+  Extensions:      CPP, TemplateHaskell, MagicHash, TypeSynonymInstances
   Hs-Source-Dirs:  src
-  Extensions:      TemplateHaskell, MagicHash, TypeSynonymInstances
+  Build-Depends:   base >= 3 && < 5
+
+  if impl(ghc < 6.12)
+    Build-Depends: packedstring == 0.1.*,
+                   template-haskell >= 2.2 && < 2.4
+  else
+    Build-Depends: template-haskell == 2.4.*
 
 source-repository head
   type:     git
