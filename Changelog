@@ -1,3 +1,7 @@
+2010-09-19  Mathieu Boespflug  <mboes@tweag.net>
+
+	* Support older GHCs and Cabal, thanks to Ben Millwood.
+
 2010-08-05  Mathieu Boespflug  <mboes@tweag.net>
 
 	* Support for contexts in datatypes, thanks to Ben Millwood.
