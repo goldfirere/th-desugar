@@ -1,7 +1,8 @@
 {-# LANGUAGE CPP, TemplateHaskell, MagicHash, TypeSynonymInstances #-}
 module Language.Haskell.TH.Lift (deriveLift, deriveLiftMany, deriveLift', deriveLiftMany', Lift(..)) where
 
-#if !MIN_VERSION_template_haskell(2,4,0)
+#if MIN_VERSION_template_haskell(2,4,0)
+#else
 import Data.PackedString (PackedString, packString, unpackPS)
 #endif /* MIN_VERSION_template_haskell(2,4,0) */
 
