@@ -24,7 +24,7 @@ Library
     Build-Depends: packedstring == 0.1.*,
                    template-haskell >= 2.2 && < 2.4
   else
-    Build-Depends: template-haskell == 2.4.*
+    Build-Depends: template-haskell >= 2.4 && < 2.6
 
 source-repository head
   type:     git
