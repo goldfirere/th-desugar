@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, TemplateHaskell, MagicHash, TypeSynonymInstances #-}
+{-# LANGUAGE CPP, TemplateHaskell, MagicHash, TypeSynonymInstances, FlexibleInstances #-}
 module Language.Haskell.TH.Lift (deriveLift, deriveLiftMany, deriveLift', deriveLiftMany', Lift(..)) where
 
 #if !(MIN_VERSION_template_haskell(2,4,0))
