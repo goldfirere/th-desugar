@@ -1,4 +1,4 @@
-{- Data/Singletons/Desugar.hs
+{- Language/Haskell/TH/Desugar/Core.hs
 
 (c) Richard Eienberg 2013
 eir@cis.upenn.edu
@@ -9,7 +9,7 @@ processing. The desugared types and constructors are prefixed with a D.
 
 {-# LANGUAGE TemplateHaskell, LambdaCase #-}
 
-module Data.Singletons.Desugar where
+module Language.Haskell.TH.Desugar.Core where
 
 import Prelude hiding (mapM, foldl, foldr, all, elem)
 
@@ -25,7 +25,7 @@ import Data.Traversable
 import qualified Data.Set as S
 import GHC.Exts
 
-import Data.Singletons.Util
+import Language.Haskell.TH.Desugar.Util
 
 data DExp = DVarE Name
           | DConE Name
@@ -38,7 +38,6 @@ data DExp = DVarE Name
 
 data DLetDec = DFunD Name [DClause]
              | DValD DPat DExp
-               -- the rest of these are just to allow in let statements
              | DSigD Name DType
              | DInfixD Fixity Name
 
