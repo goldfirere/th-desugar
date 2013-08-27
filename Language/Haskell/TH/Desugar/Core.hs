@@ -7,7 +7,7 @@ Desugars full Template Haskell syntax into a smaller core syntax for further
 processing. The desugared types and constructors are prefixed with a D.
 -}
 
-{-# LANGUAGE TemplateHaskell, LambdaCase #-}
+{-# LANGUAGE TemplateHaskell, LambdaCase, CPP #-}
 
 module Language.Haskell.TH.Desugar.Core where
 
@@ -27,6 +27,7 @@ import GHC.Exts
 
 import Language.Haskell.TH.Desugar.Util
 
+-- | Corresponds to TH's @Exp@ type. Note that @DLamE@ takes names, not patterns.
 data DExp = DVarE Name
           | DConE Name
           | DLitE Lit
@@ -36,11 +37,13 @@ data DExp = DVarE Name
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
 
+-- | Declarations as used in a @let@ statement. Other @Dec@s are not desugared.
 data DLetDec = DFunD Name [DClause]
              | DValD DPat DExp
              | DSigD Name DType
              | DInfixD Fixity Name
 
+-- | Corresponds to TH's @Pat@ type.
 data DPat = DLitP Lit
           | DVarP Name
           | DConP Name [DPat]
@@ -49,6 +52,7 @@ data DPat = DLitP Lit
           | DWildP
           | DSigP DPat DType
 
+-- | Corresponds to TH's @Type@ type.
 data DType = DForallT [DTyVarBndr] DCxt DType
            | DAppT DType DType
            | DSigT DType DKind
@@ -57,24 +61,37 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DArrowT
            | DLitT TyLit
 
+-- | Corresponds to TH's @Kind@ type, which is a synonym for @Type@. 'DKind', though,
+--   only contains constructors that make sense for kinds.
 data DKind = DForallK [Name] DKind
            | DVarK Name
            | DConK Name [DKind]
            | DArrowK DKind DKind
            | DStarK
 
+-- | Corresponds to TH's @Cxt@
 type DCxt = [DPred]
+
+-- | Corresponds to TH's @Pred@
 data DPred = DClassP Name [DType]
            | DEqualP DType DType
 
+-- | Corresponds to TH's @TyVarBndr@. Note that @PlainTV x@ and @KindedTV x StarT@ are
+--   distinct, so we retain that distinction here.
 data DTyVarBndr = DPlainTV Name
                 | DKindedTV Name DKind
+#if __GLASGOW_HASKELL__ >= 707
                 | DRoledTV Name Role
                 | DKindedRoledTV Name DKind Role
+#endif
 
+-- | Corresponds to TH's @Match@ type.
 data DMatch = DMatch DPat DExp
+
+-- | Corresponds to TH's @Clause@ type.
 data DClause = DClause [DPat] DExp
 
+-- | Desugar an expression
 dsExp :: Exp -> Q DExp
 dsExp (VarE n) = return $ DVarE n
 dsExp (ConE n) = return $ DConE n
@@ -187,6 +204,7 @@ dsExp (RecUpdE exp field_exps) = do
 
     fst_of_3 (x, _, _) = x
 
+-- | Desugar a lambda expression, where the body has already been desugared
 dsLam :: [Pat] -> DExp -> Q DExp
 dsLam pats exp
   | Just names <- mapM stripVarP_maybe pats
@@ -198,8 +216,11 @@ dsLam pats exp
        (pats', xform) <- dsPats pats
        let match = DMatch (DConP (tupleDataName num_args) pats') (xform exp)
        return $ DLamE arg_names (DCaseE scrutinee [match])
-                                        
-dsMatches :: Name -> [Match] -> Q [DMatch]
+
+-- | Desugar a list of matches for a @case@ statement
+dsMatches :: Name     -- ^ Name of the scrutinee, which must be a bare var
+          -> [Match]  -- ^ Matches of the @case@ statement
+          -> Q [DMatch]
 dsMatches scr = go
   where
     go :: [Match] -> Q [DMatch]
@@ -211,15 +232,19 @@ dsMatches scr = go
       (pat', xform) <- dsPat pat
       return (DMatch pat' (xform exp') : rest')
 
-dsBody :: Body      -- body to desugar
-       -> [Dec]     -- "where" declarations
-       -> DExp      -- what to do if the guards don't match
-       -> Q DExp    -- final expression
+-- | Desugar a @Body@
+dsBody :: Body      -- ^ body to desugar
+       -> [Dec]     -- ^ "where" declarations
+       -> DExp      -- ^ what to do if the guards don't match
+       -> Q DExp
 dsBody (NormalB exp) decs _ = DLetE <$> mapM dsLetDec decs <*> dsExp exp
 dsBody (GuardedB guarded_exps) decs failure =
   DLetE <$> mapM dsLetDec decs <*> dsGuards guarded_exps failure
 
-dsGuards :: [(Guard, Exp)] -> DExp -> Q DExp
+-- | Desugar guarded expressions
+dsGuards :: [(Guard, Exp)]  -- ^ Guarded expressions
+         -> DExp            -- ^ What to do if none of the guards match
+         -> Q DExp
 dsGuards [] thing_inside = return thing_inside
 dsGuards ((NormalG guard, exp) : rest) thing_inside =
   dsGuards ((PatG [NoBindS guard], exp) : rest) thing_inside
@@ -228,7 +253,11 @@ dsGuards ((PatG stmts, exp) : rest) thing_inside = do
   failure <- dsGuards rest thing_inside
   dsGuardStmts stmts success failure
 
-dsGuardStmts :: [Stmt] -> DExp -> DExp -> Q DExp
+-- | Desugar the @Stmt@s in a guard
+dsGuardStmts :: [Stmt]  -- ^ The @Stmt@s to desugar
+             -> DExp    -- ^ What to do if the @Stmt@s yield success
+             -> DExp    -- ^ What to do if the @Stmt@s yield failure
+             -> Q DExp
 dsGuardStmts [] success _failure = return success
 dsGuardStmts (BindS pat exp : rest) success failure = do
   (pat', xform) <- dsPat pat
@@ -246,6 +275,7 @@ dsGuardStmts (NoBindS exp : rest) success failure = do
                        , DMatch (DConP 'False []) failure ]
 dsGuardStmts (ParS _ : _) _ _ = impossible "Parallel comprehension in a pattern guard."
 
+-- | Desugar the @Stmt@s in a @do@ expression
 dsDoStmts :: [Stmt] -> Q DExp
 dsDoStmts [] = impossible "do-expression ended with something other than bare statement."
 dsDoStmts [NoBindS exp] = dsExp exp
@@ -260,6 +290,7 @@ dsDoStmts (NoBindS exp : rest) = do
   return $ DAppE (DAppE (DVarE '(>>)) exp') rest'
 dsDoStmts (ParS _ : _) = impossible "Parallel comprehension in a do-statement."
 
+-- | Desugar the @Stmt@s in a list or monad comprehension
 dsComp :: [Stmt] -> Q DExp
 dsComp [] = impossible "List/monad comprehension ended with something other than a bare statement."
 dsComp [NoBindS exp] = DAppE (DVarE 'return) <$> dsExp exp
@@ -277,6 +308,9 @@ dsComp (ParS stmtss : rest) = do
   rest' <- dsComp rest
   DAppE (DAppE (DVarE '(>>=)) exp) <$> dsLam [pat] rest'
 
+-- | Desugar the contents of a parallel comprehension.
+--   Returns a @Pat@ containing a tuple of all bound variables and an expression
+--   to produce the values for those variables
 dsParComp :: [[Stmt]] -> Q (Pat, DExp)
 dsParComp [] = return (ConP (tupleDataName 0) [], DConE (tupleDataName 0))
 dsParComp (q : rest) = do
@@ -296,7 +330,8 @@ dsParComp (q : rest) = do
     mk_tuple_pat name_set =
       ConP (tupleDataName (S.size name_set)) (S.foldr ((:) . VarP) [] name_set)
 
--- second return value should be applied to the "body" of the pattern-match
+-- | Desugar a pattern, returning the desugared pattern and a transformation to
+--   be applied to the scope of the pattern match
 dsPat :: Pat -> Q (DPat, DExp -> DExp)
 dsPat (LitP lit) = return (DLitP lit, id)
 dsPat (VarP n) = return (DVarP n, id)
@@ -335,21 +370,26 @@ dsPat (SigP pat ty) = do
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
 
+-- | Desugar a list of patterns, producing a list of desugared patterns and one
+--   transformation (like 'dsPat')
 dsPats :: [Pat] -> Q ([DPat], DExp -> DExp)
 dsPats pats = do
   (pats', xforms) <- mapAndUnzipM dsPat pats
   return (pats', foldr (.) id xforms)
 
+-- | Desugar patterns that are the arguments to a data constructor
 dsConPats :: Name -> [Pat] -> Q (DPat, DExp -> DExp)
 dsConPats name pats = do
   (pats', xform) <- dsPats pats
   return (DConP name pats', xform)
 
+-- | Desugar a modified pattern (e.g., body of a @TildeP@)
 dsPatModifier :: (DPat -> DPat) -> Pat -> Q (DPat, DExp -> DExp)
 dsPatModifier mod pat = do
   (pat', xform) <- dsPat pat
   return (mod pat', xform)
 
+-- | Convert a 'DPat' to a 'DExp'. Fails on 'DWildP'.
 dPatToDExp :: DPat -> DExp
 dPatToDExp (DLitP lit) = DLitE lit
 dPatToDExp (DVarP name) = DVarE name
@@ -359,6 +399,8 @@ dPatToDExp (DBangP pat) = dPatToDExp pat
 dPatToDExp DWildP = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
 dPatToDExp (DSigP pat _) = dPatToDExp pat
 
+-- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
+--   variable
 removeWilds :: DPat -> Q DPat
 removeWilds p@(DLitP _) = return p
 removeWilds p@(DVarP _) = return p
@@ -367,7 +409,8 @@ removeWilds (DTildeP pat) = DTildeP <$> removeWilds pat
 removeWilds (DBangP pat) = DBangP <$> removeWilds pat
 removeWilds DWildP = DVarP <$> newName "wild"
 removeWilds (DSigP pat ty) = DSigP <$> removeWilds pat <*> pure ty
-  
+
+-- | Desugar @Dec@s that can appear in a let expression
 dsLetDec :: Dec -> Q DLetDec
 dsLetDec (FunD name clauses) = DFunD name <$> dsClauses name clauses
 dsLetDec (ValD pat body where_decs) = do
@@ -378,10 +421,12 @@ dsLetDec (ValD pat body where_decs) = do
                        (StringL $ "Non-exhaustive patterns for " ++ pprint pat))
 dsLetDec (SigD name ty) = DSigD name <$> dsType ty
 dsLetDec (InfixD fixity name) = return $ DInfixD fixity name
-dsLetDec _dec = impossible "Illegal declaration in let statement."
+dsLetDec _dec = impossible "Illegal declaration in let expression."
 
--- as soon as we see a GuardedB, tuple up the arguments and use a case
-dsClauses :: Name -> [Clause] -> Q [DClause]
+-- | Desugar clauses to a function definition
+dsClauses :: Name         -- ^ Name of the function
+          -> [Clause]     -- ^ Clauses to desugar
+          -> Q [DClause]
 dsClauses _ [] = return []
 dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
   -- this is just a convenience optimization; we could tuple up all the patterns
@@ -405,6 +450,7 @@ dsClauses n clauses@(Clause pats _ _ : _) = do
     error_exp = DAppE (DVarE 'error) (DLitE
                        (StringL $ "Non-exhaustive patterns in " ++ (show n)))
 
+-- | Desugar a type
 dsType :: Type -> Q DType
 dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> mapM dsPred preds <*> dsType ty
 dsType (AppT t1 t2) = DAppT <$> dsType t1 <*> dsType t2
@@ -427,16 +473,21 @@ dsType StarT = impossible "The kind * seen in a type."
 dsType ConstraintT = impossible "The kind `Constraint' seen in a type."
 dsType (LitT lit) = return $ DLitT lit
 
+-- | Desugar a @TyVarBndr@
 dsTvb :: TyVarBndr -> Q DTyVarBndr
 dsTvb (PlainTV n) = return $ DPlainTV n
 dsTvb (KindedTV n k) = DKindedTV n <$> dsKind k
+#if __GLASGOW_HASKELL__ >= 707
 dsTvb (RoledTV n r) = return $ DRoledTV n r
 dsTvb (KindedRoledTV n k r) = DKindedRoledTV n <$> dsKind k <*> pure r
+#endif
 
+-- | Desugar a @Pred@
 dsPred :: Pred -> Q DPred
 dsPred (ClassP n tys) = DClassP n <$> mapM dsType tys
 dsPred (EqualP t1 t2) = DEqualP <$> dsType t1 <*> dsType t2
 
+-- | Desugar a kind
 dsKind :: Kind -> Q DKind
 dsKind (ForallT tvbs cxt ki)
   | [] <- cxt
@@ -468,39 +519,6 @@ dsKind StarT = return DStarK
 dsKind ConstraintT = return $ DConK ''Constraint []
 dsKind (LitT _) = impossible "Literal used in a kind."
                        
-extractBoundNamesStmt :: Stmt -> S.Set Name
-extractBoundNamesStmt (BindS pat _) = extractBoundNamesPat pat
-extractBoundNamesStmt (LetS decs)   = foldMap extractBoundNamesDec decs
-extractBoundNamesStmt (NoBindS _)   = S.empty
-extractBoundNamesStmt (ParS stmtss) = foldMap (foldMap extractBoundNamesStmt) stmtss
-
--- this works only for decs that might be used in a "let"
-extractBoundNamesDec :: Dec -> S.Set Name
-extractBoundNamesDec (FunD name _)  = S.singleton name
-extractBoundNamesDec (ValD pat _ _) = extractBoundNamesPat pat
-extractBoundNamesDec _              = S.empty
-
-extractBoundNamesPat :: Pat -> S.Set Name
-extractBoundNamesPat (LitP _)            = S.empty
-extractBoundNamesPat (VarP name)         = S.singleton name
-extractBoundNamesPat (TupP pats)         = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (UnboxedTupP pats)  = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (ConP _ pats)       = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (InfixP p1 _ p2)    = extractBoundNamesPat p1 `S.union`
-                                           extractBoundNamesPat p2
-extractBoundNamesPat (UInfixP p1 _ p2)   = extractBoundNamesPat p1 `S.union`
-                                           extractBoundNamesPat p2
-extractBoundNamesPat (ParensP pat)       = extractBoundNamesPat pat
-extractBoundNamesPat (TildeP pat)        = extractBoundNamesPat pat
-extractBoundNamesPat (BangP pat)         = extractBoundNamesPat pat
-extractBoundNamesPat (AsP name pat)      = S.singleton name `S.union` extractBoundNamesPat pat
-extractBoundNamesPat WildP               = S.empty
-extractBoundNamesPat (RecP _ field_pats) = let (_, pats) = unzip field_pats in
-                                           foldMap extractBoundNamesPat pats
-extractBoundNamesPat (ListP pats)        = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (SigP pat _)        = extractBoundNamesPat pat
-extractBoundNamesPat (ViewP _ pat)       = extractBoundNamesPat pat
-
 -- create a list of expressions in the same order as the fields in the first argument
 -- but with the values as given in the second argument
 -- if a field is missing from the second argument, use the corresponding expression

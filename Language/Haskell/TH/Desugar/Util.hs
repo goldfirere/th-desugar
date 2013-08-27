@@ -9,7 +9,9 @@ Utility functions for th-desugar package.
 module Language.Haskell.TH.Desugar.Util where
 
 import Language.Haskell.TH
-import Data.List
+
+import qualified Data.Set as S
+import Data.Foldable
 
 -- | Reify a declaration, warning the user about splices if the reify fails. The warning
 -- says that reification can fail if you try to reify a type in the same splice as it is
@@ -74,3 +76,38 @@ stripVarP_maybe _           = Nothing
 stripPlainTV_maybe :: TyVarBndr -> Maybe Name
 stripPlainTV_maybe (PlainTV n) = Just n
 stripPlainTV_maybe _           = Nothing
+
+-- | Extract the names bound in a @Stmt@
+extractBoundNamesStmt :: Stmt -> S.Set Name
+extractBoundNamesStmt (BindS pat _) = extractBoundNamesPat pat
+extractBoundNamesStmt (LetS decs)   = foldMap extractBoundNamesDec decs
+extractBoundNamesStmt (NoBindS _)   = S.empty
+extractBoundNamesStmt (ParS stmtss) = foldMap (foldMap extractBoundNamesStmt) stmtss
+
+-- | Extract the names bound in a @Dec@ that could appear in a @let@ expression.
+extractBoundNamesDec :: Dec -> S.Set Name
+extractBoundNamesDec (FunD name _)  = S.singleton name
+extractBoundNamesDec (ValD pat _ _) = extractBoundNamesPat pat
+extractBoundNamesDec _              = S.empty
+
+-- | Extract the names bound in a @Pat@
+extractBoundNamesPat :: Pat -> S.Set Name
+extractBoundNamesPat (LitP _)            = S.empty
+extractBoundNamesPat (VarP name)         = S.singleton name
+extractBoundNamesPat (TupP pats)         = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (UnboxedTupP pats)  = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (ConP _ pats)       = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (InfixP p1 _ p2)    = extractBoundNamesPat p1 `S.union`
+                                           extractBoundNamesPat p2
+extractBoundNamesPat (UInfixP p1 _ p2)   = extractBoundNamesPat p1 `S.union`
+                                           extractBoundNamesPat p2
+extractBoundNamesPat (ParensP pat)       = extractBoundNamesPat pat
+extractBoundNamesPat (TildeP pat)        = extractBoundNamesPat pat
+extractBoundNamesPat (BangP pat)         = extractBoundNamesPat pat
+extractBoundNamesPat (AsP name pat)      = S.singleton name `S.union` extractBoundNamesPat pat
+extractBoundNamesPat WildP               = S.empty
+extractBoundNamesPat (RecP _ field_pats) = let (_, pats) = unzip field_pats in
+                                           foldMap extractBoundNamesPat pats
+extractBoundNamesPat (ListP pats)        = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (SigP pat _)        = extractBoundNamesPat pat
+extractBoundNamesPat (ViewP _ pat)       = extractBoundNamesPat pat

@@ -6,6 +6,11 @@ eir@cis.upenn.edu
 Converts desugared TH back into real TH.
 -}
 
+{-# LANGUAGE CPP #-}
+
+{-| The functions in this module convert desugared Template Haskell back into
+    proper Template Haskell. -}
+
 module Language.Haskell.TH.Desugar.Sweeten where
 
 import Language.Haskell.TH
@@ -55,8 +60,10 @@ typeToTH (DLitT lit)            = LitT lit
 tvbToTH :: DTyVarBndr -> TyVarBndr
 tvbToTH (DPlainTV n)           = PlainTV n
 tvbToTH (DKindedTV n k)        = KindedTV n (kindToTH k)
+#if __GLASGOW_HASKELL__ >= 707
 tvbToTH (DRoledTV n r)         = RoledTV n r
 tvbToTH (DKindedRoledTV n k r) = KindedRoledTV n (kindToTH k) r
+#endif
 
 predToTH :: DPred -> Pred
 predToTH (DClassP n tys) = ClassP n (map typeToTH tys)
