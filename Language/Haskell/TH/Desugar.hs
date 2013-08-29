@@ -1,6 +1,6 @@
 {- Language/Haskell/TH/Desugar.hs
 
-(c) Richard Eienberg 2013
+(c) Richard Eisenberg 2013
 eir@cis.upenn.edu
 -}
 
@@ -22,6 +22,7 @@ module Language.Haskell.TH.Desugar (
 
   -- * Utility functions
   dPatToDExp, removeWilds, reifyWithWarning, getDataD, dataConNameToCon,
+  mkTupleDExp, mkTupleDPat,
 
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat

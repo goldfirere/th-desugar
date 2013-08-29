@@ -1,6 +1,6 @@
 {- Language/Haskell/TH/Desugar/Sweeten.hs
 
-(c) Richard Eienberg 2013
+(c) Richard Eisenberg 2013
 eir@cis.upenn.edu
 
 Converts desugared TH back into real TH.

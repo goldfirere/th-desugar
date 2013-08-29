@@ -1,6 +1,6 @@
 {- Language/Haskell/TH/Desugar/Util.hs
 
-(c) Richard Eienberg 2013
+(c) Richard Eisenberg 2013
 eir@cis.upenn.edu
 
 Utility functions for th-desugar package.

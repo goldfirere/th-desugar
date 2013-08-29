@@ -1,6 +1,6 @@
 {- Language/Haskell/TH/Desugar/Core.hs
 
-(c) Richard Eienberg 2013
+(c) Richard Eisenberg 2013
 eir@cis.upenn.edu
 
 Desugars full Template Haskell syntax into a smaller core syntax for further
@@ -210,11 +210,10 @@ dsLam pats exp
   | Just names <- mapM stripVarP_maybe pats
   = return $ DLamE names exp
   | otherwise
-  = do let num_args = length pats
-       arg_names <- replicateM num_args (newName "arg")
-       let scrutinee = foldl DAppE (DConE $ tupleDataName num_args) (map DVarE arg_names)
+  = do arg_names <- replicateM (length pats) (newName "arg")
+       let scrutinee = mkTupleDExp (map DVarE arg_names)
        (pats', xform) <- dsPats pats
-       let match = DMatch (DConP (tupleDataName num_args) pats') (xform exp)
+       let match = DMatch (mkTupleDPat pats') (xform exp)
        return $ DLamE arg_names (DCaseE scrutinee [match])
 
 -- | Desugar a list of matches for a @case@ statement
@@ -237,9 +236,20 @@ dsBody :: Body      -- ^ body to desugar
        -> [Dec]     -- ^ "where" declarations
        -> DExp      -- ^ what to do if the guards don't match
        -> Q DExp
-dsBody (NormalB exp) decs _ = DLetE <$> mapM dsLetDec decs <*> dsExp exp
+dsBody (NormalB exp) decs _ =
+  maybeDLetE <$> mapM dsLetDec decs <*> dsExp exp
 dsBody (GuardedB guarded_exps) decs failure =
-  DLetE <$> mapM dsLetDec decs <*> dsGuards guarded_exps failure
+  maybeDLetE <$> mapM dsLetDec decs <*> dsGuards guarded_exps failure
+
+-- | If decs is non-empty, delcare them in a let:
+maybeDLetE :: [DLetDec] -> DExp -> DExp
+maybeDLetE [] exp   = exp
+maybeDLetE decs exp = DLetE decs exp
+
+-- | If matches is non-empty, make a case statement; otherwise make an error statement
+maybeDCaseE :: String -> DExp -> [DMatch] -> DExp
+maybeDCaseE err _     []      = DAppE (DVarE 'error) (DLitE (StringL err))
+maybeDCaseE _   scrut matches = DCaseE scrut matches
 
 -- | Desugar guarded expressions
 dsGuards :: [(Guard, Exp)]  -- ^ Guarded expressions
@@ -312,7 +322,11 @@ dsComp (ParS stmtss : rest) = do
 --   Returns a @Pat@ containing a tuple of all bound variables and an expression
 --   to produce the values for those variables
 dsParComp :: [[Stmt]] -> Q (Pat, DExp)
-dsParComp [] = return (ConP (tupleDataName 0) [], DConE (tupleDataName 0))
+dsParComp [] = impossible "Empty list of parallel comprehension statements."
+dsParComp [r] = do
+  let rv = foldMap extractBoundNamesStmt r
+  dsR <- dsComp (r ++ [mk_tuple_stmt rv])
+  return (mk_tuple_pat rv, dsR)
 dsParComp (q : rest) = do
   let qv = foldMap extractBoundNamesStmt q
   (rest_pat, rest_exp) <- dsParComp rest
@@ -320,15 +334,15 @@ dsParComp (q : rest) = do
   let zipped = DAppE (DAppE (DVarE 'mzip) dsQ) rest_exp
   return (ConP (tupleDataName 2) [mk_tuple_pat qv, rest_pat], zipped)
 
-  where
-    mk_tuple_stmt :: S.Set Name -> Stmt
-    mk_tuple_stmt name_set = 
-      NoBindS (foldl AppE (ConE (tupleDataName (S.size name_set)))
-                          (S.foldr ((:) . VarE) [] name_set))
+-- helper function for dsParComp
+mk_tuple_stmt :: S.Set Name -> Stmt
+mk_tuple_stmt name_set =
+  NoBindS (mkTupleExp (S.foldr ((:) . VarE) [] name_set))
 
-    mk_tuple_pat :: S.Set Name -> Pat
-    mk_tuple_pat name_set =
-      ConP (tupleDataName (S.size name_set)) (S.foldr ((:) . VarP) [] name_set)
+-- helper function for dsParComp
+mk_tuple_pat :: S.Set Name -> Pat
+mk_tuple_pat name_set =
+  mkTuplePat (S.foldr ((:) . VarP) [] name_set)
 
 -- | Desugar a pattern, returning the desugared pattern and a transformation to
 --   be applied to the scope of the pattern match
@@ -432,23 +446,22 @@ dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
   -- this is just a convenience optimization; we could tuple up all the patterns
   (pats', xform) <- dsPats pats
   (:) <$>
-    DClause pats' <$> (xform <$> (DLetE <$> mapM dsLetDec where_decs <*> dsExp exp)) <*>
+    DClause pats' <$> (xform <$> (maybeDLetE <$> mapM dsLetDec where_decs <*> dsExp exp)) <*>
     dsClauses n rest
 dsClauses n clauses@(Clause pats _ _ : _) = do
-  arg_names <- replicateM num_args (newName "arg")
-  let scrutinee = foldl DAppE (DConE $ tupleDataName num_args) (map DVarE arg_names)
+  arg_names <- replicateM (length pats) (newName "arg")
+  let scrutinee = mkTupleDExp (map DVarE arg_names)
   clause <- DClause (map DVarP arg_names) <$>
-              (DCaseE scrutinee <$> mapM clause_to_dmatch clauses)
+              (DCaseE scrutinee <$> foldrM (clause_to_dmatch scrutinee) [] clauses)
   return [clause]
   where
-    clause_to_dmatch (Clause pats body where_decs) = do
+    clause_to_dmatch :: DExp -> Clause -> [DMatch] -> Q [DMatch]
+    clause_to_dmatch scrutinee (Clause pats body where_decs) failure_matches = do
       (pats', xform) <- dsPats pats
-      exp <- dsBody body where_decs error_exp
-      return $ DMatch (DConP (tupleDataName num_args) pats') (xform exp)
-
-    num_args = length pats
-    error_exp = DAppE (DVarE 'error) (DLitE
-                       (StringL $ "Non-exhaustive patterns in " ++ (show n)))
+      let failure_exp = maybeDCaseE ("Non-exhaustive patterns in " ++ (show n))
+                                    scrutinee failure_matches
+      exp <- dsBody body where_decs failure_exp
+      return (DMatch (mkTupleDPat pats') (xform exp) : failure_matches)
 
 -- | Desugar a type
 dsType :: Type -> Q DType
@@ -543,3 +556,22 @@ reorderFieldsPat ((field_name, _, _) : rest) field_pats = do
       return $ (pat' : rest', xform . rest_xform)
     Nothing -> return (DWildP : rest', rest_xform)
 
+-- | Make a tuple 'DExp' from a list of 'DExp's. Avoids using a 1-tuple.
+mkTupleDExp :: [DExp] -> DExp
+mkTupleDExp [exp] = exp
+mkTupleDExp exps = foldl DAppE (DConE $ tupleDataName (length exps)) exps
+
+-- | Make a tuple 'Exp' from a list of 'Exp's. Avoids using a 1-tuple.
+mkTupleExp :: [Exp] -> Exp
+mkTupleExp [exp] = exp
+mkTupleExp exps = foldl AppE (ConE $ tupleDataName (length exps)) exps
+
+-- | Make a tuple 'DPat' from a list of 'DPat's. Avoids using a 1-tuple.
+mkTupleDPat :: [DPat] -> DPat
+mkTupleDPat [pat] = pat
+mkTupleDPat pats = DConP (tupleDataName (length pats)) pats
+
+-- | Make a tuple 'Pat' from a list of 'Pat's. Avoids using a 1-tuple.
+mkTuplePat :: [Pat] -> Pat
+mkTuplePat [pat] = pat
+mkTuplePat pats = ConP (tupleDataName (length pats)) pats
