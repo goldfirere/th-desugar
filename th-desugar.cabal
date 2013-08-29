@@ -23,12 +23,6 @@ description:
     is a hand-coded TH syntax tree, the results may be unpredictable. In
     particular, it is likely that promoted datatypes will not work as expected.
 
-    The package was designed for use with the singletons package, so some design
-    decisions are based on that use case, when more than one design choice was
-    possible.
-
-    I will try to keep this package up-to-date with respect to changes in GHC.
-
 source-repository this
   type:     git
   location: https://github.com/goldfirere/th-desugar.git
@@ -42,3 +36,5 @@ library
   exposed-modules:    Language.Haskell.TH.Desugar, Language.Haskell.TH.Desugar.Sweeten
   other-modules:      Language.Haskell.TH.Desugar.Core, Language.Haskell.TH.Desugar.Util
   default-language:   Haskell2010
+ 
+  

@@ -5,7 +5,8 @@ eir@cis.upenn.edu
 -}
 
 {-# LANGUAGE TemplateHaskell, UnboxedTuples, ParallelListComp, CPP,
-             RankNTypes, ImpredicativeTypes, TypeFamilies #-}
+             RankNTypes, ImpredicativeTypes, TypeFamilies,
+             DataKinds #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns -fno-warn-unused-matches #-}
 
 module Test.Run where
@@ -46,5 +47,11 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "fun2"     ~: $test25_fun2     @=? $(dsSplice test25_fun2)
              , "forall"   ~: $test26_forall   @=? $(dsSplice test26_forall)
              , "kisig"    ~: $test27_kisig    @=? $(dsSplice test27_kisig)
+             , "tupt"     ~: $test28_tupt     @=? $(dsSplice test28_tupt)
+             , "listt"    ~: $test29_listt    @=? $(dsSplice test29_listt)
+             , "promoted" ~: $test30_promoted @=? $(dsSplice test30_promoted)
+             , "constraint" ~: $test31_constraint @=? $(dsSplice test31_constraint)
+             , "tylit"    ~: $test32_tylit    @=? $(dsSplice test32_tylit)
+             , "tvbs"     ~: $test33_tvbs     @=? $(dsSplice test33_tvbs)
              ]
 

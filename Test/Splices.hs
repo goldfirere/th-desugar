@@ -12,6 +12,8 @@ eir@cis.upenn.edu
 module Test.Splices where
 
 import Data.List
+import GHC.Exts
+import GHC.TypeLits
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Desugar
@@ -85,4 +87,22 @@ data Proxy a = Proxy
 test27_kisig = [| let f :: Proxy (a :: Bool) -> ()
                       f _ = () in
                   (f (Proxy :: Proxy False), f (Proxy :: Proxy True)) |]
-                      
+test28_tupt = [| let f :: (a,b) -> a
+                     f (a,_) = a in
+                 map f [(1,'a'),(2,'b')] |]
+test29_listt = [| let f :: [[a]] -> a
+                      f = head . head in
+                  map f [ [[1]], [[2]] ] |]
+test30_promoted = [| let f :: Proxy '() -> Proxy '[Int, Bool] -> ()
+                         f _ _ = () in
+                     f Proxy Proxy |]
+test31_constraint = [| let f :: Proxy (c :: * -> Constraint) -> ()
+                           f _ = () in
+                       [f (Proxy :: Proxy Eq), f (Proxy :: Proxy Show)] |]
+test32_tylit = [| let f :: Proxy (a :: Symbol) -> Proxy (b :: Nat) -> ()
+                      f _ _ = () in
+                  f (Proxy :: Proxy "Hi there!") (Proxy :: Proxy 10) |]
+test33_tvbs = [| let f :: forall a (b :: * -> *). Monad b => a -> b a
+                     f = return in
+                 [f 1, f 2] :: [Maybe Int] |]
+                                 

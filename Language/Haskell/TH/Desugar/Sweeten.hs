@@ -37,7 +37,6 @@ patToTH (DConP n pats) = ConP n (map patToTH pats)
 patToTH (DTildeP pat)  = TildeP (patToTH pat)
 patToTH (DBangP pat)   = BangP (patToTH pat)
 patToTH DWildP         = WildP
-patToTH (DSigP pat ty) = SigP (patToTH pat) (typeToTH ty)
 
 letDecToTH :: DLetDec -> Dec
 letDecToTH (DFunD name clauses) = FunD name (map clauseToTH clauses)

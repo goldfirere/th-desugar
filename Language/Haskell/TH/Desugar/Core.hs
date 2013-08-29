@@ -50,7 +50,6 @@ data DPat = DLitP Lit
           | DTildeP DPat
           | DBangP DPat
           | DWildP
-          | DSigP DPat DType
 
 -- | Corresponds to TH's @Type@ type.
 data DType = DForallT [DTyVarBndr] DCxt DType
@@ -377,10 +376,9 @@ dsPat (ListP pats) = go pats
           (h', xform_h) <- dsPat h
           (t', xform_t) <- go t
           return (DConP '(:) [h', t'], xform_h . xform_t)
-dsPat (SigP pat ty) = do
-  (pat', xform) <- dsPat pat
-  ty' <- dsType ty
-  return (DSigP pat' ty', xform)
+dsPat (SigP _ _) =
+  impossible ("At last check (Aug 2013), type patterns in signatures are not\n" ++
+              "supported in GHC. They are not supported in th-desugar either.")
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
 
@@ -411,7 +409,6 @@ dPatToDExp (DConP name pats) = foldl DAppE (DConE name) (map dPatToDExp pats)
 dPatToDExp (DTildeP pat) = dPatToDExp pat
 dPatToDExp (DBangP pat) = dPatToDExp pat
 dPatToDExp DWildP = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
-dPatToDExp (DSigP pat _) = dPatToDExp pat
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
 --   variable
@@ -422,7 +419,6 @@ removeWilds (DConP con_name pats) = DConP con_name <$> mapM removeWilds pats
 removeWilds (DTildeP pat) = DTildeP <$> removeWilds pat
 removeWilds (DBangP pat) = DBangP <$> removeWilds pat
 removeWilds DWildP = DVarP <$> newName "wild"
-removeWilds (DSigP pat ty) = DSigP <$> removeWilds pat <*> pure ty
 
 -- | Desugar @Dec@s that can appear in a let expression
 dsLetDec :: Dec -> Q DLetDec
