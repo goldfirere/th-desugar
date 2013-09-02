@@ -14,6 +14,9 @@ module Test.Run where
 import Test.HUnit
 
 import Test.Splices
+import Language.Haskell.TH.Desugar
+import Language.Haskell.TH.Desugar.Expand
+import Language.Haskell.TH.Desugar.Sweeten
 
 tests :: Test
 tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
@@ -53,5 +56,10 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "constraint" ~: $test31_constraint @=? $(dsSplice test31_constraint)
              , "tylit"    ~: $test32_tylit    @=? $(dsSplice test32_tylit)
              , "tvbs"     ~: $test33_tvbs     @=? $(dsSplice test33_tvbs)
+             , "let_as"   ~: $test34_let_as   @=? $(dsSplice test34_let_as)
              ]
 
+test35a = $test35_expand
+test35b = $(test35_expand >>= dsExp >>= expand >>= return . expToTH)
+test36a = $test36_expand
+test36b = $(test36_expand >>= dsExp >>= expand >>= return . expToTH)

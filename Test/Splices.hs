@@ -105,4 +105,18 @@ test32_tylit = [| let f :: Proxy (a :: Symbol) -> Proxy (b :: Nat) -> ()
 test33_tvbs = [| let f :: forall a (b :: * -> *). Monad b => a -> b a
                      f = return in
                  [f 1, f 2] :: [Maybe Int] |]
-                                 
+
+--- END v1.0.0
+
+test34_let_as = [| let a@(Just x) = Just 5 in
+                   show x ++ show a |]
+
+type Pair a = (a, a)
+test35_expand = [| let f :: Pair a -> a
+                       f = fst in
+                   f |]
+
+type Const a b = b
+test36_expand = [| let f :: Const Int (,) Bool Char -> Char
+                       f = snd in
+                   f |]

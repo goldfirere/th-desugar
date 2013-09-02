@@ -7,20 +7,22 @@ Desugars full Template Haskell syntax into a smaller core syntax for further
 processing. The desugared types and constructors are prefixed with a D.
 -}
 
-{-# LANGUAGE TemplateHaskell, LambdaCase, CPP #-}
+{-# LANGUAGE TemplateHaskell, LambdaCase, CPP, DeriveDataTypeable #-}
 
 module Language.Haskell.TH.Desugar.Core where
 
 import Prelude hiding (mapM, foldl, foldr, all, elem)
 
 import Language.Haskell.TH
-import Language.Haskell.TH.Syntax
+import Language.Haskell.TH.Syntax hiding (lift)
 
 import Control.Applicative
 import Control.Monad hiding (mapM)
 import Control.Monad.Zip
+import Control.Monad.Writer hiding (mapM)
 import Data.Foldable
 import Data.Traversable
+import Data.Data hiding (Fixity)
 
 import qualified Data.Set as S
 import GHC.Exts
@@ -36,12 +38,14 @@ data DExp = DVarE Name
           | DCaseE DExp [DMatch]
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
+          deriving (Show, Typeable, Data)
 
 -- | Declarations as used in a @let@ statement. Other @Dec@s are not desugared.
 data DLetDec = DFunD Name [DClause]
              | DValD DPat DExp
              | DSigD Name DType
              | DInfixD Fixity Name
+             deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Pat@ type.
 data DPat = DLitP Lit
@@ -50,6 +54,7 @@ data DPat = DLitP Lit
           | DTildeP DPat
           | DBangP DPat
           | DWildP
+          deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Type@ type.
 data DType = DForallT [DTyVarBndr] DCxt DType
@@ -59,6 +64,7 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DConT Name
            | DArrowT
            | DLitT TyLit
+           deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Kind@ type, which is a synonym for @Type@. 'DKind', though,
 --   only contains constructors that make sense for kinds.
@@ -67,6 +73,7 @@ data DKind = DForallK [Name] DKind
            | DConK Name [DKind]
            | DArrowK DKind DKind
            | DStarK
+           deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Cxt@
 type DCxt = [DPred]
@@ -74,6 +81,7 @@ type DCxt = [DPred]
 -- | Corresponds to TH's @Pred@
 data DPred = DClassP Name [DType]
            | DEqualP DType DType
+           deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @TyVarBndr@. Note that @PlainTV x@ and @KindedTV x StarT@ are
 --   distinct, so we retain that distinction here.
@@ -83,12 +91,15 @@ data DTyVarBndr = DPlainTV Name
                 | DRoledTV Name Role
                 | DKindedRoledTV Name DKind Role
 #endif
+                deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Match@ type.
 data DMatch = DMatch DPat DExp
+  deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Clause@ type.
 data DClause = DClause [DPat] DExp
+  deriving (Show, Typeable, Data)
 
 -- | Desugar an expression
 dsExp :: Exp -> Q DExp
@@ -126,7 +137,7 @@ dsExp (CondE e1 e2 e3) = do
 dsExp (MultiIfE guarded_exps) =
   let failure = DAppE (DVarE 'error) (DLitE (StringL "None-exhaustive guards in multi-way if")) in
   dsGuards guarded_exps failure
-dsExp (LetE decs exp) = DLetE <$> mapM dsLetDec decs <*> dsExp exp
+dsExp (LetE decs exp) = DLetE <$> dsLetDecs decs <*> dsExp exp
 dsExp (CaseE exp matches) = do
   scrutinee <- newName "scrutinee"
   exp' <- dsExp exp
@@ -211,8 +222,8 @@ dsLam pats exp
   | otherwise
   = do arg_names <- replicateM (length pats) (newName "arg")
        let scrutinee = mkTupleDExp (map DVarE arg_names)
-       (pats', xform) <- dsPats pats
-       let match = DMatch (mkTupleDPat pats') (xform exp)
+       (pats', exp') <- dsPatsOverExp pats exp
+       let match = DMatch (mkTupleDPat pats') exp'
        return $ DLamE arg_names (DCaseE scrutinee [match])
 
 -- | Desugar a list of matches for a @case@ statement
@@ -227,8 +238,8 @@ dsMatches scr = go
       rest' <- go rest
       let failure = DCaseE (DVarE scr) rest'  -- this might be an empty case.
       exp' <- dsBody body where_decs failure
-      (pat', xform) <- dsPat pat
-      return (DMatch pat' (xform exp') : rest')
+      (pat', exp'') <- dsPatOverExp pat exp'
+      return (DMatch pat' exp'' : rest')
 
 -- | Desugar a @Body@
 dsBody :: Body      -- ^ body to desugar
@@ -236,9 +247,9 @@ dsBody :: Body      -- ^ body to desugar
        -> DExp      -- ^ what to do if the guards don't match
        -> Q DExp
 dsBody (NormalB exp) decs _ =
-  maybeDLetE <$> mapM dsLetDec decs <*> dsExp exp
+  maybeDLetE <$> dsLetDecs decs <*> dsExp exp
 dsBody (GuardedB guarded_exps) decs failure =
-  maybeDLetE <$> mapM dsLetDec decs <*> dsGuards guarded_exps failure
+  maybeDLetE <$> dsLetDecs decs <*> dsGuards guarded_exps failure
 
 -- | If decs is non-empty, delcare them in a let:
 maybeDLetE :: [DLetDec] -> DExp -> DExp
@@ -269,12 +280,12 @@ dsGuardStmts :: [Stmt]  -- ^ The @Stmt@s to desugar
              -> Q DExp
 dsGuardStmts [] success _failure = return success
 dsGuardStmts (BindS pat exp : rest) success failure = do
-  (pat', xform) <- dsPat pat
-  exp' <- dsExp exp
   success' <- dsGuardStmts rest success failure
-  return $ DCaseE exp' [DMatch pat' (xform success'), DMatch DWildP failure]
+  (pat', success'') <- dsPatOverExp pat success'
+  exp' <- dsExp exp
+  return $ DCaseE exp' [DMatch pat' success'', DMatch DWildP failure]
 dsGuardStmts (LetS decs : rest) success failure = do
-  decs' <- mapM dsLetDec decs
+  decs' <- dsLetDecs decs
   success' <- dsGuardStmts rest success failure
   return $ DLetE decs' success'
 dsGuardStmts (NoBindS exp : rest) success failure = do
@@ -292,7 +303,7 @@ dsDoStmts (BindS pat exp : rest) = do
   exp' <- dsExp exp
   rest' <- dsDoStmts rest
   DAppE (DAppE (DVarE '(>>=)) exp') <$> dsLam [pat] rest'
-dsDoStmts (LetS decs : rest) = DLetE <$> mapM dsLetDec decs <*> dsDoStmts rest
+dsDoStmts (LetS decs : rest) = DLetE <$> dsLetDecs decs <*> dsDoStmts rest
 dsDoStmts (NoBindS exp : rest) = do
   exp' <- dsExp exp
   rest' <- dsDoStmts rest
@@ -307,7 +318,7 @@ dsComp (BindS pat exp : rest) = do
   exp' <- dsExp exp
   rest' <- dsComp rest
   DAppE (DAppE (DVarE '(>>=)) exp') <$> dsLam [pat] rest'
-dsComp (LetS decs : rest) = DLetE <$> mapM dsLetDec decs <*> dsComp rest
+dsComp (LetS decs : rest) = DLetE <$> dsLetDecs decs <*> dsComp rest
 dsComp (NoBindS exp : rest) = do
   exp' <- dsExp exp
   rest' <- dsComp rest
@@ -343,63 +354,70 @@ mk_tuple_pat :: S.Set Name -> Pat
 mk_tuple_pat name_set =
   mkTuplePat (S.foldr ((:) . VarP) [] name_set)
 
--- | Desugar a pattern, returning the desugared pattern and a transformation to
---   be applied to the scope of the pattern match
-dsPat :: Pat -> Q (DPat, DExp -> DExp)
-dsPat (LitP lit) = return (DLitP lit, id)
-dsPat (VarP n) = return (DVarP n, id)
-dsPat (TupP pats) = dsConPats (tupleDataName (length pats)) pats
-dsPat (UnboxedTupP pats) = dsConPats (unboxedTupleDataName (length pats)) pats
-dsPat (ConP name pats) = dsConPats name pats
-dsPat (InfixP p1 name p2) = dsConPats name [p1, p2]
+-- | Desugar a pattern, along with processing a (desugared) expression that
+-- is the entire scope of the variables bound in the pattern.
+dsPatOverExp :: Pat -> DExp -> Q (DPat, DExp)
+dsPatOverExp pat exp = do
+  (pat', vars) <- runWriterT $ dsPat pat
+  let name_decs = uncurry (zipWith (DValD . DVarP)) $ unzip vars
+  return (pat', maybeDLetE name_decs exp)
+
+-- | Desugar multiple patterns. Like 'dsPatOverExp'.
+dsPatsOverExp :: [Pat] -> DExp -> Q ([DPat], DExp)
+dsPatsOverExp pats exp = do
+  (pats', vars) <- runWriterT $ mapM dsPat pats
+  let name_decs = uncurry (zipWith (DValD . DVarP)) $ unzip vars
+  return (pats', maybeDLetE name_decs exp)
+
+-- | Desugar a pattern, returning a list of (Name, DExp) pairs of extra
+-- variables that must be bound within the scope of the pattern
+dsPatX :: Pat -> Q (DPat, [(Name, DExp)])
+dsPatX = runWriterT . dsPat
+
+-- | Desugaring a pattern also returns the list of variables bound in as-patterns
+-- and the values they should be bound to. This variables must be brought into
+-- scope in the "body" of the pattern.
+type PatM = WriterT [(Name, DExp)] Q
+
+-- | Desugar a pattern.
+dsPat :: Pat -> PatM DPat
+dsPat (LitP lit) = return $ DLitP lit
+dsPat (VarP n) = return $ DVarP n
+dsPat (TupP pats) = DConP (tupleDataName (length pats)) <$> mapM dsPat pats
+dsPat (UnboxedTupP pats) = DConP (unboxedTupleDataName (length pats)) <$>
+                           mapM dsPat pats
+dsPat (ConP name pats) = DConP name <$> mapM dsPat pats
+dsPat (InfixP p1 name p2) = DConP name <$> mapM dsPat [p1, p2]
 dsPat (UInfixP _ _ _) =
   fail "Cannot desugar unresolved infix operators."
 dsPat (ParensP pat) = dsPat pat
-dsPat (TildeP pat) = dsPatModifier DTildeP pat
-dsPat (BangP pat) = dsPatModifier DBangP pat
+dsPat (TildeP pat) = DTildeP <$> dsPat pat
+dsPat (BangP pat) = DBangP <$> dsPat pat
 dsPat (AsP name pat) = do
-  (pat', xform) <- dsPat pat
-  pat'' <- removeWilds pat'
-  let xform' exp = DLetE [DValD (DVarP name) (dPatToDExp pat'')] (xform exp)
-  return (pat'', xform')
-dsPat WildP = return (DWildP, id)
+  pat' <- dsPat pat
+  pat'' <- lift $ removeWilds pat'
+  tell [(name, dPatToDExp pat'')]
+  return pat''
+dsPat WildP = return DWildP
 dsPat (RecP con_name field_pats) = do
-  con <- dataConNameToCon con_name
-  (reordered, xform) <- case con of
+  con <- lift $ dataConNameToCon con_name
+  reordered <- case con of
     RecC _name fields -> reorderFieldsPat fields field_pats
-    _ -> impossible $ "Record syntax used with non-record constructor "
-                      ++ (show con_name) ++ "."
-  return (DConP con_name reordered, xform)
+    _ -> lift $ impossible $ "Record syntax used with non-record constructor "
+                             ++ (show con_name) ++ "."
+  return $ DConP con_name reordered
 dsPat (ListP pats) = go pats
-  where go [] = return (DConP '[] [], id)
+  where go [] = return $ DConP '[] []
         go (h : t) = do
-          (h', xform_h) <- dsPat h
-          (t', xform_t) <- go t
-          return (DConP '(:) [h', t'], xform_h . xform_t)
+          h' <- dsPat h
+          t' <- go t
+          return $ DConP '(:) [h', t']
 dsPat (SigP _ _) =
-  impossible ("At last check (Aug 2013), type patterns in signatures are not\n" ++
+  lift $ impossible
+             ("At last check (Aug 2013), type patterns in signatures are not\n" ++
               "supported in GHC. They are not supported in th-desugar either.")
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
-
--- | Desugar a list of patterns, producing a list of desugared patterns and one
---   transformation (like 'dsPat')
-dsPats :: [Pat] -> Q ([DPat], DExp -> DExp)
-dsPats pats = do
-  (pats', xforms) <- mapAndUnzipM dsPat pats
-  return (pats', foldr (.) id xforms)
-
--- | Desugar patterns that are the arguments to a data constructor
-dsConPats :: Name -> [Pat] -> Q (DPat, DExp -> DExp)
-dsConPats name pats = do
-  (pats', xform) <- dsPats pats
-  return (DConP name pats', xform)
-
--- | Desugar a modified pattern (e.g., body of a @TildeP@)
-dsPatModifier :: (DPat -> DPat) -> Pat -> Q (DPat, DExp -> DExp)
-dsPatModifier mod pat = do
-  (pat', xform) <- dsPat pat
-  return (mod pat', xform)
 
 -- | Convert a 'DPat' to a 'DExp'. Fails on 'DWildP'.
 dPatToDExp :: DPat -> DExp
@@ -421,16 +439,26 @@ removeWilds (DBangP pat) = DBangP <$> removeWilds pat
 removeWilds DWildP = DVarP <$> newName "wild"
 
 -- | Desugar @Dec@s that can appear in a let expression
-dsLetDec :: Dec -> Q DLetDec
-dsLetDec (FunD name clauses) = DFunD name <$> dsClauses name clauses
+dsLetDecs :: [Dec] -> Q [DLetDec]
+dsLetDecs = concatMapM dsLetDec
+
+-- | Desugar a single @Dec@, perhaps producing multiple 'DLetDec's
+dsLetDec :: Dec -> Q [DLetDec]
+dsLetDec (FunD name clauses) = do
+  clauses' <- dsClauses name clauses
+  return [DFunD name clauses']
 dsLetDec (ValD pat body where_decs) = do
-  (pat', xform) <- dsPat pat
-  DValD pat' <$> (xform <$> dsBody body where_decs error_exp)
+  (pat', vars) <- dsPatX pat
+  body' <- dsBody body where_decs error_exp
+  let extras = uncurry (zipWith (DValD . DVarP)) $ unzip vars
+  return $ DValD pat' body' : extras
   where
     error_exp = DAppE (DVarE 'error) (DLitE
                        (StringL $ "Non-exhaustive patterns for " ++ pprint pat))
-dsLetDec (SigD name ty) = DSigD name <$> dsType ty
-dsLetDec (InfixD fixity name) = return $ DInfixD fixity name
+dsLetDec (SigD name ty) = do
+  ty' <- dsType ty
+  return [DSigD name ty']
+dsLetDec (InfixD fixity name) = return [DInfixD fixity name]
 dsLetDec _dec = impossible "Illegal declaration in let expression."
 
 -- | Desugar clauses to a function definition
@@ -440,10 +468,12 @@ dsClauses :: Name         -- ^ Name of the function
 dsClauses _ [] = return []
 dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
   -- this is just a convenience optimization; we could tuple up all the patterns
-  (pats', xform) <- dsPats pats
-  (:) <$>
-    DClause pats' <$> (xform <$> (maybeDLetE <$> mapM dsLetDec where_decs <*> dsExp exp)) <*>
-    dsClauses n rest
+  rest' <- dsClauses n rest
+  exp' <- dsExp exp
+  where_decs' <- dsLetDecs where_decs
+  let exp_with_wheres = maybeDLetE where_decs' exp'
+  (pats', exp'') <- dsPatsOverExp pats exp_with_wheres
+  return $ DClause pats' exp'' : rest'
 dsClauses n clauses@(Clause pats _ _ : _) = do
   arg_names <- replicateM (length pats) (newName "arg")
   let scrutinee = mkTupleDExp (map DVarE arg_names)
@@ -453,12 +483,12 @@ dsClauses n clauses@(Clause pats _ _ : _) = do
   where
     clause_to_dmatch :: DExp -> Clause -> [DMatch] -> Q [DMatch]
     clause_to_dmatch scrutinee (Clause pats body where_decs) failure_matches = do
-      (pats', xform) <- dsPats pats
-      let failure_exp = maybeDCaseE ("Non-exhaustive patterns in " ++ (show n))
-                                    scrutinee failure_matches
       exp <- dsBody body where_decs failure_exp
-      return (DMatch (mkTupleDPat pats') (xform exp) : failure_matches)
-
+      (pats', exp') <- dsPatsOverExp pats exp
+      return (DMatch (mkTupleDPat pats') exp' : failure_matches)
+      where
+        failure_exp = maybeDCaseE ("Non-exhaustive patterns in " ++ (show n))
+                                  scrutinee failure_matches
 -- | Desugar a type
 dsType :: Type -> Q DType
 dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> mapM dsPred preds <*> dsType ty
@@ -533,24 +563,24 @@ dsKind (LitT _) = impossible "Literal used in a kind."
 -- if a field is missing from the second argument, use the corresponding expression
 -- from the third argument
 reorderFields :: [VarStrictType] -> [FieldExp] -> [DExp] -> Q [DExp]
-reorderFields [] _ _ = return []
-reorderFields ((field_name, _, _) : rest) field_exps (deflt : rest_deflt) = do
-  rest' <- reorderFields rest field_exps rest_deflt
-  case find (\(exp_name, _) -> exp_name == field_name) field_exps of
-    Just (_, exp) -> (: rest') <$> dsExp exp
-    Nothing -> return $ deflt : rest'
-reorderFields (_ : _) _ [] = impossible "Internal error in th-desugar."
+reorderFields = reorderFields' dsExp
 
--- like reorderFields, but for patterns, assuming a default of DWildP
-reorderFieldsPat :: [VarStrictType] -> [FieldPat] -> Q ([DPat], DExp -> DExp)
-reorderFieldsPat [] _ = return ([], id)
-reorderFieldsPat ((field_name, _, _) : rest) field_pats = do
-  (rest', rest_xform) <- reorderFieldsPat rest field_pats
-  case find (\(pat_name, _) -> pat_name == field_name) field_pats of
-    Just (_, pat) -> do
-      (pat', xform) <- dsPat pat
-      return $ (pat' : rest', xform . rest_xform)
-    Nothing -> return (DWildP : rest', rest_xform)
+reorderFieldsPat :: [VarStrictType] -> [FieldPat] -> PatM [DPat]
+reorderFieldsPat field_decs field_pats =
+  reorderFields' dsPat field_decs field_pats (repeat DWildP)
+
+reorderFields' :: (Applicative m, Monad m)
+               => (a -> m da)
+               -> [VarStrictType] -> [(Name, a)]
+               -> [da] -> m [da]
+reorderFields' _ [] _ _ = return []
+reorderFields' ds_thing ((field_name, _, _) : rest)
+               field_things (deflt : rest_deflt) = do
+  rest' <- reorderFields' ds_thing rest field_things rest_deflt
+  case find (\(thing_name, _) -> thing_name == field_name) field_things of
+    Just (_, thing) -> (: rest') <$> ds_thing thing
+    Nothing -> return $ deflt : rest'
+reorderFields' _ (_ : _) _ [] = error "Internal error in th-desugar."
 
 -- | Make a tuple 'DExp' from a list of 'DExp's. Avoids using a 1-tuple.
 mkTupleDExp :: [DExp] -> DExp

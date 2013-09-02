@@ -15,14 +15,16 @@ module Language.Haskell.TH.Desugar (
   DTyVarBndr(..), DMatch(..), DClause(..),
 
   -- * Main desugaring functions
-  dsExp, dsPat, dsPats, dsLetDec, dsType, dsKind, dsTvb, dsPred,
+  dsExp, dsPatOverExp, dsPatsOverExp, dsPatX,
+  dsLetDecs, dsType, dsKind, dsTvb, dsPred,
 
   -- ** Secondary desugaring functions
+  PatM, dsPat, dsLetDec,
   dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses, 
 
   -- * Utility functions
   dPatToDExp, removeWilds, reifyWithWarning, getDataD, dataConNameToCon,
-  mkTupleDExp, mkTupleDPat,
+  mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
 
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat

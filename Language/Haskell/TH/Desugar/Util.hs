@@ -6,12 +6,15 @@ eir@cis.upenn.edu
 Utility functions for th-desugar package.
 -}
 
+{-# LANGUAGE CPP #-}
+
 module Language.Haskell.TH.Desugar.Util where
 
 import Language.Haskell.TH
 
 import qualified Data.Set as S
 import Data.Foldable
+import Control.Applicative
 
 -- | Reify a declaration, warning the user about splices if the reify fails. The warning
 -- says that reification can fail if you try to reify a type in the same splice as it is
@@ -111,3 +114,16 @@ extractBoundNamesPat (RecP _ field_pats) = let (_, pats) = unzip field_pats in
 extractBoundNamesPat (ListP pats)        = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (SigP pat _)        = extractBoundNamesPat pat
 extractBoundNamesPat (ViewP _ pat)       = extractBoundNamesPat pat
+
+-- | Concatenate the result of a @mapM@
+concatMapM :: Applicative m => (a -> m [b]) -> [a] -> m [b]
+concatMapM _ [] = pure []
+concatMapM f (a : as) = (++) <$> f a <*> concatMapM f as
+
+-- like GHC's
+splitAtList :: [a] -> [b] -> ([b], [b])
+splitAtList [] x = ([], x)
+splitAtList (_ : t) (x : xs) =
+  let (as, bs) = splitAtList t xs in
+  (x : as, bs)
+splitAtList (_ : _) [] = ([], [])      
