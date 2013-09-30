@@ -87,10 +87,6 @@ data DPred = DClassP Name [DType]
 --   distinct, so we retain that distinction here.
 data DTyVarBndr = DPlainTV Name
                 | DKindedTV Name DKind
-#if __GLASGOW_HASKELL__ >= 707
-                | DRoledTV Name Role
-                | DKindedRoledTV Name DKind Role
-#endif
                 deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Match@ type.
@@ -516,10 +512,6 @@ dsType (LitT lit) = return $ DLitT lit
 dsTvb :: TyVarBndr -> Q DTyVarBndr
 dsTvb (PlainTV n) = return $ DPlainTV n
 dsTvb (KindedTV n k) = DKindedTV n <$> dsKind k
-#if __GLASGOW_HASKELL__ >= 707
-dsTvb (RoledTV n r) = return $ DRoledTV n r
-dsTvb (KindedRoledTV n k r) = DKindedRoledTV n <$> dsKind k <*> pure r
-#endif
 
 -- | Desugar a @Pred@
 dsPred :: Pred -> Q DPred

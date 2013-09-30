@@ -1,3 +1,7 @@
+Version 1.1.1
+-------------
+* Made compatible with HEAD after change in role annotation syntax.
+
 Version 1.1
 -----------
 * Added module `Language.Haskell.TH.Desugar.Expand`, which allows for expansion

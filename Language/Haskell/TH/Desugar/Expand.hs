@@ -81,19 +81,11 @@ substTyVarBndrs vars tvbs thing = do
 substTvb :: DTyVarBndr -> Name -> DTyVarBndr
 substTvb (DPlainTV _) n = DPlainTV n
 substTvb (DKindedTV _ k) n = DKindedTV n k
-#if __GLASGOW_HASKELL__ >= 707
-substTvb (DRoledTV _ r) n = DRoledTV n r
-substTvb (DKindedRoledTV _ k r) n = DKindedRoledTV n k r
-#endif
 
 -- | Extract the name from a @TyVarBndr@
 extractDTvbName :: DTyVarBndr -> Name
 extractDTvbName (DPlainTV n) = n
 extractDTvbName (DKindedTV n _) = n
-#if __GLASGOW_HASKELL__ >= 707
-extractDTvbName (DRoledTV n _) = n
-extractDTvbName (DKindedRoledTV n _ _) = n
-#endif
 
 substPred :: M.Map Name DType -> DPred -> Q DPred
 substPred vars (DClassP name tys) =
