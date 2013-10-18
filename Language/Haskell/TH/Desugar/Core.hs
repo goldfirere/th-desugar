@@ -11,9 +11,9 @@ processing. The desugared types and constructors are prefixed with a D.
 
 module Language.Haskell.TH.Desugar.Core where
 
-import Prelude hiding (mapM, foldl, foldr, all, elem)
+import Prelude hiding (mapM, foldl, foldr, all, elem, exp)
 
-import Language.Haskell.TH
+import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (lift)
 
 import Control.Applicative
@@ -98,7 +98,7 @@ data DClause = DClause [DPat] DExp
   deriving (Show, Typeable, Data)
 
 -- | Desugar an expression
-dsExp :: Exp -> Q DExp
+dsExp :: Quasi q => Exp -> q DExp
 dsExp (VarE n) = return $ DVarE n
 dsExp (ConE n) = return $ DConE n
 dsExp (LitE lit) = return $ DLitE lit
@@ -106,7 +106,7 @@ dsExp (AppE e1 e2) = DAppE <$> dsExp e1 <*> dsExp e2
 dsExp (InfixE Nothing op Nothing) = dsExp op
 dsExp (InfixE (Just lhs) op Nothing) = DAppE <$> (dsExp op) <*> (dsExp lhs)
 dsExp (InfixE Nothing op (Just rhs)) = do
-  lhsName <- newName "lhs"
+  lhsName <- qNewName "lhs"
   op' <- dsExp op
   rhs' <- dsExp rhs
   return $ DLamE [lhsName] (foldl DAppE op' [DVarE lhsName, rhs'])
@@ -117,7 +117,7 @@ dsExp (UInfixE _ _ _) =
 dsExp (ParensE exp) = dsExp exp
 dsExp (LamE pats exp) = dsLam pats =<< dsExp exp
 dsExp (LamCaseE matches) = do
-  x <- newName "x"
+  x <- qNewName "x"
   matches' <- dsMatches x matches
   return $ DLamE [x] (DCaseE (DVarE x) matches')
 dsExp (TupE exps) = do
@@ -135,7 +135,7 @@ dsExp (MultiIfE guarded_exps) =
   dsGuards guarded_exps failure
 dsExp (LetE decs exp) = DLetE <$> dsLetDecs decs <*> dsExp exp
 dsExp (CaseE exp matches) = do
-  scrutinee <- newName "scrutinee"
+  scrutinee <- qNewName "scrutinee"
   exp' <- dsExp exp
   matches' <- dsMatches scrutinee matches
   return $ DLetE [DValD (DVarP scrutinee) exp'] $
@@ -179,13 +179,13 @@ dsExp (RecUpdE exp field_exps) = do
   matches <- mapM con_to_dmatch filtered_cons
   return $ DCaseE exp' (matches ++ [error_match])
   where
-    extract_first_arg :: Type -> Q Type
+    extract_first_arg :: Quasi q => Type -> q Type
     extract_first_arg (AppT (AppT ArrowT arg) _) = return arg
     extract_first_arg (ForallT _ _ t) = extract_first_arg t
     extract_first_arg (SigT t _) = extract_first_arg t
     extract_first_arg _ = impossible "Record selector not a function."
 
-    extract_type_name :: Type -> Q Name
+    extract_type_name :: Quasi q => Type -> q Name
     extract_type_name (AppT t1 _) = extract_type_name t1
     extract_type_name (SigT t _) = extract_type_name t
     extract_type_name (ConT n) = return n
@@ -196,10 +196,10 @@ dsExp (RecUpdE exp field_exps) = do
                                            all (`elem` con_field_names) field_names
                     _ -> False) cons
 
-    con_to_dmatch :: Con -> Q DMatch
+    con_to_dmatch :: Quasi q => Con -> q DMatch
     con_to_dmatch (RecC con_name args) = do
       let con_field_names = map fst_of_3 args
-      field_var_names <- mapM (newName . nameBase) con_field_names
+      field_var_names <- mapM (qNewName . nameBase) con_field_names
       DMatch (DConP con_name (map DVarP field_var_names)) <$>
              (foldl DAppE (DConE con_name) <$>
                     (reorderFields args field_exps (map DVarE field_var_names)))
@@ -211,24 +211,25 @@ dsExp (RecUpdE exp field_exps) = do
     fst_of_3 (x, _, _) = x
 
 -- | Desugar a lambda expression, where the body has already been desugared
-dsLam :: [Pat] -> DExp -> Q DExp
+dsLam :: Quasi q => [Pat] -> DExp -> q DExp
 dsLam pats exp
   | Just names <- mapM stripVarP_maybe pats
   = return $ DLamE names exp
   | otherwise
-  = do arg_names <- replicateM (length pats) (newName "arg")
+  = do arg_names <- replicateM (length pats) (qNewName "arg")
        let scrutinee = mkTupleDExp (map DVarE arg_names)
        (pats', exp') <- dsPatsOverExp pats exp
        let match = DMatch (mkTupleDPat pats') exp'
        return $ DLamE arg_names (DCaseE scrutinee [match])
 
 -- | Desugar a list of matches for a @case@ statement
-dsMatches :: Name     -- ^ Name of the scrutinee, which must be a bare var
+dsMatches :: Quasi q
+          => Name     -- ^ Name of the scrutinee, which must be a bare var
           -> [Match]  -- ^ Matches of the @case@ statement
-          -> Q [DMatch]
+          -> q [DMatch]
 dsMatches scr = go
   where
-    go :: [Match] -> Q [DMatch]
+    go :: Quasi q => [Match] -> q [DMatch]
     go [] = return []
     go (Match pat body where_decs : rest) = do
       rest' <- go rest
@@ -238,10 +239,11 @@ dsMatches scr = go
       return (DMatch pat' exp'' : rest')
 
 -- | Desugar a @Body@
-dsBody :: Body      -- ^ body to desugar
+dsBody :: Quasi q
+       => Body      -- ^ body to desugar
        -> [Dec]     -- ^ "where" declarations
        -> DExp      -- ^ what to do if the guards don't match
-       -> Q DExp
+       -> q DExp
 dsBody (NormalB exp) decs _ =
   maybeDLetE <$> dsLetDecs decs <*> dsExp exp
 dsBody (GuardedB guarded_exps) decs failure =
@@ -258,22 +260,24 @@ maybeDCaseE err _     []      = DAppE (DVarE 'error) (DLitE (StringL err))
 maybeDCaseE _   scrut matches = DCaseE scrut matches
 
 -- | Desugar guarded expressions
-dsGuards :: [(Guard, Exp)]  -- ^ Guarded expressions
+dsGuards :: Quasi q
+         => [(Guard, Exp)]  -- ^ Guarded expressions
          -> DExp            -- ^ What to do if none of the guards match
-         -> Q DExp
+         -> q DExp
 dsGuards [] thing_inside = return thing_inside
-dsGuards ((NormalG guard, exp) : rest) thing_inside =
-  dsGuards ((PatG [NoBindS guard], exp) : rest) thing_inside
+dsGuards ((NormalG gd, exp) : rest) thing_inside =
+  dsGuards ((PatG [NoBindS gd], exp) : rest) thing_inside
 dsGuards ((PatG stmts, exp) : rest) thing_inside = do
   success <- dsExp exp
   failure <- dsGuards rest thing_inside
   dsGuardStmts stmts success failure
 
 -- | Desugar the @Stmt@s in a guard
-dsGuardStmts :: [Stmt]  -- ^ The @Stmt@s to desugar
+dsGuardStmts :: Quasi q
+             => [Stmt]  -- ^ The @Stmt@s to desugar
              -> DExp    -- ^ What to do if the @Stmt@s yield success
              -> DExp    -- ^ What to do if the @Stmt@s yield failure
-             -> Q DExp
+             -> q DExp
 dsGuardStmts [] success _failure = return success
 dsGuardStmts (BindS pat exp : rest) success failure = do
   success' <- dsGuardStmts rest success failure
@@ -292,7 +296,7 @@ dsGuardStmts (NoBindS exp : rest) success failure = do
 dsGuardStmts (ParS _ : _) _ _ = impossible "Parallel comprehension in a pattern guard."
 
 -- | Desugar the @Stmt@s in a @do@ expression
-dsDoStmts :: [Stmt] -> Q DExp
+dsDoStmts :: Quasi q => [Stmt] -> q DExp
 dsDoStmts [] = impossible "do-expression ended with something other than bare statement."
 dsDoStmts [NoBindS exp] = dsExp exp
 dsDoStmts (BindS pat exp : rest) = do
@@ -307,7 +311,7 @@ dsDoStmts (NoBindS exp : rest) = do
 dsDoStmts (ParS _ : _) = impossible "Parallel comprehension in a do-statement."
 
 -- | Desugar the @Stmt@s in a list or monad comprehension
-dsComp :: [Stmt] -> Q DExp
+dsComp :: Quasi q => [Stmt] -> q DExp
 dsComp [] = impossible "List/monad comprehension ended with something other than a bare statement."
 dsComp [NoBindS exp] = DAppE (DVarE 'return) <$> dsExp exp
 dsComp (BindS pat exp : rest) = do
@@ -327,7 +331,7 @@ dsComp (ParS stmtss : rest) = do
 -- | Desugar the contents of a parallel comprehension.
 --   Returns a @Pat@ containing a tuple of all bound variables and an expression
 --   to produce the values for those variables
-dsParComp :: [[Stmt]] -> Q (Pat, DExp)
+dsParComp :: Quasi q => [[Stmt]] -> q (Pat, DExp)
 dsParComp [] = impossible "Empty list of parallel comprehension statements."
 dsParComp [r] = do
   let rv = foldMap extractBoundNamesStmt r
@@ -352,14 +356,14 @@ mk_tuple_pat name_set =
 
 -- | Desugar a pattern, along with processing a (desugared) expression that
 -- is the entire scope of the variables bound in the pattern.
-dsPatOverExp :: Pat -> DExp -> Q (DPat, DExp)
+dsPatOverExp :: Quasi q => Pat -> DExp -> q (DPat, DExp)
 dsPatOverExp pat exp = do
   (pat', vars) <- runWriterT $ dsPat pat
   let name_decs = uncurry (zipWith (DValD . DVarP)) $ unzip vars
   return (pat', maybeDLetE name_decs exp)
 
 -- | Desugar multiple patterns. Like 'dsPatOverExp'.
-dsPatsOverExp :: [Pat] -> DExp -> Q ([DPat], DExp)
+dsPatsOverExp :: Quasi q => [Pat] -> DExp -> q ([DPat], DExp)
 dsPatsOverExp pats exp = do
   (pats', vars) <- runWriterT $ mapM dsPat pats
   let name_decs = uncurry (zipWith (DValD . DVarP)) $ unzip vars
@@ -367,16 +371,16 @@ dsPatsOverExp pats exp = do
 
 -- | Desugar a pattern, returning a list of (Name, DExp) pairs of extra
 -- variables that must be bound within the scope of the pattern
-dsPatX :: Pat -> Q (DPat, [(Name, DExp)])
+dsPatX :: Quasi q => Pat -> q (DPat, [(Name, DExp)])
 dsPatX = runWriterT . dsPat
 
 -- | Desugaring a pattern also returns the list of variables bound in as-patterns
 -- and the values they should be bound to. This variables must be brought into
 -- scope in the "body" of the pattern.
-type PatM = WriterT [(Name, DExp)] Q
+type PatM q = WriterT [(Name, DExp)] q
 
 -- | Desugar a pattern.
-dsPat :: Pat -> PatM DPat
+dsPat :: Quasi q => Pat -> PatM q DPat
 dsPat (LitP lit) = return $ DLitP lit
 dsPat (VarP n) = return $ DVarP n
 dsPat (TupP pats) = DConP (tupleDataName (length pats)) <$> mapM dsPat pats
@@ -426,20 +430,20 @@ dPatToDExp DWildP = error "Internal error in th-desugar: wildcard in rhs of as-p
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
 --   variable
-removeWilds :: DPat -> Q DPat
+removeWilds :: Quasi q => DPat -> q DPat
 removeWilds p@(DLitP _) = return p
 removeWilds p@(DVarP _) = return p
 removeWilds (DConP con_name pats) = DConP con_name <$> mapM removeWilds pats
 removeWilds (DTildeP pat) = DTildeP <$> removeWilds pat
 removeWilds (DBangP pat) = DBangP <$> removeWilds pat
-removeWilds DWildP = DVarP <$> newName "wild"
+removeWilds DWildP = DVarP <$> qNewName "wild"
 
 -- | Desugar @Dec@s that can appear in a let expression
-dsLetDecs :: [Dec] -> Q [DLetDec]
+dsLetDecs :: Quasi q => [Dec] -> q [DLetDec]
 dsLetDecs = concatMapM dsLetDec
 
 -- | Desugar a single @Dec@, perhaps producing multiple 'DLetDec's
-dsLetDec :: Dec -> Q [DLetDec]
+dsLetDec :: Quasi q => Dec -> q [DLetDec]
 dsLetDec (FunD name clauses) = do
   clauses' <- dsClauses name clauses
   return [DFunD name clauses']
@@ -458,9 +462,10 @@ dsLetDec (InfixD fixity name) = return [DInfixD fixity name]
 dsLetDec _dec = impossible "Illegal declaration in let expression."
 
 -- | Desugar clauses to a function definition
-dsClauses :: Name         -- ^ Name of the function
+dsClauses :: Quasi q
+          => Name         -- ^ Name of the function
           -> [Clause]     -- ^ Clauses to desugar
-          -> Q [DClause]
+          -> q [DClause]
 dsClauses _ [] = return []
 dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
   -- this is just a convenience optimization; we could tuple up all the patterns
@@ -470,14 +475,14 @@ dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
   let exp_with_wheres = maybeDLetE where_decs' exp'
   (pats', exp'') <- dsPatsOverExp pats exp_with_wheres
   return $ DClause pats' exp'' : rest'
-dsClauses n clauses@(Clause pats _ _ : _) = do
-  arg_names <- replicateM (length pats) (newName "arg")
+dsClauses n clauses@(Clause outer_pats _ _ : _) = do
+  arg_names <- replicateM (length outer_pats) (qNewName "arg")
   let scrutinee = mkTupleDExp (map DVarE arg_names)
   clause <- DClause (map DVarP arg_names) <$>
               (DCaseE scrutinee <$> foldrM (clause_to_dmatch scrutinee) [] clauses)
   return [clause]
   where
-    clause_to_dmatch :: DExp -> Clause -> [DMatch] -> Q [DMatch]
+    clause_to_dmatch :: Quasi q => DExp -> Clause -> [DMatch] -> q [DMatch]
     clause_to_dmatch scrutinee (Clause pats body where_decs) failure_matches = do
       exp <- dsBody body where_decs failure_exp
       (pats', exp') <- dsPatsOverExp pats exp
@@ -486,7 +491,7 @@ dsClauses n clauses@(Clause pats _ _ : _) = do
         failure_exp = maybeDCaseE ("Non-exhaustive patterns in " ++ (show n))
                                   scrutinee failure_matches
 -- | Desugar a type
-dsType :: Type -> Q DType
+dsType :: Quasi q => Type -> q DType
 dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> mapM dsPred preds <*> dsType ty
 dsType (AppT t1 t2) = DAppT <$> dsType t1 <*> dsType t2
 dsType (SigT ty ki) = DSigT <$> dsType ty <*> dsKind ki
@@ -509,17 +514,17 @@ dsType ConstraintT = impossible "The kind `Constraint' seen in a type."
 dsType (LitT lit) = return $ DLitT lit
 
 -- | Desugar a @TyVarBndr@
-dsTvb :: TyVarBndr -> Q DTyVarBndr
+dsTvb :: Quasi q => TyVarBndr -> q DTyVarBndr
 dsTvb (PlainTV n) = return $ DPlainTV n
 dsTvb (KindedTV n k) = DKindedTV n <$> dsKind k
 
 -- | Desugar a @Pred@
-dsPred :: Pred -> Q DPred
+dsPred :: Quasi q => Pred -> q DPred
 dsPred (ClassP n tys) = DClassP n <$> mapM dsType tys
 dsPred (EqualP t1 t2) = DEqualP <$> dsType t1 <*> dsType t2
 
 -- | Desugar a kind
-dsKind :: Kind -> Q DKind
+dsKind :: Quasi q => Kind -> q DKind
 dsKind (ForallT tvbs cxt ki)
   | [] <- cxt
   , Just names <- mapM stripPlainTV_maybe tvbs
@@ -554,10 +559,10 @@ dsKind (LitT _) = impossible "Literal used in a kind."
 -- but with the values as given in the second argument
 -- if a field is missing from the second argument, use the corresponding expression
 -- from the third argument
-reorderFields :: [VarStrictType] -> [FieldExp] -> [DExp] -> Q [DExp]
+reorderFields :: Quasi q => [VarStrictType] -> [FieldExp] -> [DExp] -> q [DExp]
 reorderFields = reorderFields' dsExp
 
-reorderFieldsPat :: [VarStrictType] -> [FieldPat] -> PatM [DPat]
+reorderFieldsPat :: Quasi q => [VarStrictType] -> [FieldPat] -> PatM q [DPat]
 reorderFieldsPat field_decs field_pats =
   reorderFields' dsPat field_decs field_pats (repeat DWildP)
 

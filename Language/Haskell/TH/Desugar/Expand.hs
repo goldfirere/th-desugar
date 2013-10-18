@@ -16,7 +16,8 @@ module Language.Haskell.TH.Desugar.Expand (
 
 import qualified Data.Map as M
 import Control.Applicative
-import Language.Haskell.TH
+import Language.Haskell.TH hiding (cxt)
+import Language.Haskell.TH.Syntax ( Quasi(..) )
 import Data.Data
 import Data.Generics
 
@@ -24,7 +25,7 @@ import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 
 -- | Expands all type synonyms in a desugared type.
-expandType :: DType -> Q DType
+expandType :: Quasi q => DType -> q DType
 expandType = go []
   where
     go [] (DForallT tvbs cxt ty) =
@@ -52,7 +53,7 @@ expandType = go []
     go args ty = return $ foldl DAppT ty args
 
 -- | Capture-avoiding substitution on types
-substTy :: M.Map Name DType -> DType -> Q DType
+substTy :: Quasi q => M.Map Name DType -> DType -> q DType
 substTy vars (DForallT tvbs cxt ty) =
   substTyVarBndrs vars tvbs $ \vars' tvbs' -> do
     cxt' <- mapM (substPred vars') cxt
@@ -69,11 +70,11 @@ substTy vars (DVarT n)
   = return $ DVarT n
 substTy _ ty = return ty
 
-substTyVarBndrs :: M.Map Name DType -> [DTyVarBndr]
-                -> (M.Map Name DType -> [DTyVarBndr] -> Q DType)
-                -> Q DType
+substTyVarBndrs :: Quasi q => M.Map Name DType -> [DTyVarBndr]
+                -> (M.Map Name DType -> [DTyVarBndr] -> q DType)
+                -> q DType
 substTyVarBndrs vars tvbs thing = do
-  new_names <- mapM (const (newName "local")) tvbs
+  new_names <- mapM (const (qNewName "local")) tvbs
   let new_vars = M.fromList (zip (map extractDTvbName tvbs) (map DVarT new_names))
   -- this is very inefficient. Oh well.
   thing (M.union vars new_vars) (zipWith substTvb tvbs new_names)
@@ -87,7 +88,7 @@ extractDTvbName :: DTyVarBndr -> Name
 extractDTvbName (DPlainTV n) = n
 extractDTvbName (DKindedTV n _) = n
 
-substPred :: M.Map Name DType -> DPred -> Q DPred
+substPred :: Quasi q => M.Map Name DType -> DPred -> q DPred
 substPred vars (DClassP name tys) =
   DClassP name <$> mapM (substTy vars) tys
 substPred vars (DEqualP t1 t2) =
@@ -95,5 +96,5 @@ substPred vars (DEqualP t1 t2) =
 
 -- | Expand all type synonyms in the desugared abstract syntax tree provided.
 -- Normally, the first parameter should have a type like 'DExp' or 'DLetDec'.
-expand :: Data a => a -> Q a
+expand :: (Quasi q, Data a) => a -> q a
 expand = everywhereM (mkM expandType)

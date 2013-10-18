@@ -13,7 +13,8 @@ Converts desugared TH back into real TH.
 
 module Language.Haskell.TH.Desugar.Sweeten where
 
-import Language.Haskell.TH
+import Prelude hiding (exp)
+import Language.Haskell.TH hiding (cxt)
 
 import Language.Haskell.TH.Desugar.Core
 

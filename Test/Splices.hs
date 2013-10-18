@@ -8,6 +8,8 @@ eir@cis.upenn.edu
              MultiWayIf, ParallelListComp, CPP, BangPatterns,
              ScopedTypeVariables, RankNTypes, TypeFamilies, ImpredicativeTypes,
              DataKinds, PolyKinds #-}
+{-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
+                -fno-warn-name-shadowing #-}
 
 module Test.Splices where
 

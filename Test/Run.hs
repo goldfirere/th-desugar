@@ -7,11 +7,15 @@ eir@cis.upenn.edu
 {-# LANGUAGE TemplateHaskell, UnboxedTuples, ParallelListComp, CPP,
              RankNTypes, ImpredicativeTypes, TypeFamilies,
              DataKinds #-}
-{-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns -fno-warn-unused-matches #-}
+{-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
+            -fno-warn-unused-matches -fno-warn-type-defaults
+            -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
 
 module Test.Run where
 
 import Test.HUnit
+import Test.Hspec
+import Test.Hspec.HUnit
 
 import Test.Splices
 import Language.Haskell.TH.Desugar
@@ -63,3 +67,10 @@ test35a = $test35_expand
 test35b = $(test35_expand >>= dsExp >>= expand >>= return . expToTH)
 test36a = $test36_expand
 test36b = $(test36_expand >>= dsExp >>= expand >>= return . expToTH)
+
+main :: IO ()
+main = hspec $ do
+  describe "th-desugar library" $ do
+    it "compiles" $ True
+
+    fromHUnitTest tests

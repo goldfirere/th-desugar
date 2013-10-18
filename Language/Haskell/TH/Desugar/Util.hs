@@ -11,32 +11,34 @@ Utility functions for th-desugar package.
 module Language.Haskell.TH.Desugar.Util where
 
 import Language.Haskell.TH
+import Language.Haskell.TH.Syntax ( Quasi(..) )
 
 import qualified Data.Set as S
 import Data.Foldable
 import Control.Applicative
 
--- | Reify a declaration, warning the user about splices if the reify fails. The warning
--- says that reification can fail if you try to reify a type in the same splice as it is
--- declared.
-reifyWithWarning :: Name -> Q Info
-reifyWithWarning name = recover
+-- | Reify a declaration, warning the user about splices if the reify fails.
+-- The warning says that reification can fail if you try to reify a type in
+-- the same splice as it is declared.
+reifyWithWarning :: Quasi q => Name -> q Info
+reifyWithWarning name = qRecover
   (fail $ "Looking up " ++ (show name) ++ " in the list of available " ++
         "declarations failed.\nThis lookup fails if the declaration " ++
         "referenced was made in the same Template\nHaskell splice as the use " ++
         "of the declaration. If this is the case, put\nthe reference to " ++
         "the declaration in a new splice.")
-  (reify name)
+  (qReify name)
 
 -- | Report that a certain TH construct is impossible
-impossible :: String -> Q a
+impossible :: Quasi q => String -> q a
 impossible err = fail (err ++ "\nThis should not happen in Haskell.\nPlease email eir@cis.upenn.edu with your code if you see this.")
 
 -- | Extract the @TyVarBndr@s and constructors given the @Name@ of a type
-getDataD :: String       -- ^ Print this out on failure
+getDataD :: Quasi q
+         => String       -- ^ Print this out on failure
          -> Name         -- ^ Name of the datatype (@data@ or @newtype@) of interest
-         -> Q ([TyVarBndr], [Con])
-getDataD error name = do
+         -> q ([TyVarBndr], [Con])
+getDataD err name = do
   info <- reifyWithWarning name
   dec <- case info of
            TyConI dec -> return dec
@@ -47,10 +49,10 @@ getDataD error name = do
     _ -> badDeclaration
   where badDeclaration =
           fail $ "The name (" ++ (show name) ++ ") refers to something " ++
-                 "other than a datatype. " ++ error
+                 "other than a datatype. " ++ err
 
 -- | From the name of a data constructor, retrieve its definition as a @Con@
-dataConNameToCon :: Name -> Q Con
+dataConNameToCon :: Quasi q => Name -> q Con
 dataConNameToCon con_name = do
   -- we need to get the field ordering from the constructor. We must reify
   -- the constructor to get the tycon, and then reify the tycon to get the `Con`s
