@@ -1,29 +1,39 @@
-all: test
+WITHGHC = --with-ghc=$(HOME)/ghc-$(GHC)-build/bin/ghc
+CABAL = cabal $(WITHGHC)
 
-.PHONY: init build doc test install ghc-head
+all: install
+
+.PHONY: init build test install ghc-head ghc-7.6.3
 
 init:
-	cabal install --only-dependencies --enable-tests
-	cabal configure --enable-tests
+	$(CABAL) install --only-dependencies --enable-tests
+	$(CABAL) configure $(WITHGHC) --enable-tests
 
 build:
-	cabal build
+	$(CABAL) build
 
 test: build
-	cabal test
+	$(CABAL) test
 
-install: init build test
-	cabal install
-
-doc:
-	cabal haddock --hyperlink-source
+install: build test
+	$(CABAL) install
 
 ghc-head:
-	wget --quiet -O ghc-head.tar.bz2 http://paraiso-lang.org/html/ghc-head.tar.bz2
-	tar xf ghc-head.tar.bz2
-	sudo apt-get install libgmp3c2 libgmp3-dev  libghc-zlib-dev -y
-	cd ghc-head/; ./configure;	sudo make install
-# cabal install cabal-install # sometimes we need a latest version of cabal 
-# cabal update
-	ghc --version
-	cabal --version
+	wget --quiet -O ghc-head.tar.bz2 https://www.dropbox.com/sh/l24540a7ndwte01/u5QOAwG7DF/dist/ghc-HEAD-x86_64-unknown-linux.tar.bz2
+	tar xjvf ghc-head.tar.bz2
+	cd ghc-7.7.*
+	mkdir $HOME/ghc-head-build
+	./configure --prefix=$HOME/ghc-head-build
+	make
+	make install
+	$HOME/ghc-head-build/bin/ghc --version
+
+ghc-7.6.3:
+	wget --quiet -O ghc-7.6.3.tar.bz2 https://www.dropbox.com/sh/l24540a7ndwte01/X11weT9-6q/ghc-7.6.3-x86_64-unknown-linux.tar.bz2
+	tar xjvf ghc-7.6.3.tar.bz2
+	cd ghc-7.6.3
+	mkdir $HOME/ghc-7.6.3-build
+	./configure --prefix=$HOME/ghc-7.6.3-build
+	make
+	make install
+	$HOME/ghc-7.6.3-build/bin/ghc --version

@@ -1,12 +1,19 @@
 language: haskell
 
+env:
+  - GHC=7.6.3
+  - GHC=head
+
 before_install:
-  - make ghc-head
+  - make ghc-$GHC
+  - cabal install cabal-install
+  - cabal --version
+
+install:
+  - make init
 
 script:
-  - cabal configure --enable-tests
-  - cabal build
-  - cabal test
+  - make install
 
 after_script:
   - cat dist/test/th-desugar-*-spec.log 
