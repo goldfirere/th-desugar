@@ -23,7 +23,6 @@ ghc-head:
 	tar xjf ghc-head.tar.bz2
 	mkdir $(HOME)/ghc-head-build
 	cd ghc-7.7.* && ./configure --prefix=$(HOME)/ghc-head-build
-	cd ghc-7.7.* && make
 	cd ghc-7.7.* && make install
 	$(HOME)/ghc-head-build/bin/ghc --version
 
@@ -32,6 +31,5 @@ ghc-7.6.3:
 	tar xjf ghc-7.6.3.tar.bz2
 	mkdir $(HOME)/ghc-7.6.3-build
 	cd ghc-7.6.3 && ./configure --prefix=$(HOME)/ghc-7.6.3-build
-	cd ghc-7.6.3 && make
 	cd ghc-7.6.3 && make install
 	$(HOME)/ghc-7.6.3-build/bin/ghc --version
