@@ -13,7 +13,7 @@ build:
 	$(CABAL) build
 
 test: build
-	$(CABAL) test
+	cabal test
 
 install: build test
 	$(CABAL) install
