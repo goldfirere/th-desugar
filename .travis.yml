@@ -5,7 +5,7 @@ env:
   - GHC=head
 
 before_install:
-  - sudo apt-get install libgmp
+  - sudo apt-get install libgmp3c2 libgmp3-dev libghc-zlib-dev -y
   - make ghc-$GHC
   - cabal install cabal-install
   - cabal --version
