@@ -1,8 +1,11 @@
 language: haskell
 
 env:
-  - GHC=7.6.3
-  - GHC=head
+  global:
+    - PATH=$HOME/.cabal/bin:$PATH
+  matrix:
+    - GHC=7.6.3
+    - GHC=head
 
 before_install:
   - sudo apt-get install libgmp3c2 libgmp3-dev libghc-zlib-dev -y
