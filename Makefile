@@ -1,5 +1,6 @@
 WITHGHC = --with-ghc=$(HOME)/ghc-$(GHC)-build/bin/ghc
-CABAL = cabal $(WITHGHC)
+CABAL_BINARY = $(HOME)/.cabal/bin/cabal
+CABAL = $(CABAL_BINARY) $(WITHGHC)
 
 all: install
 
@@ -13,7 +14,7 @@ build:
 	$(CABAL) build
 
 test: build
-	cabal test
+	$(CABAL_BINARY) test
 
 install: build test
 	$(CABAL) install
