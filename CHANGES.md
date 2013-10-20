@@ -2,7 +2,6 @@ Version 1.2.0
 -------------
 * Generalized interface to allow any member of the `Qausi` class, instead of
   just `Q`.
-* Added integration with Travis CI.
 
 Version 1.1.1
 -------------
