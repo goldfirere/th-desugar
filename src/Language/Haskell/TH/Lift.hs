@@ -38,13 +38,18 @@ deriveLiftOne i =
       liftInstance dcx n (map unTyVarBndr vsk) [doCons con]
     _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
   where liftInstance dcx n vs cases =
-          instanceD (ctxt dcx vs) (conT ''Lift `appT` typ n vs) [funD 'lift cases]
+          instanceD (ctxt dcx vs)
+                    (conT ''Lift `appT` typ n (map fst vs))
+                    [funD 'lift cases]
         typ n = foldl appT (conT n) . map varT
-        ctxt dcx = fmap (dcx ++) . cxt . map liftPred
+        ctxt dcx = fmap (dcx ++) . cxt . concatMap liftPred
 #if MIN_VERSION_template_haskell(2,4,0)
-        unTyVarBndr (PlainTV v) = v
-        unTyVarBndr (KindedTV v _) = v
-        liftPred n = classP ''Lift [varT n]
+        unTyVarBndr (PlainTV v) = (v, StarT)
+        unTyVarBndr (KindedTV v k) = (v, k)
+        -- Only consider *-kinded type variables, because Lift instances cannot
+        -- meaningfully be given to types of other kinds.
+        liftPred (v, StarT) = [classP ''Lift [varT v]]
+        liftPred (v, _) = []
 #else /* MIN_VERSION_template_haskell(2,4,0) */
         unTyVarBndr v = v
         liftPred n = conT ''Lift `appT` varT n
