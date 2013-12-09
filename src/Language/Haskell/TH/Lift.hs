@@ -64,7 +64,7 @@ doCons (InfixC sty1 c sty2) = do
       right = [| lift $(varE (mkName "x1")) |]
       e = [| infixApp $left $con $right |]
   clause [infixP (varP (mkName "x0")) c (varP (mkName "x1"))] (normalB e) []
-doCons c = error (modName ++ ".doCons: Unhandled constructor: " ++ pprint c)
+doCons (ForallC binds cxt c) = doCons c
 
 instance Lift Name where
     lift (Name occName nameFlavour) = [| Name occName nameFlavour |]
