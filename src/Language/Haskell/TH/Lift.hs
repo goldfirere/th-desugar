@@ -1,4 +1,10 @@
-{-# LANGUAGE CPP, TemplateHaskell, MagicHash, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Language.Haskell.TH.Lift (deriveLift, deriveLiftMany, deriveLift', deriveLiftMany', Lift(..)) where
 
 #if !(MIN_VERSION_template_haskell(2,4,0))
@@ -49,7 +55,7 @@ deriveLiftOne i =
         -- Only consider *-kinded type variables, because Lift instances cannot
         -- meaningfully be given to types of other kinds.
         liftPred (v, StarT) = [classP ''Lift [varT v]]
-        liftPred (v, _) = []
+        liftPred (_, _) = []
 #else /* MIN_VERSION_template_haskell(2,4,0) */
         unTyVarBndr v = v
         liftPred n = conT ''Lift `appT` varT n
@@ -57,7 +63,7 @@ deriveLiftOne i =
 
 doCons :: Con -> Q Clause
 doCons (NormalC c sts) = do
-  let ns = zipWith (\_ i -> "x" ++ show i) sts [0..]
+  let ns = zipWith (\_ i -> "x" ++ show (i :: Int)) sts [0..]
       con = [| conE c |]
       args = [ [| lift $(varE (mkName n)) |] | n <- ns ]
       e = foldl (\e1 e2 -> [| appE $e1 $e2 |]) con args
@@ -69,7 +75,7 @@ doCons (InfixC sty1 c sty2) = do
       right = [| lift $(varE (mkName "x1")) |]
       e = [| infixApp $left $con $right |]
   clause [infixP (varP (mkName "x0")) c (varP (mkName "x1"))] (normalB e) []
-doCons (ForallC binds cxt c) = doCons c
+doCons (ForallC _ _ c) = doCons c
 
 instance Lift Name where
     lift (Name occName nameFlavour) = [| Name occName nameFlavour |]
@@ -91,13 +97,13 @@ instance Lift PackedString where
 #endif /* MIN_VERSION_template_haskell(2,4,0) */
 instance Lift NameFlavour where
     lift NameS = [| NameS |]
-    lift (NameQ modName) = [| NameQ modName |]
+    lift (NameQ modnam) = [| NameQ modnam |]
     lift (NameU i) = [| case $( lift (I# i) ) of
                             I# i' -> NameU i' |]
     lift (NameL i) = [| case $( lift (I# i) ) of
                             I# i' -> NameL i' |]
-    lift (NameG nameSpace pkgName modName)
-     = [| NameG nameSpace pkgName modName |]
+    lift (NameG nameSpace pkgName modnam)
+     = [| NameG nameSpace pkgName modnam |]
 
 instance Lift NameSpace where
     lift VarName = [| VarName |]
