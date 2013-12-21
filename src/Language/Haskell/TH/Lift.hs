@@ -49,17 +49,22 @@ deriveLiftOne i =
                     [funD 'lift cases]
         typ n = foldl appT (conT n) . map varT
         ctxt dcx = fmap (dcx ++) . cxt . concatMap liftPred
-#if MIN_VERSION_template_haskell(2,4,0)
-        unTyVarBndr (PlainTV v) = (v, StarT)
-        unTyVarBndr (KindedTV v k) = (v, k)
         -- Only consider *-kinded type variables, because Lift instances cannot
         -- meaningfully be given to types of other kinds.
+#if MIN_VERSION_template_haskell(2,8,0)
+        unTyVarBndr (PlainTV v) = (v, StarT)
+        unTyVarBndr (KindedTV v k) = (v, k)
         liftPred (v, StarT) = [classP ''Lift [varT v]]
         liftPred (_, _) = []
-#else /* MIN_VERSION_template_haskell(2,4,0) */
+#elif MIN_VERSION_template_haskell(2,4,0)
+        unTyVarBndr (PlainTV v) = (v, StarK)
+        unTyVarBndr (KindedTV v k) = (v, k)
+        liftPred (v, StarK) = [classP ''Lift [varT v]]
+        liftPred (_, _) = []
+#else /* template-haskell < 2.4.0 */
         unTyVarBndr v = v
         liftPred n = conT ''Lift `appT` varT n
-#endif /* MIN_VERSION_template_haskell(2,4,0) */
+#endif
 
 doCons :: Con -> Q Clause
 doCons (NormalC c sts) = do
