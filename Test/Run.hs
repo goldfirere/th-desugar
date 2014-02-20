@@ -6,7 +6,7 @@ eir@cis.upenn.edu
 
 {-# LANGUAGE TemplateHaskell, UnboxedTuples, ParallelListComp, CPP,
              RankNTypes, ImpredicativeTypes, TypeFamilies,
-             DataKinds #-}
+             DataKinds, ConstraintKinds #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
@@ -61,6 +61,11 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "tylit"    ~: $test32_tylit    @=? $(dsSplice test32_tylit)
              , "tvbs"     ~: $test33_tvbs     @=? $(dsSplice test33_tvbs)
              , "let_as"   ~: $test34_let_as   @=? $(dsSplice test34_let_as)
+#if __GLASGOW_HASKELL__ >= 709
+             , "pred"     ~: $test37_pred     @=? $(dsSplice test37_pred)
+--             , "pred2"    ~: $test38_pred2    @=? $(dsSplice test38_pred2)
+             , "eq"       ~: $test39_eq       @=? $(dsSplice test39_eq)
+#endif
              ]
 
 test35a = $test35_expand

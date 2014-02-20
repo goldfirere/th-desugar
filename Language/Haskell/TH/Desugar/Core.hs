@@ -48,12 +48,12 @@ data DLetDec = DFunD Name [DClause]
              deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Pat@ type.
-data DPat = DLitP Lit
-          | DVarP Name
-          | DConP Name [DPat]
-          | DTildeP DPat
-          | DBangP DPat
-          | DWildP
+data DPat = DLitPa Lit
+          | DVarPa Name
+          | DConPa Name [DPat]
+          | DTildePa DPat
+          | DBangPa DPat
+          | DWildPa
           deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Type@ type.
@@ -79,8 +79,10 @@ data DKind = DForallK [Name] DKind
 type DCxt = [DPred]
 
 -- | Corresponds to TH's @Pred@
-data DPred = DClassP Name [DType]
-           | DEqualP DType DType
+data DPred = DAppPr DPred DType
+           | DSigPr DPred DKind
+           | DVarPr Name
+           | DConPr Name
            deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @TyVarBndr@. Note that @PlainTV x@ and @KindedTV x StarT@ are
@@ -129,7 +131,7 @@ dsExp (CondE e1 e2 e3) = do
   e1' <- dsExp e1
   e2' <- dsExp e2
   e3' <- dsExp e3
-  return $ DCaseE e1' [DMatch (DConP 'True []) e2', DMatch (DConP 'False []) e3']
+  return $ DCaseE e1' [DMatch (DConPa 'True []) e2', DMatch (DConPa 'False []) e3']
 dsExp (MultiIfE guarded_exps) =
   let failure = DAppE (DVarE 'error) (DLitE (StringL "None-exhaustive guards in multi-way if")) in
   dsGuards guarded_exps failure
@@ -138,7 +140,7 @@ dsExp (CaseE exp matches) = do
   scrutinee <- qNewName "scrutinee"
   exp' <- dsExp exp
   matches' <- dsMatches scrutinee matches
-  return $ DLetE [DValD (DVarP scrutinee) exp'] $
+  return $ DLetE [DValD (DVarPa scrutinee) exp'] $
            DCaseE (DVarE scrutinee) matches'
 dsExp (DoE stmts) = dsDoStmts stmts
 dsExp (CompE stmts) = dsComp stmts
@@ -200,12 +202,12 @@ dsExp (RecUpdE exp field_exps) = do
     con_to_dmatch (RecC con_name args) = do
       let con_field_names = map fst_of_3 args
       field_var_names <- mapM (qNewName . nameBase) con_field_names
-      DMatch (DConP con_name (map DVarP field_var_names)) <$>
+      DMatch (DConPa con_name (map DVarPa field_var_names)) <$>
              (foldl DAppE (DConE con_name) <$>
                     (reorderFields args field_exps (map DVarE field_var_names)))
     con_to_dmatch _ = impossible "Internal error within th-desugar."
 
-    error_match = DMatch DWildP (DAppE (DVarE 'error)
+    error_match = DMatch DWildPa (DAppE (DVarE 'error)
                     (DLitE (StringL "Non-exhaustive patterns in record update")))
 
     fst_of_3 (x, _, _) = x
@@ -283,7 +285,7 @@ dsGuardStmts (BindS pat exp : rest) success failure = do
   success' <- dsGuardStmts rest success failure
   (pat', success'') <- dsPatOverExp pat success'
   exp' <- dsExp exp
-  return $ DCaseE exp' [DMatch pat' success'', DMatch DWildP failure]
+  return $ DCaseE exp' [DMatch pat' success'', DMatch DWildPa failure]
 dsGuardStmts (LetS decs : rest) success failure = do
   decs' <- dsLetDecs decs
   success' <- dsGuardStmts rest success failure
@@ -291,8 +293,8 @@ dsGuardStmts (LetS decs : rest) success failure = do
 dsGuardStmts (NoBindS exp : rest) success failure = do
   exp' <- dsExp exp
   success' <- dsGuardStmts rest success failure
-  return $ DCaseE exp' [ DMatch (DConP 'True []) success'
-                       , DMatch (DConP 'False []) failure ]
+  return $ DCaseE exp' [ DMatch (DConPa 'True []) success'
+                       , DMatch (DConPa 'False []) failure ]
 dsGuardStmts (ParS _ : _) _ _ = impossible "Parallel comprehension in a pattern guard."
 
 -- | Desugar the @Stmt@s in a @do@ expression
@@ -359,14 +361,14 @@ mk_tuple_pat name_set =
 dsPatOverExp :: Quasi q => Pat -> DExp -> q (DPat, DExp)
 dsPatOverExp pat exp = do
   (pat', vars) <- runWriterT $ dsPat pat
-  let name_decs = uncurry (zipWith (DValD . DVarP)) $ unzip vars
+  let name_decs = uncurry (zipWith (DValD . DVarPa)) $ unzip vars
   return (pat', maybeDLetE name_decs exp)
 
 -- | Desugar multiple patterns. Like 'dsPatOverExp'.
 dsPatsOverExp :: Quasi q => [Pat] -> DExp -> q ([DPat], DExp)
 dsPatsOverExp pats exp = do
   (pats', vars) <- runWriterT $ mapM dsPat pats
-  let name_decs = uncurry (zipWith (DValD . DVarP)) $ unzip vars
+  let name_decs = uncurry (zipWith (DValD . DVarPa)) $ unzip vars
   return (pats', maybeDLetE name_decs exp)
 
 -- | Desugar a pattern, returning a list of (Name, DExp) pairs of extra
@@ -381,37 +383,37 @@ type PatM q = WriterT [(Name, DExp)] q
 
 -- | Desugar a pattern.
 dsPat :: Quasi q => Pat -> PatM q DPat
-dsPat (LitP lit) = return $ DLitP lit
-dsPat (VarP n) = return $ DVarP n
-dsPat (TupP pats) = DConP (tupleDataName (length pats)) <$> mapM dsPat pats
-dsPat (UnboxedTupP pats) = DConP (unboxedTupleDataName (length pats)) <$>
+dsPat (LitP lit) = return $ DLitPa lit
+dsPat (VarP n) = return $ DVarPa n
+dsPat (TupP pats) = DConPa (tupleDataName (length pats)) <$> mapM dsPat pats
+dsPat (UnboxedTupP pats) = DConPa (unboxedTupleDataName (length pats)) <$>
                            mapM dsPat pats
-dsPat (ConP name pats) = DConP name <$> mapM dsPat pats
-dsPat (InfixP p1 name p2) = DConP name <$> mapM dsPat [p1, p2]
+dsPat (ConP name pats) = DConPa name <$> mapM dsPat pats
+dsPat (InfixP p1 name p2) = DConPa name <$> mapM dsPat [p1, p2]
 dsPat (UInfixP _ _ _) =
   fail "Cannot desugar unresolved infix operators."
 dsPat (ParensP pat) = dsPat pat
-dsPat (TildeP pat) = DTildeP <$> dsPat pat
-dsPat (BangP pat) = DBangP <$> dsPat pat
+dsPat (TildeP pat) = DTildePa <$> dsPat pat
+dsPat (BangP pat) = DBangPa <$> dsPat pat
 dsPat (AsP name pat) = do
   pat' <- dsPat pat
   pat'' <- lift $ removeWilds pat'
   tell [(name, dPatToDExp pat'')]
   return pat''
-dsPat WildP = return DWildP
+dsPat WildP = return DWildPa
 dsPat (RecP con_name field_pats) = do
   con <- lift $ dataConNameToCon con_name
   reordered <- case con of
     RecC _name fields -> reorderFieldsPat fields field_pats
     _ -> lift $ impossible $ "Record syntax used with non-record constructor "
                              ++ (show con_name) ++ "."
-  return $ DConP con_name reordered
+  return $ DConPa con_name reordered
 dsPat (ListP pats) = go pats
-  where go [] = return $ DConP '[] []
+  where go [] = return $ DConPa '[] []
         go (h : t) = do
           h' <- dsPat h
           t' <- go t
-          return $ DConP '(:) [h', t']
+          return $ DConPa '(:) [h', t']
 dsPat (SigP _ _) =
   lift $ impossible
              ("At last check (Aug 2013), type patterns in signatures are not\n" ++
@@ -421,22 +423,22 @@ dsPat (ViewP _ _) =
 
 -- | Convert a 'DPat' to a 'DExp'. Fails on 'DWildP'.
 dPatToDExp :: DPat -> DExp
-dPatToDExp (DLitP lit) = DLitE lit
-dPatToDExp (DVarP name) = DVarE name
-dPatToDExp (DConP name pats) = foldl DAppE (DConE name) (map dPatToDExp pats)
-dPatToDExp (DTildeP pat) = dPatToDExp pat
-dPatToDExp (DBangP pat) = dPatToDExp pat
-dPatToDExp DWildP = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
+dPatToDExp (DLitPa lit) = DLitE lit
+dPatToDExp (DVarPa name) = DVarE name
+dPatToDExp (DConPa name pats) = foldl DAppE (DConE name) (map dPatToDExp pats)
+dPatToDExp (DTildePa pat) = dPatToDExp pat
+dPatToDExp (DBangPa pat) = dPatToDExp pat
+dPatToDExp DWildPa = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
 --   variable
 removeWilds :: Quasi q => DPat -> q DPat
-removeWilds p@(DLitP _) = return p
-removeWilds p@(DVarP _) = return p
-removeWilds (DConP con_name pats) = DConP con_name <$> mapM removeWilds pats
-removeWilds (DTildeP pat) = DTildeP <$> removeWilds pat
-removeWilds (DBangP pat) = DBangP <$> removeWilds pat
-removeWilds DWildP = DVarP <$> qNewName "wild"
+removeWilds p@(DLitPa _) = return p
+removeWilds p@(DVarPa _) = return p
+removeWilds (DConPa con_name pats) = DConPa con_name <$> mapM removeWilds pats
+removeWilds (DTildePa pat) = DTildePa <$> removeWilds pat
+removeWilds (DBangPa pat) = DBangPa <$> removeWilds pat
+removeWilds DWildPa = DVarPa <$> qNewName "wild"
 
 -- | Desugar @Dec@s that can appear in a let expression
 dsLetDecs :: Quasi q => [Dec] -> q [DLetDec]
@@ -450,7 +452,7 @@ dsLetDec (FunD name clauses) = do
 dsLetDec (ValD pat body where_decs) = do
   (pat', vars) <- dsPatX pat
   body' <- dsBody body where_decs error_exp
-  let extras = uncurry (zipWith (DValD . DVarP)) $ unzip vars
+  let extras = uncurry (zipWith (DValD . DVarPa)) $ unzip vars
   return $ DValD pat' body' : extras
   where
     error_exp = DAppE (DVarE 'error) (DLitE
@@ -478,7 +480,7 @@ dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
 dsClauses n clauses@(Clause outer_pats _ _ : _) = do
   arg_names <- replicateM (length outer_pats) (qNewName "arg")
   let scrutinee = mkTupleDExp (map DVarE arg_names)
-  clause <- DClause (map DVarP arg_names) <$>
+  clause <- DClause (map DVarPa arg_names) <$>
               (DCaseE scrutinee <$> foldrM (clause_to_dmatch scrutinee) [] clauses)
   return [clause]
   where
@@ -492,7 +494,7 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
                                   scrutinee failure_matches
 -- | Desugar a type
 dsType :: Quasi q => Type -> q DType
-dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> mapM dsPred preds <*> dsType ty
+dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> concatMapM dsPred preds <*> dsType ty
 dsType (AppT t1 t2) = DAppT <$> dsType t1 <*> dsType t2
 dsType (SigT ty ki) = DSigT <$> dsType ty <*> dsKind ki
 dsType (VarT name) = return $ DVarT name
@@ -512,16 +514,57 @@ dsType PromotedConsT = return $ DConT '(:)
 dsType StarT = impossible "The kind * seen in a type."
 dsType ConstraintT = impossible "The kind `Constraint' seen in a type."
 dsType (LitT lit) = return $ DLitT lit
+dsType EqualityT = return $ DConT ''(~)
 
 -- | Desugar a @TyVarBndr@
 dsTvb :: Quasi q => TyVarBndr -> q DTyVarBndr
 dsTvb (PlainTV n) = return $ DPlainTV n
 dsTvb (KindedTV n k) = DKindedTV n <$> dsKind k
 
--- | Desugar a @Pred@
-dsPred :: Quasi q => Pred -> q DPred
-dsPred (ClassP n tys) = DClassP n <$> mapM dsType tys
-dsPred (EqualP t1 t2) = DEqualP <$> dsType t1 <*> dsType t2
+-- | Desugar a @Pred@, flattening any internal tuples
+dsPred :: Quasi q => Pred -> q DCxt
+#if __GLASGOW_HASKELL__ < 709
+dsPred (ClassP n tys) = do
+  ts' <- mapM dsType tys
+  foldl DAppPr (DConPr n) ts'
+dsPred (EqualP t1 t2) = do
+  ts' <- mapM dsType [t1, t2]
+  foldl DAppPr (DConPr ''(~)) ts'
+#else
+dsPred t
+  | Just ts <- splitTuple_maybe t
+  = concatMapM dsPred ts
+dsPred t@(ForallT _ _ _) = impossible $ "Forall seen in constraint: " ++ show t
+dsPred (AppT t1 t2) = do
+  [p1] <- dsPred t1   -- tuples can't be applied!
+  (:[]) <$> DAppPr p1 <$> dsType t2
+dsPred (SigT ty ki) = do
+  preds <- dsPred ty
+  case preds of
+    [p]   -> (:[]) <$> DSigPr p <$> dsKind ki
+    other -> return other   -- just drop the kind signature on a tuple.
+dsPred (VarT n) = return [DVarPr n]
+dsPred (ConT n) = return [DConPr n]
+dsPred t@(PromotedT _) =
+  impossible $ "Promoted type seen as head of constraint: " ++ show t
+dsPred (TupleT 0) = return [DConPr (tupleTypeName 0)]
+dsPred (TupleT _) =
+  impossible "Internal error in th-desugar in detecting tuple constraints."
+dsPred t@(UnboxedTupleT _) =
+  impossible $ "Unboxed tuple seen as head of constraint: " ++ show t
+dsPred ArrowT = impossible "Arrow seen as head of constraint."
+dsPred ListT  = impossible "List seen as head of constraint."
+dsPred (PromotedTupleT _) =
+  impossible "Promoted tuple seen as head of constraint."
+dsPred PromotedNilT  = impossible "Promoted nil seen as head of constraint."
+dsPred PromotedConsT = impossible "Promoted cons seen as head of constraint."
+dsPred StarT         = impossible "* seen as head of constraint."
+dsPred ConstraintT =
+  impossible "The kind `Constraint' seen as head of constraint."
+dsPred t@(LitT _) =
+  impossible $ "Type literal seen as head of constraint: " ++ show t
+dsPred EqualityT = return [DConPr ''(~)]
+#endif
 
 -- | Desugar a kind
 dsKind :: Quasi q => Kind -> q DKind
@@ -554,6 +597,7 @@ dsKind PromotedConsT = impossible "Promoted (:) used as a kind."
 dsKind StarT = return DStarK
 dsKind ConstraintT = return $ DConK ''Constraint []
 dsKind (LitT _) = impossible "Literal used in a kind."
+dsKind EqualityT = impossible "(~) used in a kind."
                        
 -- create a list of expressions in the same order as the fields in the first argument
 -- but with the values as given in the second argument
@@ -564,7 +608,7 @@ reorderFields = reorderFields' dsExp
 
 reorderFieldsPat :: Quasi q => [VarStrictType] -> [FieldPat] -> PatM q [DPat]
 reorderFieldsPat field_decs field_pats =
-  reorderFields' dsPat field_decs field_pats (repeat DWildP)
+  reorderFields' dsPat field_decs field_pats (repeat DWildPa)
 
 reorderFields' :: (Applicative m, Monad m)
                => (a -> m da)
@@ -592,7 +636,7 @@ mkTupleExp exps = foldl AppE (ConE $ tupleDataName (length exps)) exps
 -- | Make a tuple 'DPat' from a list of 'DPat's. Avoids using a 1-tuple.
 mkTupleDPat :: [DPat] -> DPat
 mkTupleDPat [pat] = pat
-mkTupleDPat pats = DConP (tupleDataName (length pats)) pats
+mkTupleDPat pats = DConPa (tupleDataName (length pats)) pats
 
 -- | Make a tuple 'Pat' from a list of 'Pat's. Avoids using a 1-tuple.
 mkTuplePat :: [Pat] -> Pat

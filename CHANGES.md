@@ -1,3 +1,8 @@
+Version 1.3.0
+-------------
+* Update to work with `type Pred = Type` in GHC 7.9. This changed the
+`DPred` type for all GHC versions, though.
+
 Version 1.2.0
 -------------
 * Generalized interface to allow any member of the `Qausi` class, instead of

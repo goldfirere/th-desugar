@@ -32,12 +32,12 @@ matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
 
 patToTH :: DPat -> Pat
-patToTH (DLitP lit)    = LitP lit
-patToTH (DVarP n)      = VarP n
-patToTH (DConP n pats) = ConP n (map patToTH pats)
-patToTH (DTildeP pat)  = TildeP (patToTH pat)
-patToTH (DBangP pat)   = BangP (patToTH pat)
-patToTH DWildP         = WildP
+patToTH (DLitPa lit)    = LitP lit
+patToTH (DVarPa n)      = VarP n
+patToTH (DConPa n pats) = ConP n (map patToTH pats)
+patToTH (DTildePa pat)  = TildeP (patToTH pat)
+patToTH (DBangPa pat)   = BangP (patToTH pat)
+patToTH DWildPa         = WildP
 
 letDecToTH :: DLetDec -> Dec
 letDecToTH (DFunD name clauses) = FunD name (map clauseToTH clauses)
@@ -62,8 +62,25 @@ tvbToTH (DPlainTV n)           = PlainTV n
 tvbToTH (DKindedTV n k)        = KindedTV n (kindToTH k)
 
 predToTH :: DPred -> Pred
-predToTH (DClassP n tys) = ClassP n (map typeToTH tys)
-predToTH (DEqualP t1 t2) = EqualP (typeToTH t1) (typeToTH t2)
+#if __GLASGOW_HASKELL__ < 709
+predToTH = go []
+  where
+    go acc (DAppPr p t) = go (t:acc) p
+    go acc (DSigPr p _) = go acc     p  -- this shouldn't happen.
+    go acc (DVarPr n)
+      = error "Template Haskell in GHC <= 7.8 does not support variable constraints."
+    go acc (DConPr n)   =
+      | nameBase n == "(~)"
+      , [t1, t2] <- acc
+      = EqualP t1 t2
+      | otherwise
+      = ClassP n acc
+#else
+predToTH (DAppPr p t) = AppT (predToTH p) (typeToTH t)
+predToTH (DSigPr p k) = SigT (predToTH p) (kindToTH k)
+predToTH (DVarPr n)   = VarT n
+predToTH (DConPr n)   = ConT n
+#endif
 
 kindToTH :: DKind -> Kind
 kindToTH (DForallK names ki) = ForallT (map PlainTV names) [] (kindToTH ki)

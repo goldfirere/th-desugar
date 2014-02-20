@@ -128,4 +128,32 @@ splitAtList [] x = ([], x)
 splitAtList (_ : t) (x : xs) =
   let (as, bs) = splitAtList t xs in
   (x : as, bs)
-splitAtList (_ : _) [] = ([], [])      
+splitAtList (_ : _) [] = ([], [])
+
+-- | If a type is a fully-applied tuple type, break it down into a list
+-- of its constituents. Otherwise, return Nothing.
+splitTuple_maybe :: Type -> Maybe [Type]
+splitTuple_maybe = go []
+  where
+    go acc (AppT left right) = go (right:acc) left
+    go acc (SigT ty _)       = go acc ty
+    go acc (TupleT n)
+      | n == length acc = Just acc
+    go acc (ConT name)
+      | Just n <- tupleNameDegree_maybe name
+      , n == length acc = Just acc
+    go _ _ = Nothing
+
+-- | Extract the degree of a tuple, if the argument is a tuple
+tupleDegree_maybe :: String -> Maybe Int
+tupleDegree_maybe s = do
+  '(' : s1 <- return s
+  (commas, ")") <- return $ span (== ',') s1
+  let degree
+        | "" <- commas = 0
+        | otherwise    = length commas + 1
+  return degree
+
+-- | Extract the degree of a tuple name, if the argument is a tuple name
+tupleNameDegree_maybe :: Name -> Maybe Int
+tupleNameDegree_maybe = tupleDegree_maybe . nameBase

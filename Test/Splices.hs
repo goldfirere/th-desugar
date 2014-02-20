@@ -108,8 +108,6 @@ test33_tvbs = [| let f :: forall a (b :: * -> *). Monad b => a -> b a
                      f = return in
                  [f 1, f 2] :: [Maybe Int] |]
 
---- END v1.0.0
-
 test34_let_as = [| let a@(Just x) = Just 5 in
                    show x ++ show a |]
 
@@ -122,3 +120,17 @@ type Const a b = b
 test36_expand = [| let f :: Const Int (,) Bool Char -> Char
                        f = snd in
                    f |]
+
+#if __GLASGOW_HASKELL__ >= 709
+test37_pred = [| let f :: (Read a, (Show a, Num a)) => a -> a
+                     f x = read (show x) + x in
+                 (f 3, f 4.5) |]
+
+test38_pred2 = [| let f :: a b => Proxy a -> b -> b
+                      f x = x in
+                  (f (Proxy :: Proxy Show) False, f (Proxy :: Proxy Num) (3 :: Int)) |]
+
+test39_eq = [| let f :: (a ~ b) => a -> b
+                   f x = x in
+               (f ()) |]
+#endif
