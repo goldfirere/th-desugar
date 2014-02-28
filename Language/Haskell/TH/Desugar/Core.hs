@@ -514,7 +514,9 @@ dsType PromotedConsT = return $ DConT '(:)
 dsType StarT = impossible "The kind * seen in a type."
 dsType ConstraintT = impossible "The kind `Constraint' seen in a type."
 dsType (LitT lit) = return $ DLitT lit
+#if __GLASGOW_HASKELL__ >= 709
 dsType EqualityT = return $ DConT ''(~)
+#endif
 
 -- | Desugar a @TyVarBndr@
 dsTvb :: Quasi q => TyVarBndr -> q DTyVarBndr
@@ -526,10 +528,10 @@ dsPred :: Quasi q => Pred -> q DCxt
 #if __GLASGOW_HASKELL__ < 709
 dsPred (ClassP n tys) = do
   ts' <- mapM dsType tys
-  foldl DAppPr (DConPr n) ts'
+  return [foldl DAppPr (DConPr n) ts']
 dsPred (EqualP t1 t2) = do
   ts' <- mapM dsType [t1, t2]
-  foldl DAppPr (DConPr ''(~)) ts'
+  return [foldl DAppPr (DConPr ''(~)) ts']
 #else
 dsPred t
   | Just ts <- splitTuple_maybe t
@@ -597,7 +599,9 @@ dsKind PromotedConsT = impossible "Promoted (:) used as a kind."
 dsKind StarT = return DStarK
 dsKind ConstraintT = return $ DConK ''Constraint []
 dsKind (LitT _) = impossible "Literal used in a kind."
+#if __GLASGOW_HASKELL__ >= 709
 dsKind EqualityT = impossible "(~) used in a kind."
+#endif
                        
 -- create a list of expressions in the same order as the fields in the first argument
 -- but with the values as given in the second argument

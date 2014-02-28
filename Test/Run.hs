@@ -63,7 +63,7 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "let_as"   ~: $test34_let_as   @=? $(dsSplice test34_let_as)
 #if __GLASGOW_HASKELL__ >= 709
              , "pred"     ~: $test37_pred     @=? $(dsSplice test37_pred)
---             , "pred2"    ~: $test38_pred2    @=? $(dsSplice test38_pred2)
+             , "pred2"    ~: $test38_pred2    @=? $(dsSplice test38_pred2)
              , "eq"       ~: $test39_eq       @=? $(dsSplice test39_eq)
 #endif
              ]
@@ -73,9 +73,17 @@ test35b = $(test35_expand >>= dsExp >>= expand >>= return . expToTH)
 test36a = $test36_expand
 test36b = $(test36_expand >>= dsExp >>= expand >>= return . expToTH)
 
+hasSameType :: a -> a -> Bool
+hasSameType _ _ = True
+
+test_expand :: Bool
+test_expand = and [ hasSameType test35a test35b
+                  , hasSameType test36a test36b]
+
 main :: IO ()
 main = hspec $ do
   describe "th-desugar library" $ do
     it "compiles" $ True
+    it "expands"  $ test_expand
 
     fromHUnitTest tests

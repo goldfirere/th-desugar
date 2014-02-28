@@ -65,11 +65,11 @@ predToTH :: DPred -> Pred
 #if __GLASGOW_HASKELL__ < 709
 predToTH = go []
   where
-    go acc (DAppPr p t) = go (t:acc) p
-    go acc (DSigPr p _) = go acc     p  -- this shouldn't happen.
-    go acc (DVarPr n)
+    go acc (DAppPr p t) = go (typeToTH t : acc) p
+    go acc (DSigPr p _) = go acc                p  -- this shouldn't happen.
+    go _   (DVarPr _)
       = error "Template Haskell in GHC <= 7.8 does not support variable constraints."
-    go acc (DConPr n)   =
+    go acc (DConPr n) 
       | nameBase n == "(~)"
       , [t1, t2] <- acc
       = EqualP t1 t2

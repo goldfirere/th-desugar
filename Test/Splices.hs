@@ -127,7 +127,7 @@ test37_pred = [| let f :: (Read a, (Show a, Num a)) => a -> a
                  (f 3, f 4.5) |]
 
 test38_pred2 = [| let f :: a b => Proxy a -> b -> b
-                      f x = x in
+                      f _ x = x in
                   (f (Proxy :: Proxy Show) False, f (Proxy :: Proxy Num) (3 :: Int)) |]
 
 test39_eq = [| let f :: (a ~ b) => a -> b
