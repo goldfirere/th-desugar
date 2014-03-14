@@ -1,36 +1,14 @@
-language: haskell
-
-env:
-  - GHC=7.6.3
-  - GHC=7.8rc2
-  - GHC=head
-
-before_install:
-  - sudo apt-get install libgmp3c2 libgmp3-dev libghc-zlib-dev -y
-  - make ghc-$GHC
-  - cabal install cabal-install
-  - $HOME/.cabal/bin/cabal --version
-
-install:
-  - make init
-
-script:
-  - make install
-
-after_script:
-  - cat dist/test/th-desugar-*-spec.log 
-
 # Taken from github.com/hvr/multi-ghc-travis
 # NB: don't set `language: haskell` here
 
 env:
  - GHCVER=7.6.3
- - GHCVER=7.8.1 # see note about Alex/Happy
-# - GHCVER=head  # see section about GHC HEAD snapshots
+ - GHCVER=7.8.1
+ - GHCVER=head
 
 # Note: the distinction between `before_install` and `install` is not important.
 before_install:
- - travis_retry sudo add-apt-repository -y ppa:hvr/ghc
+#  - sudo apt-get install libgmp3c2 libgmp3-dev libghc-zlib-dev -y - travis_retry sudo add-apt-repository -y ppa:hvr/ghc
  - travis_retry sudo apt-get update
  - travis_retry sudo apt-get install cabal-install-1.18 ghc-$GHCVER happy
  - export PATH=/opt/ghc/$GHCVER/bin:$PATH
@@ -62,3 +40,8 @@ script:
       echo "expected '$SRC_TGZ' not found";
       exit 1;
    fi
+
+after_script:
+  - pwd
+  - ls -R
+  - cat dist/test/th-desugar-*-spec.log 
