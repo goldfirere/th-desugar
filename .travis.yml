@@ -40,9 +40,8 @@ script:
    else
       echo "expected '$SRC_TGZ' not found";
       exit 1;
-   fi
+   fi;
+   cd ../
 
 after_script:
-  - pwd
-  - ls -R
   - cat dist/test/th-desugar-*-spec.log 
