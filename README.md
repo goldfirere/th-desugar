@@ -1,6 +1,8 @@
 `th-desugar` Package
 ====================
 
+[![Build Status](https://travis-ci.org/goldfirere/th-desugar.png?branch=master)](https://travis-ci.org/goldfirere/th-desugar)
+
 This package provides the `Language.Haskell.TH.Desugar` module, which desugars
 Template Haskell's rich encoding of Haskell syntax into a simpler encoding.
 This desugaring discards surface syntax information (such as the use of infix
