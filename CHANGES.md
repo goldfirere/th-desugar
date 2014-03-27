@@ -1,3 +1,7 @@
+Version 1.3.1
+-------------
+* Update cabal file to include testing files in sdist.
+
 Version 1.3.0
 -------------
 * Update to work with `type Pred = Type` in GHC 7.9. This changed the
