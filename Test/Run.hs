@@ -18,9 +18,14 @@ import Test.Hspec
 import Test.Hspec.HUnit
 
 import Test.Splices
+import Test.DsDec
+import Test.Dec
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Sweeten
+import Language.Haskell.TH
+
+import Control.Monad
 
 tests :: Test
 tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
@@ -80,10 +85,26 @@ test_expand :: Bool
 test_expand = and [ hasSameType test35a test35b
                   , hasSameType test36a test36b]
 
+test_dec :: [Bool]
+test_dec = $(do bools <- mapM testDecSplice dec_test_nums
+                return $ ListE bools)
+
 main :: IO ()
 main = hspec $ do
   describe "th-desugar library" $ do
     it "compiles" $ True
     it "expands"  $ test_expand
+
+    zipWithM (\num success -> it ("passes dec test " ++ show num) success)
+      dec_test_nums test_dec
+
+    -- instance test 1 is part of dectest 6.
+    it "passes instance test" $ $(do ty <- [t| Int -> Bool |]
+                                     [inst1, inst2] <- reifyInstances ''Show [ty]
+                                     inst1 `eqTHSplice` inst2)
+
+#if __GLASGOW_HASKELL__ < 707
+    it "passes roles test" $ (decsToTH [ds_role_test]) `eqTH` role_test
+#endif
 
     fromHUnitTest tests

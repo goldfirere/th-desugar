@@ -17,6 +17,9 @@ import Prelude hiding (exp)
 import Language.Haskell.TH hiding (cxt)
 
 import Language.Haskell.TH.Desugar.Core
+import Language.Haskell.TH.Desugar.Util
+
+import Data.Maybe ( maybeToList )
 
 expToTH :: DExp -> Exp
 expToTH (DVarE n)            = VarE n
@@ -39,11 +42,91 @@ patToTH (DTildePa pat)  = TildeP (patToTH pat)
 patToTH (DBangPa pat)   = BangP (patToTH pat)
 patToTH DWildPa         = WildP
 
+decsToTH :: [DDec] -> [Dec]
+decsToTH = concatMap decToTH
+
+-- | This returns a list of @Dec@s because GHC 7.6.3 does not have
+-- a one-to-one mapping between 'DDec' and @Dec@.
+decToTH :: DDec -> [Dec]
+decToTH (DLetDec d) = [letDecToTH d]
+decToTH (DDataD Data cxt n tvbs cons derivings) =
+  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons) derivings]
+decToTH (DDataD Newtype cxt n tvbs [con] derivings) =
+  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con) derivings]
+decToTH (DTySynD n tvbs ty) = [TySynD n (map tvbToTH tvbs) (typeToTH ty)]
+decToTH (DClassD cxt n tvbs fds decs) =
+  [ClassD (cxtToTH cxt) n (map tvbToTH tvbs) fds (decsToTH decs)]
+decToTH (DInstanceD cxt ty decs) =
+  [InstanceD (cxtToTH cxt) (typeToTH ty) (decsToTH decs)]
+decToTH (DForeignD f) = [ForeignD (foreignToTH f)]
+decToTH (DPragmaD prag) = maybeToList $ fmap PragmaD (pragmaToTH prag)
+decToTH (DFamilyD flav n tvbs m_k) =
+  [FamilyD flav n (map tvbToTH tvbs) (fmap kindToTH m_k)]
+decToTH (DDataInstD Data cxt n tys cons derivings) =
+  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons) derivings]
+decToTH (DDataInstD Newtype cxt n tys [con] derivings) =
+  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con) derivings]
+#if __GLASGOW_HASKELL__ < 707
+decToTH (DTySynInstD n eqn) = [tySynEqnToTHDec n eqn]
+decToTH (DClosedTypeFamilyD n tvbs m_k eqns) =
+  (FamilyD TypeFam n (map tvbToTH tvbs) (fmap kindToTH m_k)) :
+  (map (tySynEqnToTHDec n) eqns)
+decToTH (DRoleAnnotD {}) = []
+#else
+decToTH (DTySynInstD n eqn) = [TySynInstD n (tySynEqnToTH eqn)]
+decToTH (DClosedTypeFamilyD n tvbs m_k eqns) =
+  [ClosedTypeFamilyD n (map tvbToTH tvbs) (fmap kindToTH m_k)
+                       (map tySynEqnToTH eqns)]
+decToTH (DRoleAnnotD n roles) = [RoleAnnotD n roles]
+#endif
+decToTH _ = error "Newtype declaration without exactly 1 constructor."
+
 letDecToTH :: DLetDec -> Dec
 letDecToTH (DFunD name clauses) = FunD name (map clauseToTH clauses)
 letDecToTH (DValD pat exp)      = ValD (patToTH pat) (NormalB (expToTH exp)) []
 letDecToTH (DSigD name ty)      = SigD name (typeToTH ty)
 letDecToTH (DInfixD f name)     = InfixD f name
+
+conToTH :: DCon -> Con
+conToTH (DCon [] [] n (DNormalC stys)) =
+  NormalC n (map (liftSnd typeToTH) stys)
+conToTH (DCon [] [] n (DRecC vstys)) =
+  RecC n (map (liftThdOf3 typeToTH) vstys)
+conToTH (DCon tvbs cxt n fields) =
+  ForallC (map tvbToTH tvbs) (cxtToTH cxt) (conToTH $ DCon [] [] n fields)
+
+foreignToTH :: DForeign -> Foreign
+foreignToTH (DImportF cc safety str n ty) =
+  ImportF cc safety str n (typeToTH ty)
+foreignToTH (DExportF cc str n ty) = ExportF cc str n (typeToTH ty)
+
+pragmaToTH :: DPragma -> Maybe Pragma
+pragmaToTH (DInlineP n inl rm phases) = Just $ InlineP n inl rm phases
+pragmaToTH (DSpecialiseP n ty m_inl phases) =
+  Just $ SpecialiseP n (typeToTH ty) m_inl phases
+pragmaToTH (DSpecialiseInstP ty) = Just $ SpecialiseInstP (typeToTH ty)
+pragmaToTH (DRuleP str rbs lhs rhs phases) =
+  Just $ RuleP str (map ruleBndrToTH rbs) (expToTH lhs) (expToTH rhs) phases
+#if __GLASGOW_HASKELL__ < 707
+pragmaToTH (DAnnP {}) = Nothing
+#else
+pragmaToTH (DAnnP target exp) = Just $ AnnP target (expToTH exp)
+#endif
+
+ruleBndrToTH :: DRuleBndr -> RuleBndr
+ruleBndrToTH (DRuleVar n) = RuleVar n
+ruleBndrToTH (DTypedRuleVar n ty) = TypedRuleVar n (typeToTH ty)
+
+#if __GLASGOW_HASKELL__ < 707
+-- | GHC 7.6.3 doesn't have TySynEqn, so we sweeten to a Dec in GHC 7.6.3;
+-- GHC 7.8+ does not use this function
+tySynEqnToTHDec :: Name -> DTySynEqn -> Dec
+tySynEqnToTHDec n (DTySynEqn lhs rhs) =
+  TySynInstD n (map typeToTH lhs) (typeToTH rhs)
+#else
+tySynEqnToTH :: DTySynEqn -> TySynEqn
+tySynEqnToTH (DTySynEqn lhs rhs) = TySynEqn (map typeToTH lhs) (typeToTH rhs)
+#endif
 
 clauseToTH :: DClause -> Clause
 clauseToTH (DClause pats exp) = Clause (map patToTH pats) (NormalB (expToTH exp)) []
@@ -60,6 +143,9 @@ typeToTH (DLitT lit)            = LitT lit
 tvbToTH :: DTyVarBndr -> TyVarBndr
 tvbToTH (DPlainTV n)           = PlainTV n
 tvbToTH (DKindedTV n k)        = KindedTV n (kindToTH k)
+
+cxtToTH :: DCxt -> Cxt
+cxtToTH = map predToTH
 
 predToTH :: DPred -> Pred
 #if __GLASGOW_HASKELL__ < 709

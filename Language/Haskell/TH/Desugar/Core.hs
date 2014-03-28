@@ -40,12 +40,6 @@ data DExp = DVarE Name
           | DSigE DExp DType
           deriving (Show, Typeable, Data)
 
--- | Declarations as used in a @let@ statement. Other @Dec@s are not desugared.
-data DLetDec = DFunD Name [DClause]
-             | DValD DPat DExp
-             | DSigD Name DType
-             | DInfixD Fixity Name
-             deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Pat@ type.
 data DPat = DLitPa Lit
@@ -98,6 +92,83 @@ data DMatch = DMatch DPat DExp
 -- | Corresponds to TH's @Clause@ type.
 data DClause = DClause [DPat] DExp
   deriving (Show, Typeable, Data)
+
+-- | Declarations as used in a @let@ statement.
+data DLetDec = DFunD Name [DClause]
+             | DValD DPat DExp
+             | DSigD Name DType
+             | DInfixD Fixity Name
+             deriving (Show, Typeable, Data)
+
+-- | Is it a @newtype@ or a @data@ type?
+data NewOrData = Newtype
+               | Data
+               deriving (Show, Typeable, Data)
+
+-- | Corresponds to TH's @Dec@ type.
+data DDec = DLetDec DLetDec
+          | DDataD NewOrData DCxt Name [DTyVarBndr] [DCon] [Name]
+          | DTySynD Name [DTyVarBndr] DType
+          | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
+          | DInstanceD DCxt DType [DDec]
+          | DForeignD DForeign
+          | DPragmaD DPragma
+          | DFamilyD FamFlavour Name [DTyVarBndr] (Maybe DKind)
+          | DDataInstD NewOrData DCxt Name [DType] [DCon] [Name]
+          | DTySynInstD Name DTySynEqn
+          | DClosedTypeFamilyD Name [DTyVarBndr] (Maybe DKind) [DTySynEqn]
+          | DRoleAnnotD Name [Role]
+          deriving (Show, Typeable, Data)
+
+-- | Corresponds to TH's @Con@ type.
+data DCon = DCon [DTyVarBndr] DCxt Name DConFields
+          deriving (Show, Typeable, Data)
+
+-- | A list of fields either for a standard data constructor or a record
+-- data constructor.
+data DConFields = DNormalC [DStrictType]
+                | DRecC [DVarStrictType]
+                deriving (Show, Typeable, Data)
+
+-- | Corresponds to TH's @StrictType@ type.
+type DStrictType = (Strict, DType)
+
+-- | Corresponds to TH's @VarStrictType@ type.
+type DVarStrictType = (Name, Strict, DType)
+
+-- | Corresponds to TH's @Foreign@ type.
+data DForeign = DImportF Callconv Safety String Name DType
+              | DExportF Callconv String Name DType
+              deriving (Show, Typeable, Data)
+
+-- | Corresponds to TH's @Pragma@ type.
+data DPragma = DInlineP Name Inline RuleMatch Phases
+             | DSpecialiseP Name DType (Maybe Inline) Phases
+             | DSpecialiseInstP DType
+             | DRuleP String [DRuleBndr] DExp DExp Phases
+             | DAnnP AnnTarget DExp
+             deriving (Show, Typeable, Data)
+
+-- | Corresponds to TH's @RuleBndr@ type.
+data DRuleBndr = DRuleVar Name
+               | DTypedRuleVar Name DType
+               deriving (Show, Typeable, Data)
+
+-- | Corresponds to TH's @TySynEqn@ type (to store type family equations).
+data DTySynEqn = DTySynEqn [DType] DType
+               deriving (Show, Typeable, Data)
+
+#if __GLASGOW_HASKELL__ < 707
+-- | Same as @Role@ from TH; defined here for GHC 7.6.3 compatibility.
+data Role = Nominal | Representational | Phantom
+          deriving (Show, Typeable, Data)
+
+-- | Same as @AnnTarget@ from TH; defined here for GHC 7.6.3 compatibility.
+data AnnTarget = ModuleAnnotation
+               | TypeAnnotation Name
+               | ValueAnnotation Name
+               deriving (Show, Typeable, Data)
+#endif
 
 -- | Desugar an expression
 dsExp :: Quasi q => Exp -> q DExp
@@ -440,6 +511,53 @@ removeWilds (DTildePa pat) = DTildePa <$> removeWilds pat
 removeWilds (DBangPa pat) = DBangPa <$> removeWilds pat
 removeWilds DWildPa = DVarPa <$> qNewName "wild"
 
+-- | Desugar arbitrary @Dec@s
+dsDecs :: Quasi q => [Dec] -> q [DDec]
+dsDecs = concatMapM dsDec
+
+-- | Desugar a single @Dec@, perhaps producing multiple 'DDec's
+dsDec :: Quasi q => Dec -> q [DDec]
+dsDec d@(FunD {}) = (fmap . map) DLetDec $ dsLetDec d
+dsDec d@(ValD {}) = (fmap . map) DLetDec $ dsLetDec d
+dsDec (DataD cxt n tvbs cons derivings) =
+  (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
+                         <*> mapM dsTvb tvbs <*> mapM dsCon cons
+                         <*> pure derivings)
+dsDec (NewtypeD cxt n tvbs con derivings) =
+  (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
+                            <*> mapM dsTvb tvbs <*> ((:[]) <$> dsCon con)
+                            <*> pure derivings)
+dsDec (TySynD n tvbs ty) =
+  (:[]) <$> (DTySynD n <$> mapM dsTvb tvbs <*> dsType ty)
+dsDec (ClassD cxt n tvbs fds decs) =
+  (:[]) <$> (DClassD <$> dsCxt cxt <*> pure n <*> mapM dsTvb tvbs
+                     <*> pure fds <*> dsDecs decs)
+dsDec (InstanceD cxt ty decs) =
+  (:[]) <$> (DInstanceD <$> dsCxt cxt <*> dsType ty <*> dsDecs decs)
+dsDec d@(SigD {}) = (fmap . map) DLetDec $ dsLetDec d
+dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
+dsDec d@(InfixD {}) = (fmap . map) DLetDec $ dsLetDec d
+dsDec (PragmaD prag) = (:[]) <$> (DPragmaD <$> dsPragma prag)
+dsDec (FamilyD flav n tvbs m_k) =
+  (:[]) <$> (DFamilyD flav n <$> mapM dsTvb tvbs <*> mapM dsKind m_k)
+dsDec (DataInstD cxt n tys cons derivings) =
+  (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
+                             <*> mapM dsCon cons <*> pure derivings)
+dsDec (NewtypeInstD cxt n tys con derivings) =
+  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
+                                <*> ((:[]) <$> dsCon con) <*> pure derivings)
+#if __GLASGOW_HASKELL__ < 707
+dsDec (TySynInstD n lhs rhs) = (:[]) <$> (DTySynInstD n <$>
+                                          (DTySynEqn <$> mapM dsType lhs
+                                                     <*> dsType rhs))
+#else
+dsDec (TySynInstD n eqn) = (:[]) <$> (DTySynInstD n <$> dsTySynEqn eqn)
+dsDec (ClosedTypeFamilyD n tvbs m_k eqns) =
+  (:[]) <$> (DClosedTypeFamilyD n <$> mapM dsTvb tvbs <*> mapM dsKind m_k
+                                  <*> mapM dsTySynEqn eqns)
+dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
+#endif
+             
 -- | Desugar @Dec@s that can appear in a let expression
 dsLetDecs :: Quasi q => [Dec] -> q [DLetDec]
 dsLetDecs = concatMapM dsLetDec
@@ -462,6 +580,51 @@ dsLetDec (SigD name ty) = do
   return [DSigD name ty']
 dsLetDec (InfixD fixity name) = return [DInfixD fixity name]
 dsLetDec _dec = impossible "Illegal declaration in let expression."
+
+-- | Desugar a single @Con@.
+dsCon :: Quasi q => Con -> q DCon
+dsCon (NormalC n stys) = DCon [] [] n <$> (DNormalC <$> mapM (liftSndM dsType) stys)
+dsCon (RecC n vstys) = DCon [] [] n <$> (DRecC <$> mapM (liftThdOf3M dsType) vstys)
+dsCon (InfixC (s1, ty1) n (s2, ty2)) = do
+  dty1 <- dsType ty1
+  dty2 <- dsType ty2
+  return $ DCon [] [] n (DNormalC [(s1, dty1), (s2, dty2)])
+dsCon (ForallC tvbs cxt con) = do
+  dtvbs <- mapM dsTvb tvbs
+  dcxt <- dsCxt cxt
+  DCon dtvbs' dcxt' n fields <- dsCon con
+  return $ DCon (dtvbs ++ dtvbs') (dcxt ++ dcxt') n fields
+
+-- | Desugar a @Foreign@.
+dsForeign :: Quasi q => Foreign -> q DForeign
+dsForeign (ImportF cc safety str n ty) = DImportF cc safety str n <$> dsType ty
+dsForeign (ExportF cc str n ty)        = DExportF cc str n <$> dsType ty
+
+-- | Desugar a @Pragma@.
+dsPragma :: Quasi q => Pragma -> q DPragma
+dsPragma (InlineP n inl rm phases)       = return $ DInlineP n inl rm phases
+dsPragma (SpecialiseP n ty m_inl phases) = DSpecialiseP n <$> dsType ty
+                                                          <*> pure m_inl
+                                                          <*> pure phases
+dsPragma (SpecialiseInstP ty)            = DSpecialiseInstP <$> dsType ty
+dsPragma (RuleP str rbs lhs rhs phases)  = DRuleP str <$> mapM dsRuleBndr rbs
+                                                      <*> dsExp lhs
+                                                      <*> dsExp rhs
+                                                      <*> pure phases
+#if __GLASGOW_HASKELL__ >= 707
+dsPragma (AnnP target exp)               = DAnnP target <$> dsExp exp
+#endif
+
+-- | Desugar a @RuleBndr@.
+dsRuleBndr :: Quasi q => RuleBndr -> q DRuleBndr
+dsRuleBndr (RuleVar n)         = return $ DRuleVar n
+dsRuleBndr (TypedRuleVar n ty) = DTypedRuleVar n <$> dsType ty
+
+#if __GLASGOW_HASKELL__ >= 707
+-- | Desugar a @TySynEqn@. (Available only with GHC 7.8+)
+dsTySynEqn :: Quasi q => TySynEqn -> q DTySynEqn
+dsTySynEqn (TySynEqn lhs rhs) = DTySynEqn <$> mapM dsType lhs <*> dsType rhs
+#endif
 
 -- | Desugar clauses to a function definition
 dsClauses :: Quasi q
@@ -494,7 +657,7 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
                                   scrutinee failure_matches
 -- | Desugar a type
 dsType :: Quasi q => Type -> q DType
-dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> concatMapM dsPred preds <*> dsType ty
+dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> dsCxt preds <*> dsType ty
 dsType (AppT t1 t2) = DAppT <$> dsType t1 <*> dsType t2
 dsType (SigT ty ki) = DSigT <$> dsType ty <*> dsKind ki
 dsType (VarT name) = return $ DVarT name
@@ -522,6 +685,10 @@ dsType EqualityT = return $ DConT ''(~)
 dsTvb :: Quasi q => TyVarBndr -> q DTyVarBndr
 dsTvb (PlainTV n) = return $ DPlainTV n
 dsTvb (KindedTV n k) = DKindedTV n <$> dsKind k
+
+-- | Desugar a @Cxt@
+dsCxt :: Quasi q => Cxt -> q DCxt
+dsCxt = concatMapM dsPred
 
 -- | Desugar a @Pred@, flattening any internal tuples
 dsPred :: Quasi q => Pred -> q DCxt

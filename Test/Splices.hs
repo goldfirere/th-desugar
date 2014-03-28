@@ -7,7 +7,8 @@ eir@cis.upenn.edu
 {-# LANGUAGE TemplateHaskell, LambdaCase, MagicHash, UnboxedTuples,
              MultiWayIf, ParallelListComp, CPP, BangPatterns,
              ScopedTypeVariables, RankNTypes, TypeFamilies, ImpredicativeTypes,
-             DataKinds, PolyKinds #-}
+             DataKinds, PolyKinds, GADTs, MultiParamTypeClasses,
+             FunctionalDependencies, FlexibleInstances #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
@@ -20,9 +21,44 @@ import GHC.TypeLits
 import Language.Haskell.TH
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Desugar.Sweeten
+import Data.Generics
+
+#if __GLASGOW_HASKELL__ < 707
+data Proxy a = Proxy
+#endif
 
 dsSplice :: Q Exp -> Q Exp
 dsSplice expq = expq >>= dsExp >>= (return . expToTH)
+
+dsDecSplice :: Q [Dec] -> Q [Dec]
+dsDecSplice decsQ = decsQ >>= dsDecs >>= (return . decsToTH)
+
+testDecSplice :: Int -> Q Exp
+testDecSplice n = do
+  let dsName  = mkName $ "Test.DsDec.Dec" ++ show n
+      regName = mkName $ "Test.Dec.Dec" ++ show n
+  infoDs  <- reify dsName
+  infoReg <- reify regName
+#if __GLASGOW_HASKELL__ < 707
+  eqTHSplice infoDs infoReg
+#else
+  rolesDs  <- reifyRoles dsName
+  rolesReg <- reifyRoles regName
+  eqTHSplice (infoDs, rolesDs) (infoReg, rolesReg)
+#endif
+
+unqualify :: Data a => a -> a
+unqualify = everywhere (mkT (mkName . nameBase))
+
+eqTH :: (Data a, Show a) => a -> a -> Bool
+eqTH a b = show (unqualify a) == show (unqualify b)
+
+eqTHSplice :: (Data a, Show a) => a -> a -> Q Exp
+eqTHSplice a b =
+  if a `eqTH` b
+  then [| True |]
+  else [| False |]
+
 
 test1_sections = [| map ((* 3) . (4 +) . (\x -> x * x)) [10, 11, 12] |]
 test2_lampats = [| (\(Just x) (Left z) -> x + z) (Just 5) (Left 10) |]
@@ -83,9 +119,6 @@ test26_forall = [| let f :: Num a => a -> a
                        f x = x + 10 in
                    (f 5, f 3.0) |]
 
-data Proxy a = Proxy
-  deriving Show
-                
 test27_kisig = [| let f :: Proxy (a :: Bool) -> ()
                       f _ = () in
                   (f (Proxy :: Proxy False), f (Proxy :: Proxy True)) |]
@@ -134,3 +167,61 @@ test39_eq = [| let f :: (a ~ b) => a -> b
                    f x = x in
                (f ()) |]
 #endif
+
+#if __GLASGOW_HASKELL__ < 707
+dec_test_nums = [1..9] :: [Int]
+#else
+dec_test_nums = [1..10] :: [Int]
+#endif
+
+dectest1 = [d| data Dec1 = Foo | Bar Int |]
+dectest2 = [d| data Dec2 a = forall b. (Show b, Eq a) => MkDec2 a b Bool |]
+dectest3 = [d| data Dec3 a = forall b. MkDec3 { foo :: a, bar :: b }
+#if __GLASGOW_HASKELL__ >= 707
+               type role Dec3 nominal
+#endif
+               |]
+dectest4 = [d| newtype Dec4 a = MkDec4 (a, Int) |]
+dectest5 = [d| type Dec5 a b = (a b, Maybe b) |]
+dectest6 = [d| class (Monad m1, Monad m2) => Dec6 (m1 :: * -> *) m2 | m1 -> m2  where
+                 lift :: forall a. m1 a -> m2 a
+                 type M2 m1 :: * -> * |]
+dectest7 = [d| type family Dec7 a (b :: *) (c :: Bool) :: * -> * |]
+dectest8 = [d| type family Dec8 a |]
+dectest9 = [d| data family Dec9 a (b :: * -> *) :: * -> * |]
+#if __GLASGOW_HASKELL__ < 707
+ds_dectest10 = DClosedTypeFamilyD (mkName "Dec10")
+                                 [DPlainTV (mkName "a")]
+                                 (Just (DArrowK DStarK DStarK))
+                                 [ DTySynEqn [DConT ''Int]  (DConT ''Maybe)
+                                 , DTySynEqn [DConT ''Bool] (DConT ''[]) ]
+dectest10 = [d| type family Dec10 a :: * -> *
+                type instance Dec10 Int = Maybe
+                type instance Dec10 Bool = [] |]
+
+ds_role_test = DRoleAnnotD (mkName "Dec3") [Nominal]
+role_test = []
+#else
+dectest10 = [d| type family Dec10 a :: * -> * where
+                  Dec10 Int = Maybe
+                  Dec10 Bool = [] |]
+#endif
+
+instance_test = [d| instance (Show a, Show b) => Show (a -> b) where
+                       show _ = "function" |]
+
+class Dec6 a b where { lift :: a x -> b x; type M2 a }
+imp_inst_test1 = [d| instance Dec6 Maybe (Either ()) where
+                       lift Nothing = Left ()
+                       lift (Just x) = Right x
+                       type M2 Maybe = Either () |]
+
+data family Dec9 a (b :: * -> *) :: * -> *
+imp_inst_test2 = [d| data instance Dec9 Int Maybe a = MkIMB [a] | forall b. MkIMB2 (b a) |]
+imp_inst_test3 = [d| newtype instance Dec9 Bool m x = MkBMX (m x) |]
+
+type family Dec8 a
+imp_inst_test4 = [d| type instance Dec8 Int = Bool |]
+
+
+  

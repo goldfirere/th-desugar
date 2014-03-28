@@ -6,7 +6,7 @@ eir@cis.upenn.edu
 Utility functions for th-desugar package.
 -}
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, TupleSections #-}
 
 module Language.Haskell.TH.Desugar.Util where
 
@@ -157,3 +157,15 @@ tupleDegree_maybe s = do
 -- | Extract the degree of a tuple name, if the argument is a tuple name
 tupleNameDegree_maybe :: Name -> Maybe Int
 tupleNameDegree_maybe = tupleDegree_maybe . nameBase
+
+liftSnd :: (a -> b) -> (c, a) -> (c, b)
+liftSnd f (c, a) = (c, f a)
+
+liftSndM :: Monad m => (a -> m b) -> (c, a) -> m (c, b)
+liftSndM f (c, a) = f a >>= return . (c, )
+
+liftThdOf3 :: (a -> b) -> (c, d, a) -> (c, d, b)
+liftThdOf3 f (c, d, a) = (c, d, f a)
+
+liftThdOf3M :: Monad m => (a -> m b) -> (c, d, a) -> m (c, d, b)
+liftThdOf3M f (c, d, a) = f a >>= return . (c, d, )
