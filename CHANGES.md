@@ -1,3 +1,10 @@
+Version 1.4.0
+-------------
+* All `Dec`s can now be desugared, to the new `DDec` type.
+
+* Sweetening `Dec`s that do not exist in GHC 7.6.3 works on a "best effort" basis:
+closed type families are sweetened to open ones, and role annotations are dropped.
+
 Version 1.3.1
 -------------
 * Update cabal file to include testing files in sdist.

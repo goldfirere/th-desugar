@@ -13,6 +13,10 @@ from a TH quote, using the syntax `[| ... |]`. If the input to these functions
 is a hand-coded TH syntax tree, the results may be unpredictable. In
 particular, it is likely that promoted datatypes will not work as expected.
 
+One explicit goal of this package is to reduce the burden of supporting multiple
+GHC / TH versions. Thus, the desugared language is the same across all GHC versions,
+and any inconsistencies are handled internally.
+
 The package was designed for use with the `singletons` package, so some design
 decisions are based on that use case, when more than one design choice was
 possible.
