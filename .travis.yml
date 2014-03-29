@@ -44,4 +44,4 @@ script:
    cd ../
 
 after_script:
-  - cat dist/test/th-desugar-*-spec.log 
+  - cat dist/test/*.log 
