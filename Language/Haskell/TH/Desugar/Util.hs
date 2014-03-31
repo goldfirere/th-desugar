@@ -11,7 +11,7 @@ Utility functions for th-desugar package.
 module Language.Haskell.TH.Desugar.Util where
 
 import Language.Haskell.TH
-import Language.Haskell.TH.Syntax ( Quasi(..) )
+import Language.Haskell.TH.Syntax ( Quasi(..), mkNameG_tc, mkNameG_d )
 
 import qualified Data.Set as S
 import Data.Foldable
@@ -71,6 +71,28 @@ dataConNameToCon con_name = do
     get_con_name (RecC name _)     = name
     get_con_name (InfixC _ name _) = name
     get_con_name (ForallC _ _ con) = get_con_name con
+
+-- | Like TH's @lookupTypeName@, but if this name is not bound, then we assume
+-- it is declared in the current module.
+mkTypeName :: Quasi q => String -> q Name
+mkTypeName str = do
+  m_name <- qLookupName True str
+  case m_name of
+    Just name -> return name
+    Nothing -> do
+      Loc { loc_package = pkg, loc_module = modu } <- qLocation
+      return $ mkNameG_tc pkg modu str
+
+-- | Like TH's @lookupDataName@, but if this name is not bound, then we assume
+-- it is declared in the current module.
+mkDataName :: Quasi q => String -> q Name
+mkDataName str = do
+  m_name <- qLookupName False str
+  case m_name of
+    Just name -> return name
+    Nothing -> do
+      Loc { loc_package = pkg, loc_module = modu } <- qLocation
+      return $ mkNameG_d pkg modu str
 
 -- | Extracts the name out of a variable pattern, or returns @Nothing@
 stripVarP_maybe :: Pat -> Maybe Name

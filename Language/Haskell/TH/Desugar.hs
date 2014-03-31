@@ -30,6 +30,7 @@ module Language.Haskell.TH.Desugar (
 
   -- * Utility functions
   dPatToDExp, removeWilds, reifyWithWarning, getDataD, dataConNameToCon,
+  mkTypeName, mkDataName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
 
   -- ** Extracting bound names

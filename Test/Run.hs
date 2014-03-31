@@ -27,6 +27,10 @@ import Language.Haskell.TH
 
 import Control.Monad
 
+#if __GLASGOW_HASKELL__ >= 707
+import Data.Proxy
+#endif
+
 tests :: Test
 tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "lampats"  ~: $test2_lampats   @=? $(dsSplice test2_lampats)
@@ -89,6 +93,17 @@ test_dec :: [Bool]
 test_dec = $(do bools <- mapM testDecSplice dec_test_nums
                 return $ ListE bools)
 
+$( do fuzzType <- mkTypeName "Fuzz"
+      fuzzData <- mkDataName "Fuzz"
+      let tySynDecs = TySynD (mkName "FuzzSyn") [] (ConT fuzzType)
+          dataSynDecs = TySynD (mkName "FuzzDataSyn") [] (ConT fuzzData)
+      fuzzDecs <- [d| data Fuzz = Fuzz |]
+      return $ tySynDecs : dataSynDecs : fuzzDecs )
+
+test_mkName :: Bool
+test_mkName = and [ hasSameType (Proxy :: Proxy FuzzSyn) (Proxy :: Proxy Fuzz)
+                  , hasSameType (Proxy :: Proxy FuzzDataSyn) (Proxy :: Proxy 'Fuzz) ]
+
 main :: IO ()
 main = hspec $ do
   describe "th-desugar library" $ do
@@ -106,5 +121,7 @@ main = hspec $ do
 #if __GLASGOW_HASKELL__ < 707
     it "passes roles test" $ (decsToTH [ds_role_test]) `eqTH` role_test
 #endif
+
+    it "makes type names" $ test_mkName
 
     fromHUnitTest tests
