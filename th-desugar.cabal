@@ -38,7 +38,8 @@ library
   exposed-modules:    Language.Haskell.TH.Desugar,
                       Language.Haskell.TH.Desugar.Sweeten,
                       Language.Haskell.TH.Desugar.Expand
-  other-modules:      Language.Haskell.TH.Desugar.Core, Language.Haskell.TH.Desugar.Util
+  other-modules:      Language.Haskell.TH.Desugar.Core,
+                      Language.Haskell.TH.Desugar.Util
   default-language:   Haskell2010
 
 

@@ -223,5 +223,8 @@ imp_inst_test3 = [d| newtype instance Dec9 Bool m x = MkBMX (m x) |]
 type family Dec8 a
 imp_inst_test4 = [d| type instance Dec8 Int = Bool |]
 
+-- used for bug8884 test
+type family Poly (a :: k) :: *
+type instance Poly x = Int
 
   

@@ -6,7 +6,7 @@ eir@cis.upenn.edu
 
 {-# LANGUAGE TemplateHaskell, UnboxedTuples, ParallelListComp, CPP,
              RankNTypes, ImpredicativeTypes, TypeFamilies,
-             DataKinds, ConstraintKinds #-}
+             DataKinds, ConstraintKinds, PolyKinds #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
@@ -104,6 +104,19 @@ test_mkName :: Bool
 test_mkName = and [ hasSameType (Proxy :: Proxy FuzzSyn) (Proxy :: Proxy Fuzz)
                   , hasSameType (Proxy :: Proxy FuzzDataSyn) (Proxy :: Proxy 'Fuzz) ]
 
+test_bug8884 :: Bool
+test_bug8884 = $(do info <- reify ''Poly
+                    dinfo@(DTyConI (DFamilyD TypeFam _name _tvbs (Just resK))
+                                   (Just [DTySynInstD _name2 (DTySynEqn lhs _rhs)]))
+                      <- dsInfo info
+                    case (resK, lhs) of
+                      (DStarK, [DVarT _]) -> [| True |]
+                      _                                     -> do
+                        runIO $ do
+                          putStrLn "Failed bug8884 test:"
+                          putStrLn $ show dinfo
+                        [| False |] )
+
 main :: IO ()
 main = hspec $ do
   describe "th-desugar library" $ do
@@ -123,5 +136,7 @@ main = hspec $ do
 #endif
 
     it "makes type names" $ test_mkName
+
+    it "fixes bug 8884" $ test_bug8884
 
     fromHUnitTest tests

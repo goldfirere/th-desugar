@@ -16,6 +16,7 @@ import Language.Haskell.TH.Syntax ( Quasi(..), mkNameG_tc, mkNameG_d )
 import qualified Data.Set as S
 import Data.Foldable
 import Control.Applicative
+import Data.Generics
 
 -- | Reify a declaration, warning the user about splices if the reify fails.
 -- The warning says that reification can fail if you try to reify a type in
@@ -72,6 +73,14 @@ dataConNameToCon con_name = do
     get_con_name (InfixC _ name _) = name
     get_con_name (ForallC _ _ con) = get_con_name con
 
+-- | Check if a name occurs anywhere within a TH tree.
+nameOccursIn :: Data a => Name -> a -> Bool
+nameOccursIn n = everything (||) $ mkQ False (== n)
+
+-- | Extract all Names mentioned in a TH tree.
+allNamesIn :: Data a => a -> [Name]
+allNamesIn = everything (++) $ mkQ [] (:[])
+               
 -- | Like TH's @lookupTypeName@, but if this name is not bound, then we assume
 -- it is declared in the current module.
 mkTypeName :: Quasi q => String -> q Name

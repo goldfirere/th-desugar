@@ -11,7 +11,7 @@ processing. The desugared types and constructors are prefixed with a D.
 
 module Language.Haskell.TH.Desugar.Core where
 
-import Prelude hiding (mapM, foldl, foldr, all, elem, exp)
+import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap)
 
 import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (lift)
@@ -103,7 +103,7 @@ data DLetDec = DFunD Name [DClause]
 -- | Is it a @newtype@ or a @data@ type?
 data NewOrData = Newtype
                | Data
-               deriving (Show, Typeable, Data)
+               deriving (Eq, Show, Typeable, Data)
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
@@ -169,6 +169,20 @@ data AnnTarget = ModuleAnnotation
                | ValueAnnotation Name
                deriving (Show, Typeable, Data)
 #endif
+
+-- | Corresponds to TH's @Info@ type.
+data DInfo = DTyConI DDec (Maybe [DInstanceDec])
+           | DVarI Name DType (Maybe Name) Fixity
+               -- ^ The @Maybe Name@ stores the name of the enclosing definition
+               -- (datatype, for a data constructor; class, for a method),
+               -- if any
+           | DTyVarI Name DKind
+           | DPrimTyConI Name Int Bool
+               -- ^ The @Int@ is the arity; the @Bool@ is whether this tycon
+               -- is unlifted.
+           deriving (Show, Typeable, Data)
+
+type DInstanceDec = DDec -- ^ Guaranteed to be an instance declaration
 
 -- | Desugar an expression
 dsExp :: Quasi q => Exp -> q DExp
@@ -510,6 +524,73 @@ removeWilds (DConPa con_name pats) = DConPa con_name <$> mapM removeWilds pats
 removeWilds (DTildePa pat) = DTildePa <$> removeWilds pat
 removeWilds (DBangPa pat) = DBangPa <$> removeWilds pat
 removeWilds DWildPa = DVarPa <$> qNewName "wild"
+
+-- | Desugar @Info@
+dsInfo :: Quasi q => Info -> q DInfo
+dsInfo (ClassI dec instances) = do
+  [ddec]     <- dsDec dec
+  dinstances <- dsDecs instances
+  return $ DTyConI ddec (Just dinstances)
+dsInfo (ClassOpI name ty parent fixity) =
+  DVarI name <$> dsType ty <*> pure (Just parent) <*> pure fixity
+dsInfo (TyConI dec) = do
+  [ddec] <- dsDec dec
+  return $ DTyConI ddec Nothing
+dsInfo (FamilyI dec instances) = do
+  [ddec]     <- dsDec dec
+  dinstances <- dsDecs instances
+  (ddec', num_args) <- fixBug8884ForFamilies ddec
+  let dinstances' = map (fixBug8884ForInstances num_args) dinstances
+  return $ DTyConI ddec' (Just dinstances')
+dsInfo (PrimTyConI name arity unlifted) =
+  return $ DPrimTyConI name arity unlifted
+dsInfo (DataConI name ty parent fixity) =
+  DVarI name <$> dsType ty <*> pure (Just parent) <*> pure fixity
+dsInfo (VarI name ty Nothing fixity) =
+  DVarI name <$> dsType ty <*> pure Nothing <*> pure fixity
+dsInfo (VarI name _ (Just _) _) =
+  impossible $ "Declaration supplied with variable: " ++ show name
+dsInfo (TyVarI name ty) = DTyVarI name <$> dsKind ty
+
+fixBug8884ForFamilies :: Quasi q => DDec -> q (DDec, Int)
+#if __GLASGOW_HASKELL__ <= 708
+    -- fix after release of GHC 7.8.1
+fixBug8884ForFamilies (DFamilyD flav name tvbs m_kind) = do
+  let num_args = length tvbs
+  m_kind' <- mapM (remove_arrows num_args) m_kind
+  return (DFamilyD flav name tvbs m_kind', num_args)
+fixBug8884ForFamilies (DClosedTypeFamilyD name tvbs m_kind eqns) = do
+  let num_args = length tvbs
+      eqns' = map (fixBug8884ForEqn num_args) eqns
+  m_kind' <- mapM (remove_arrows num_args) m_kind
+  return (DClosedTypeFamilyD name tvbs m_kind' eqns', num_args)
+fixBug8884ForFamilies dec =
+  impossible $ "Reifying yielded a FamilyI with a non-family Dec: " ++ show dec
+
+remove_arrows :: Quasi q => Int -> DKind -> q DKind
+remove_arrows 0 k = return k
+remove_arrows n (DArrowK _ k) = remove_arrows (n-1) k
+remove_arrows _ _ =
+  impossible "Internal error: Fix for bug 8884 ran out of arrows."
+  
+#else
+fixBug8884ForFamilies dec = return (dec, 0)   -- return value ignored
+#endif
+
+fixBug8884ForInstances :: Int -> DDec -> DDec
+fixBug8884ForInstances num_args (DTySynInstD name eqn) =
+  DTySynInstD name (fixBug8884ForEqn num_args eqn)
+fixBug8884ForInstances _ dec = dec
+
+fixBug8884ForEqn :: Int -> DTySynEqn -> DTySynEqn
+#if __GLASGOW_HASKELL__ <= 708
+    -- fix after release of GHC 7.8.1
+fixBug8884ForEqn num_args (DTySynEqn lhs rhs) =
+  let lhs' = drop (length lhs - num_args) lhs in
+  DTySynEqn lhs' rhs
+#else
+fixBug8884ForEqn _ = id
+#endif
 
 -- | Desugar arbitrary @Dec@s
 dsDecs :: Quasi q => [Dec] -> q [DDec]

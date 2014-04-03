@@ -2,8 +2,11 @@ Version 1.4.0
 -------------
 * All `Dec`s can now be desugared, to the new `DDec` type.
 
-* Sweetening `Dec`s that do not exist in GHC 7.6.3 works on a "best effort" basis:
+* Sweetening `Dec`s that do not exist in GHC 7.6.3- works on a "best effort" basis:
 closed type families are sweetened to open ones, and role annotations are dropped.
+
+* `Info`s can now be desugared. Desugaring takes into account GHC bug #8884, which
+meant that reifying poly-kinded type families in GHC 7.6.3- was subtly wrong.
 
 Version 1.3.1
 -------------
