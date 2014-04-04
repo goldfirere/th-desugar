@@ -76,8 +76,8 @@ flattenDValD (DValD pat exp) = do
           | n == name -> DVarPa y
           | otherwise -> DWildPa
         DConPa con ps -> DConPa con (map (wildify name y) ps)
-        DTildePa p -> DTildePa (wildify name y p)
-        DBangPa p -> DBangPa (wildify name y p)
+        DTildePa pa -> DTildePa (wildify name y pa)
+        DBangPa pa -> DBangPa (wildify name y pa)
         DWildPa -> DWildPa
         
 flattenDValD other_dec = return [other_dec]
