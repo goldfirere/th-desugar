@@ -32,7 +32,7 @@ module Language.Haskell.TH.Desugar (
   -- * Utility functions
   dPatToDExp, removeWilds, reifyWithWarning, getDataD, dataConNameToCon,
   nameOccursIn, allNamesIn, flattenDValD,
-  mkTypeName, mkDataName,
+  mkTypeName, mkDataName, newUniqueName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
 
   -- ** Extracting bound names
@@ -55,7 +55,7 @@ import Data.Foldable ( foldMap )
 flattenDValD :: Quasi q => DLetDec -> q [DLetDec]
 flattenDValD dec@(DValD (DVarPa _) _) = return [dec]
 flattenDValD (DValD pat exp) = do
-  x <- qNewName "x"
+  x <- newUniqueName "x" -- must use newUniqueName here because we might be top-level
   let top_val_d = DValD (DVarPa x) exp
       bound_names = S.elems $ extractBoundNamesDPat pat
   other_val_ds <- mapM (mk_val_d x) bound_names

@@ -30,6 +30,13 @@ reifyWithWarning name = qRecover
         "the declaration in a new splice.")
   (qReify name)
 
+-- | Like newName, but even more unique (unique across different splices),
+-- and with unique @nameBase@s.
+newUniqueName :: Quasi q => String -> q Name
+newUniqueName str = do
+  n <- qNewName str
+  return $ mkName $ show n
+
 -- | Report that a certain TH construct is impossible
 impossible :: Quasi q => String -> q a
 impossible err = fail (err ++ "\nThis should not happen in Haskell.\nPlease email eir@cis.upenn.edu with your code if you see this.")

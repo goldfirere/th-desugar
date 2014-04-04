@@ -8,6 +8,9 @@ closed type families are sweetened to open ones, and role annotations are droppe
 * `Info`s can now be desugared. Desugaring takes into account GHC bug #8884, which
 meant that reifying poly-kinded type families in GHC 7.6.3- was subtly wrong.
 
+* There is a new function `flattenDValD` which takes a binding like
+  `let (a,b) = foo` and breaks it apart into separate assignments for `a` and `b`.
+
 Version 1.3.1
 -------------
 * Update cabal file to include testing files in sdist.
