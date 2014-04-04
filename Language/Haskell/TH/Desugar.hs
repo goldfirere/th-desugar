@@ -45,6 +45,7 @@ import Language.Haskell.TH.Syntax
 
 import qualified Data.Set as S
 import Data.Foldable ( foldMap )
+import Prelude hiding ( exp )
 
 -- | If the declaration passed in is a 'DValD', creates new, equivalent
 -- declarations such that the 'DPat' in all 'DValD's is just a plain
@@ -74,9 +75,9 @@ flattenDValD (DValD pat exp) = do
         DVarPa n
           | n == name -> DVarPa y
           | otherwise -> DWildPa
-        DConPa con pats -> DConPa con (map (wildify name y) pats)
-        DTildePa pat -> DTildePa (wildify name y pat)
-        DBangPa pat -> DBangPa (wildify name y pat)
+        DConPa con ps -> DConPa con (map (wildify name y) ps)
+        DTildePa p -> DTildePa (wildify name y p)
+        DBangPa p -> DBangPa (wildify name y p)
         DWildPa -> DWildPa
         
 flattenDValD other_dec = return [other_dec]
