@@ -35,11 +35,11 @@ reifyWithWarning name = qRecover
 newUniqueName :: Quasi q => String -> q Name
 newUniqueName str = do
   n <- qNewName str
-  return $ mkName $ show n
+  qNewName $ show n
 
 -- | Report that a certain TH construct is impossible
 impossible :: Quasi q => String -> q a
-impossible err = fail (err ++ "\nThis should not happen in Haskell.\nPlease email eir@cis.upenn.edu with your code if you see this.")
+impossible err = fail (err ++ "\n    This should not happen in Haskell.\n    Please email eir@cis.upenn.edu with your code if you see this.")
 
 -- | Extract the @TyVarBndr@s and constructors given the @Name@ of a type
 getDataD :: Quasi q

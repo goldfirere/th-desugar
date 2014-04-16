@@ -48,6 +48,10 @@ data DPat = DLitPa Lit
           | DTildePa DPat
           | DBangPa DPat
           | DWildPa
+          | DSigPa DPat DType   -- ^ No desugaring will produce this, as GHC
+                                -- does not support scoped type variables in
+                                -- TH quotes. However, this may be useful
+                                -- if you are producing patterns algorithmically.
           deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Type@ type.
@@ -193,7 +197,7 @@ dsExp (AppE e1 e2) = DAppE <$> dsExp e1 <*> dsExp e2
 dsExp (InfixE Nothing op Nothing) = dsExp op
 dsExp (InfixE (Just lhs) op Nothing) = DAppE <$> (dsExp op) <*> (dsExp lhs)
 dsExp (InfixE Nothing op (Just rhs)) = do
-  lhsName <- qNewName "lhs"
+  lhsName <- newUniqueName "lhs"
   op' <- dsExp op
   rhs' <- dsExp rhs
   return $ DLamE [lhsName] (foldl DAppE op' [DVarE lhsName, rhs'])
@@ -204,7 +208,7 @@ dsExp (UInfixE _ _ _) =
 dsExp (ParensE exp) = dsExp exp
 dsExp (LamE pats exp) = dsLam pats =<< dsExp exp
 dsExp (LamCaseE matches) = do
-  x <- qNewName "x"
+  x <- newUniqueName "x"
   matches' <- dsMatches x matches
   return $ DLamE [x] (DCaseE (DVarE x) matches')
 dsExp (TupE exps) = do
@@ -222,7 +226,7 @@ dsExp (MultiIfE guarded_exps) =
   dsGuards guarded_exps failure
 dsExp (LetE decs exp) = DLetE <$> dsLetDecs decs <*> dsExp exp
 dsExp (CaseE exp matches) = do
-  scrutinee <- qNewName "scrutinee"
+  scrutinee <- newUniqueName "scrutinee"
   exp' <- dsExp exp
   matches' <- dsMatches scrutinee matches
   return $ DLetE [DValD (DVarPa scrutinee) exp'] $
@@ -286,7 +290,7 @@ dsExp (RecUpdE exp field_exps) = do
     con_to_dmatch :: Quasi q => Con -> q DMatch
     con_to_dmatch (RecC con_name args) = do
       let con_field_names = map fst_of_3 args
-      field_var_names <- mapM (qNewName . nameBase) con_field_names
+      field_var_names <- mapM (newUniqueName . nameBase) con_field_names
       DMatch (DConPa con_name (map DVarPa field_var_names)) <$>
              (foldl DAppE (DConE con_name) <$>
                     (reorderFields args field_exps (map DVarE field_var_names)))
@@ -303,7 +307,7 @@ dsLam pats exp
   | Just names <- mapM stripVarP_maybe pats
   = return $ DLamE names exp
   | otherwise
-  = do arg_names <- replicateM (length pats) (qNewName "arg")
+  = do arg_names <- replicateM (length pats) (newUniqueName "arg")
        let scrutinee = mkTupleDExp (map DVarE arg_names)
        (pats', exp') <- dsPatsOverExp pats exp
        let match = DMatch (mkTupleDPat pats') exp'
@@ -514,6 +518,7 @@ dPatToDExp (DConPa name pats) = foldl DAppE (DConE name) (map dPatToDExp pats)
 dPatToDExp (DTildePa pat) = dPatToDExp pat
 dPatToDExp (DBangPa pat) = dPatToDExp pat
 dPatToDExp DWildPa = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
+dPatToDExp (DSigPa pat ty) = DSigE (dPatToDExp pat) ty
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
 --   variable
@@ -523,7 +528,8 @@ removeWilds p@(DVarPa _) = return p
 removeWilds (DConPa con_name pats) = DConPa con_name <$> mapM removeWilds pats
 removeWilds (DTildePa pat) = DTildePa <$> removeWilds pat
 removeWilds (DBangPa pat) = DBangPa <$> removeWilds pat
-removeWilds DWildPa = DVarPa <$> qNewName "wild"
+removeWilds DWildPa = DVarPa <$> newUniqueName "wild"
+removeWilds (DSigPa pat ty) = DSigPa <$> removeWilds pat <*> pure ty
 
 -- | Desugar @Info@
 dsInfo :: Quasi q => Info -> q DInfo
@@ -553,8 +559,7 @@ dsInfo (VarI name _ (Just _) _) =
 dsInfo (TyVarI name ty) = DTyVarI name <$> dsKind ty
 
 fixBug8884ForFamilies :: Quasi q => DDec -> q (DDec, Int)
-#if __GLASGOW_HASKELL__ <= 708
-    -- fix after release of GHC 7.8.1
+#if __GLASGOW_HASKELL__ < 708
 fixBug8884ForFamilies (DFamilyD flav name tvbs m_kind) = do
   let num_args = length tvbs
   m_kind' <- mapM (remove_arrows num_args) m_kind
@@ -583,8 +588,7 @@ fixBug8884ForInstances num_args (DTySynInstD name eqn) =
 fixBug8884ForInstances _ dec = dec
 
 fixBug8884ForEqn :: Int -> DTySynEqn -> DTySynEqn
-#if __GLASGOW_HASKELL__ <= 708
-    -- fix after release of GHC 7.8.1
+#if __GLASGOW_HASKELL__ < 708
 fixBug8884ForEqn num_args (DTySynEqn lhs rhs) =
   let lhs' = drop (length lhs - num_args) lhs in
   DTySynEqn lhs' rhs
@@ -722,7 +726,7 @@ dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
   (pats', exp'') <- dsPatsOverExp pats exp_with_wheres
   return $ DClause pats' exp'' : rest'
 dsClauses n clauses@(Clause outer_pats _ _ : _) = do
-  arg_names <- replicateM (length outer_pats) (qNewName "arg")
+  arg_names <- replicateM (length outer_pats) (newUniqueName "arg")
   let scrutinee = mkTupleDExp (map DVarE arg_names)
   clause <- DClause (map DVarPa arg_names) <$>
               (DCaseE scrutinee <$> foldrM (clause_to_dmatch scrutinee) [] clauses)

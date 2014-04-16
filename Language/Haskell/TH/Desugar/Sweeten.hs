@@ -41,6 +41,7 @@ patToTH (DConPa n pats) = ConP n (map patToTH pats)
 patToTH (DTildePa pat)  = TildeP (patToTH pat)
 patToTH (DBangPa pat)   = BangP (patToTH pat)
 patToTH DWildPa         = WildP
+patToTH (DSigPa pat ty) = SigP (patToTH pat) (typeToTH ty)
 
 decsToTH :: [DDec] -> [Dec]
 decsToTH = concatMap decToTH

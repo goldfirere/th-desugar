@@ -4,7 +4,8 @@
 eir@cis.upenn.edu
 -}
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, MultiParamTypeClasses, FunctionalDependencies,
+             TypeSynonymInstances, FlexibleInstances #-}
 
 {-|
 Desugars full Template Haskell syntax into a smaller core syntax for further
@@ -18,6 +19,9 @@ module Language.Haskell.TH.Desugar (
   DCon(..), DConFields(..), DStrictType, DVarStrictType, DForeign(..),
   DPragma(..), DRuleBndr(..), DTySynEqn(..), DInfo(..), DInstanceDec,
   Role(..), AnnTarget(..),
+
+  -- * The 'Desugar' class
+  Desugar(..),
 
   -- * Main desugaring functions
   dsExp, dsDecs, dsType, dsKind, dsInfo,
@@ -41,11 +45,48 @@ module Language.Haskell.TH.Desugar (
 
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
+import Language.Haskell.TH.Desugar.Sweeten
 import Language.Haskell.TH.Syntax
 
 import qualified Data.Set as S
 import Data.Foldable ( foldMap )
 import Prelude hiding ( exp )
+
+-- | This class relates a TH type with its th-desugar type and allows
+-- conversions back and forth. The functional dependency goes only one
+-- way because `Type` and `Kind` are type synonyms, but they desugar
+-- to different types.
+class Desugar th ds | ds -> th where
+  desugar :: Quasi q => th -> q ds
+  sweeten :: ds -> th
+
+instance Desugar Exp DExp where
+  desugar = dsExp
+  sweeten = expToTH
+
+instance Desugar Type DType where
+  desugar = dsType
+  sweeten = typeToTH
+
+instance Desugar Kind DKind where
+  desugar = dsKind
+  sweeten = kindToTH
+
+instance Desugar Cxt DCxt where
+  desugar = dsCxt
+  sweeten = cxtToTH
+
+instance Desugar TyVarBndr DTyVarBndr where
+  desugar = dsTvb
+  sweeten = tvbToTH
+
+instance Desugar [Dec] [DDec] where
+  desugar = dsDecs
+  sweeten = decsToTH
+
+instance Desugar Con DCon where
+  desugar = dsCon
+  sweeten = conToTH
 
 -- | If the declaration passed in is a 'DValD', creates new, equivalent
 -- declarations such that the 'DPat' in all 'DValD's is just a plain
@@ -79,6 +120,7 @@ flattenDValD (DValD pat exp) = do
         DTildePa pa -> DTildePa (wildify name y pa)
         DBangPa pa -> DBangPa (wildify name y pa)
         DWildPa -> DWildPa
+        DSigPa pa ty -> DSigPa (wildify name y pa) ty
         
 flattenDValD other_dec = return [other_dec]
 
@@ -90,3 +132,29 @@ extractBoundNamesDPat (DConPa _ pats) = foldMap extractBoundNamesDPat pats
 extractBoundNamesDPat (DTildePa pat)  = extractBoundNamesDPat pat
 extractBoundNamesDPat (DBangPa pat)   = extractBoundNamesDPat pat
 extractBoundNamesDPat DWildPa         = S.empty
+extractBoundNamesDPat (DSigPa pat ty) = extractBoundNamesDPat pat `S.union`
+                                        extractBoundNamesDType ty
+
+extractBoundNamesDType :: DType -> S.Set Name
+extractBoundNamesDType = go
+  where
+    go (DForallT tvbs _cxt ty) = go ty `S.difference` (foldMap dtvbName tvbs)
+    go (DAppT ty1 ty2)         = go ty1 `S.union` go ty2
+    go (DSigT ty ki)           = go ty `S.union` extractBoundNamesDKind ki
+    go (DVarT n)               = S.singleton n
+    go (DConT _)               = S.empty
+    go DArrowT                 = S.empty
+    go (DLitT {})              = S.empty
+
+dtvbName :: DTyVarBndr -> S.Set Name
+dtvbName (DPlainTV n)    = S.singleton n
+dtvbName (DKindedTV n _) = S.singleton n
+
+extractBoundNamesDKind :: DKind -> S.Set Name
+extractBoundNamesDKind = go
+  where
+    go (DForallK names ki) = go ki `S.difference` (S.fromList names)
+    go (DVarK n)           = S.singleton n
+    go (DConK _ kis)       = foldMap extractBoundNamesDKind kis
+    go (DArrowK k1 k2)     = go k1 `S.union` go k2
+    go DStarK              = S.empty
