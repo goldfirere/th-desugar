@@ -13,13 +13,16 @@ eir@cis.upenn.edu
 
 module Test.Run where
 
+import Prelude hiding ( exp )
+
 import Test.HUnit
 import Test.Hspec
 import Test.Hspec.HUnit
 
 import Test.Splices
-import Test.DsDec
-import Test.Dec
+import qualified Test.DsDec
+import qualified Test.Dec
+import Test.Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Sweeten
@@ -117,6 +120,18 @@ test_bug8884 = $(do info <- reify ''Poly
                           putStrLn $ show dinfo
                         [| False |] )
 
+flatten_dvald :: Bool
+flatten_dvald = let s1 = $(flatten_dvald_test)
+                    s2 = $(do exp <- flatten_dvald_test
+                              DLetE ddecs dexp <- dsExp exp
+                              flattened <- fmap concat $ mapM flattenDValD ddecs
+                              return $ expToTH $ DLetE flattened dexp ) in
+                s1 == s2
+
+test_rec_sels :: Bool
+test_rec_sels = and $(do bools <- mapM testRecSelTypes [1..rec_sel_test_num_sels]
+                         return $ ListE bools)
+
 main :: IO ()
 main = hspec $ do
   describe "th-desugar library" $ do
@@ -138,5 +153,9 @@ main = hspec $ do
     it "makes type names" $ test_mkName
 
     it "fixes bug 8884" $ test_bug8884
+
+    it "flattens DValDs" $ flatten_dvald
+
+    it "extract record selectors" $ test_rec_sels
 
     fromHUnitTest tests

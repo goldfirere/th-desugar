@@ -35,7 +35,7 @@ module Language.Haskell.TH.Desugar (
 
   -- * Utility functions
   dPatToDExp, removeWilds, reifyWithWarning, getDataD, dataConNameToCon,
-  nameOccursIn, allNamesIn, flattenDValD,
+  nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
   mkTypeName, mkDataName, newUniqueName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
 
@@ -124,7 +124,6 @@ flattenDValD (DValD pat exp) = do
         
 flattenDValD other_dec = return [other_dec]
 
--- | Extract the names bound in a @DPat@
 extractBoundNamesDPat :: DPat -> S.Set Name
 extractBoundNamesDPat (DLitPa _)      = S.empty
 extractBoundNamesDPat (DVarPa n)      = S.singleton n
@@ -133,14 +132,14 @@ extractBoundNamesDPat (DTildePa pat)  = extractBoundNamesDPat pat
 extractBoundNamesDPat (DBangPa pat)   = extractBoundNamesDPat pat
 extractBoundNamesDPat DWildPa         = S.empty
 extractBoundNamesDPat (DSigPa pat ty) = extractBoundNamesDPat pat `S.union`
-                                        extractBoundNamesDType ty
+                                        fvDType ty
 
-extractBoundNamesDType :: DType -> S.Set Name
-extractBoundNamesDType = go
+fvDType :: DType -> S.Set Name
+fvDType = go
   where
     go (DForallT tvbs _cxt ty) = go ty `S.difference` (foldMap dtvbName tvbs)
     go (DAppT ty1 ty2)         = go ty1 `S.union` go ty2
-    go (DSigT ty ki)           = go ty `S.union` extractBoundNamesDKind ki
+    go (DSigT ty ki)           = go ty `S.union` fvDKind ki
     go (DVarT n)               = S.singleton n
     go (DConT _)               = S.empty
     go DArrowT                 = S.empty
@@ -150,11 +149,38 @@ dtvbName :: DTyVarBndr -> S.Set Name
 dtvbName (DPlainTV n)    = S.singleton n
 dtvbName (DKindedTV n _) = S.singleton n
 
-extractBoundNamesDKind :: DKind -> S.Set Name
-extractBoundNamesDKind = go
+fvDKind :: DKind -> S.Set Name
+fvDKind = go
   where
     go (DForallK names ki) = go ki `S.difference` (S.fromList names)
     go (DVarK n)           = S.singleton n
-    go (DConK _ kis)       = foldMap extractBoundNamesDKind kis
+    go (DConK _ kis)       = foldMap fvDKind kis
     go (DArrowK k1 k2)     = go k1 `S.union` go k2
     go DStarK              = S.empty
+
+-- | Produces 'DLetDec's representing the record selector functions from
+-- the provided 'DCon'.
+getRecordSelectors :: Quasi q
+                   => DType        -- ^ the type of the argument
+                   -> DCon
+                   -> q [DLetDec]
+getRecordSelectors _      (DCon _ _ _ (DNormalC {})) = return []
+getRecordSelectors arg_ty (DCon _ _ con_name (DRecC fields)) = do
+  varName <- qNewName "field"
+  let tvbs = fvDType arg_ty
+      maybe_forall
+        | S.null tvbs = id
+        | otherwise   = DForallT (map DPlainTV $ S.toList tvbs) []
+      num_pats = length fields
+  return $ concat
+    [ [ DSigD name (maybe_forall $ DArrowT `DAppT` arg_ty `DAppT` res_ty)
+      , DFunD name [DClause [DConPa con_name (mk_field_pats n num_pats varName)]
+                            (DVarE varName)] ]
+    | ((name, _strict, res_ty), n) <- zip fields [0..]
+    , fvDType res_ty `S.isSubsetOf` tvbs   -- exclude "naughty" selectors
+    ] 
+
+  where
+    mk_field_pats :: Int -> Int -> Name -> [DPat]
+    mk_field_pats 0 total name = DVarPa name : (replicate (total-1) DWildPa)
+    mk_field_pats n total name = DWildPa : mk_field_pats (n-1) (total-1) name

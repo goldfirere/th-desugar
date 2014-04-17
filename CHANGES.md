@@ -22,6 +22,9 @@ only occur in client-generated code -- that is, output from a library using
 * Variable names that are distinct in desugared code are now guaranteed to
 have distinct answers to `nameBase`.
 
+* Added a new function `getRecordSelectors` that extracts types and definitions
+of record selectors from a datatype definition.
+
 Version 1.3.1
 -------------
 * Update cabal file to include testing files in sdist.

@@ -6,21 +6,23 @@ eir@cis.upenn.edu
 
 {-# LANGUAGE TemplateHaskell, GADTs, PolyKinds, TypeFamilies,
              MultiParamTypeClasses, FunctionalDependencies,
-             FlexibleInstances, DataKinds, CPP #-}
+             FlexibleInstances, DataKinds, CPP, RankNTypes #-}
 #if __GLASGOW_HASKELL__ >= 707
 {-# LANGUAGE RoleAnnotations #-}
 #endif
 
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-incomplete-patterns #-}
 
 module Test.DsDec where
 
 import qualified Test.Splices as S
 import Test.Splices ( dsDecSplice, unqualify )
 
-#if __GLASGOW_HASKELL__ < 707
+import Language.Haskell.TH  ( reportError )
+import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Desugar.Sweeten
-#endif
+
+import Control.Monad
 
 $(dsDecSplice S.dectest1)
 $(dsDecSplice S.dectest2)
@@ -44,3 +46,22 @@ $(return $ decsToTH [S.ds_dectest10])
 #else
 $(dsDecSplice S.dectest10)
 #endif
+
+$(do decs <- S.rec_sel_test
+     [DDataD nd [] name [DPlainTV tvbName] cons []] <- dsDecs decs
+     let arg_ty = (DConT name) `DAppT` (DVarT tvbName)
+     recsels <- fmap concat $ mapM (getRecordSelectors arg_ty) cons
+     let num_sels = length recsels `div` 2 -- ignore type sigs
+     when (num_sels /= S.rec_sel_test_num_sels) $
+       reportError $ "Wrong number of record selectors extracted.\n"
+                  ++ "Wanted " ++ show S.rec_sel_test_num_sels
+                  ++ ", Got " ++ show num_sels
+     let unrecord c@(DCon _ _ _ (DNormalC {})) = c
+         unrecord (DCon tvbs cxt con_name (DRecC fields)) =
+           let (_names, stricts, types) = unzip3 fields
+               fields' = zip stricts types
+           in
+           DCon tvbs cxt con_name (DNormalC fields')
+         plaindata = [DDataD nd [] name [DPlainTV tvbName] (map unrecord cons) []]
+     return (decsToTH plaindata ++ map letDecToTH recsels))
+

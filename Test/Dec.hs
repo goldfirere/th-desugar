@@ -6,7 +6,7 @@ eir@cis.upenn.edu
 
 {-# LANGUAGE TemplateHaskell, GADTs, PolyKinds, TypeFamilies,
              MultiParamTypeClasses, FunctionalDependencies,
-             FlexibleInstances, DataKinds, CPP #-}
+             FlexibleInstances, DataKinds, CPP, RankNTypes #-}
 #if __GLASGOW_HASKELL__ >= 707
 {-# LANGUAGE RoleAnnotations #-}
 #endif
@@ -35,3 +35,6 @@ $(fmap unqualify S.imp_inst_test1)
 $(fmap unqualify S.imp_inst_test2)
 $(fmap unqualify S.imp_inst_test3)
 $(fmap unqualify S.imp_inst_test4)
+
+$(S.rec_sel_test)
+
