@@ -11,7 +11,8 @@ eir@cis.upenn.edu
 {-# LANGUAGE RoleAnnotations #-}
 #endif
 
-{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-incomplete-patterns #-}
+{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-incomplete-patterns
+                -fno-warn-name-shadowing #-}
 
 module Test.DsDec where
 
