@@ -11,7 +11,7 @@ eir@cis.upenn.edu
 {-# LANGUAGE RoleAnnotations #-}
 #endif
 
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-name-shadowing #-}
 
 module Test.Dec where
 
