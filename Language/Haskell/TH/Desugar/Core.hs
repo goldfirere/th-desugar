@@ -48,10 +48,6 @@ data DPat = DLitPa Lit
           | DTildePa DPat
           | DBangPa DPat
           | DWildPa
-          | DSigPa DPat DType   -- ^ No desugaring will produce this, as GHC
-                                -- does not support scoped type variables in
-                                -- TH quotes. However, this may be useful
-                                -- if you are producing patterns algorithmically.
           deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Type@ type.
@@ -379,6 +375,16 @@ dsGuardStmts (LetS decs : rest) success failure = do
   decs' <- dsLetDecs decs
   success' <- dsGuardStmts rest success failure
   return $ DLetE decs' success'
+  -- special-case a final pattern containing "otherwise" or "True"
+  -- note that GHC does this special-casing, too, in DsGRHSs.isTrueLHsExpr
+dsGuardStmts [NoBindS exp] success _failure
+  | VarE name <- exp
+  , name == 'otherwise
+  = return success
+
+  | ConE name <- exp
+  , name == 'True
+  = return success
 dsGuardStmts (NoBindS exp : rest) success failure = do
   exp' <- dsExp exp
   success' <- dsGuardStmts rest success failure
@@ -518,7 +524,6 @@ dPatToDExp (DConPa name pats) = foldl DAppE (DConE name) (map dPatToDExp pats)
 dPatToDExp (DTildePa pat) = dPatToDExp pat
 dPatToDExp (DBangPa pat) = dPatToDExp pat
 dPatToDExp DWildPa = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
-dPatToDExp (DSigPa pat ty) = DSigE (dPatToDExp pat) ty
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
 --   variable
@@ -529,7 +534,6 @@ removeWilds (DConPa con_name pats) = DConPa con_name <$> mapM removeWilds pats
 removeWilds (DTildePa pat) = DTildePa <$> removeWilds pat
 removeWilds (DBangPa pat) = DBangPa <$> removeWilds pat
 removeWilds DWildPa = DVarPa <$> newUniqueName "wild"
-removeWilds (DSigPa pat ty) = DSigPa <$> removeWilds pat <*> pure ty
 
 -- | Desugar @Info@
 dsInfo :: Quasi q => Info -> q DInfo

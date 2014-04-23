@@ -14,11 +14,6 @@ meant that reifying poly-kinded type families in GHC 7.6.3- was subtly wrong.
 * There is a new `Desugar` class with methods `desugar` and `sweeten`. See
 the documentation in `Language.Haskell.TH.Desugar`.
 
-* There is now support for type signatures in patterns. However, since GHC
-does not allow type signatures in patterns in TH quotes, this form will
-only occur in client-generated code -- that is, output from a library using
-`th-desugar`, never in input.
-
 * Variable names that are distinct in desugared code are now guaranteed to
 have distinct answers to `nameBase`.
 

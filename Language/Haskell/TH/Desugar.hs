@@ -120,8 +120,7 @@ flattenDValD (DValD pat exp) = do
         DTildePa pa -> DTildePa (wildify name y pa)
         DBangPa pa -> DBangPa (wildify name y pa)
         DWildPa -> DWildPa
-        DSigPa pa ty -> DSigPa (wildify name y pa) ty
-        
+                
 flattenDValD other_dec = return [other_dec]
 
 extractBoundNamesDPat :: DPat -> S.Set Name
@@ -131,8 +130,6 @@ extractBoundNamesDPat (DConPa _ pats) = foldMap extractBoundNamesDPat pats
 extractBoundNamesDPat (DTildePa pat)  = extractBoundNamesDPat pat
 extractBoundNamesDPat (DBangPa pat)   = extractBoundNamesDPat pat
 extractBoundNamesDPat DWildPa         = S.empty
-extractBoundNamesDPat (DSigPa pat ty) = extractBoundNamesDPat pat `S.union`
-                                        fvDType ty
 
 fvDType :: DType -> S.Set Name
 fvDType = go
