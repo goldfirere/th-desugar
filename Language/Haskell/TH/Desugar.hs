@@ -104,7 +104,7 @@ flattenDValD (DValD pat exp) = do
   return $ top_val_d : other_val_ds
   where
     mk_val_d x name = do
-      y <- qNewName "y"
+      y <- newUniqueName "y"
       let pat'  = wildify name y pat
           match = DMatch pat' (DVarE y)
           cas   = DCaseE (DVarE x) [match]
