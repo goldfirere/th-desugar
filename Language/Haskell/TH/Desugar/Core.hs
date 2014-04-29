@@ -212,13 +212,11 @@ dsExp (TupE exps) = do
   return $ foldl DAppE (DConE $ tupleDataName (length exps)) exps'
 dsExp (UnboxedTupE exps) =
   foldl DAppE (DConE $ unboxedTupleDataName (length exps)) <$> mapM dsExp exps
-dsExp (CondE e1 e2 e3) = do
-  e1' <- dsExp e1
-  e2' <- dsExp e2
-  e3' <- dsExp e3
-  return $ DCaseE e1' [DMatch (DConPa 'True []) e2', DMatch (DConPa 'False []) e3']
+dsExp (CondE e1 e2 e3) =
+  dsExp (CaseE e1 [ Match (ConP 'True [])  (NormalB e2) []
+                  , Match (ConP 'False []) (NormalB e3) [] ])
 dsExp (MultiIfE guarded_exps) =
-  let failure = DAppE (DVarE 'error) (DLitE (StringL "None-exhaustive guards in multi-way if")) in
+  let failure = DAppE (DVarE 'error) (DLitE (StringL "Non-exhaustive guards in multi-way if")) in
   dsGuards guarded_exps failure
 dsExp (LetE decs exp) = DLetE <$> dsLetDecs decs <*> dsExp exp
 dsExp (CaseE exp matches) = do
