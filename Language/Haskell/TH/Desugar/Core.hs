@@ -11,7 +11,7 @@ processing. The desugared types and constructors are prefixed with a D.
 
 module Language.Haskell.TH.Desugar.Core where
 
-import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap)
+import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
 import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (lift)
@@ -321,7 +321,10 @@ dsMatches scr = go
       let failure = DCaseE (DVarE scr) rest'  -- this might be an empty case.
       exp' <- dsBody body where_decs failure
       (pat', exp'') <- dsPatOverExp pat exp'
-      return (DMatch pat' exp'' : rest')
+      uni_pattern <- isUniversalPattern pat' -- incomplete attempt at #6
+      if uni_pattern
+      then return [DMatch pat' exp'']
+      else return (DMatch pat' exp'' : rest')
 
 -- | Desugar a @Body@
 dsBody :: Quasi q
@@ -736,12 +739,16 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
   where
     clause_to_dmatch :: Quasi q => DExp -> Clause -> [DMatch] -> q [DMatch]
     clause_to_dmatch scrutinee (Clause pats body where_decs) failure_matches = do
+      let failure_exp = maybeDCaseE ("Non-exhaustive patterns in " ++ (show n))
+                                    scrutinee failure_matches
       exp <- dsBody body where_decs failure_exp
       (pats', exp') <- dsPatsOverExp pats exp
-      return (DMatch (mkTupleDPat pats') exp' : failure_matches)
-      where
-        failure_exp = maybeDCaseE ("Non-exhaustive patterns in " ++ (show n))
-                                  scrutinee failure_matches
+      uni_pats <- fmap getAll $ concatMapM (fmap All . isUniversalPattern) pats'
+      let match = DMatch (mkTupleDPat pats') exp'
+      if uni_pats
+      then return [match]
+      else return (match : failure_matches)
+
 -- | Desugar a type
 dsType :: Quasi q => Type -> q DType
 dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> dsCxt preds <*> dsType ty
@@ -900,3 +907,17 @@ mkTupleDPat pats = DConPa (tupleDataName (length pats)) pats
 mkTuplePat :: [Pat] -> Pat
 mkTuplePat [pat] = pat
 mkTuplePat pats = ConP (tupleDataName (length pats)) pats
+
+-- | Is this pattern guaranteed to match?
+isUniversalPattern :: Quasi q => DPat -> q Bool
+isUniversalPattern (DLitPa {}) = return False
+isUniversalPattern (DVarPa {}) = return True
+isUniversalPattern (DConPa con_name pats) = do
+  data_name <- dataConNameToDataName con_name
+  (_tvbs, cons) <- getDataD "Internal error." data_name
+  if length cons == 1
+  then fmap and $ mapM isUniversalPattern pats
+  else return False
+isUniversalPattern (DTildePa {}) = return True
+isUniversalPattern (DBangPa pat) = isUniversalPattern pat
+isUniversalPattern DWildPa       = return True

@@ -34,7 +34,8 @@ module Language.Haskell.TH.Desugar (
   dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses, 
 
   -- * Utility functions
-  dPatToDExp, removeWilds, reifyWithWarning, getDataD, dataConNameToCon,
+  dPatToDExp, removeWilds, reifyWithWarning,
+  getDataD, dataConNameToDataName, dataConNameToCon,
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
   mkTypeName, mkDataName, newUniqueName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,

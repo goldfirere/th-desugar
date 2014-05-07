@@ -10,13 +10,16 @@ Utility functions for th-desugar package.
 
 module Language.Haskell.TH.Desugar.Util where
 
+import Prelude hiding (mapM)
+
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax ( Quasi(..), mkNameG_tc, mkNameG_d )
 
 import qualified Data.Set as S
 import Data.Foldable
-import Control.Applicative
 import Data.Generics
+import Data.Traversable
+import Data.Monoid
 
 -- | Reify a declaration, warning the user about splices if the reify fails.
 -- The warning says that reification can fail if you try to reify a type in
@@ -59,15 +62,22 @@ getDataD err name = do
           fail $ "The name (" ++ (show name) ++ ") refers to something " ++
                  "other than a datatype. " ++ err
 
+-- | From the name of a data constructor, retrive the datatype definition it
+-- is a part of.
+dataConNameToDataName :: Quasi q => Name -> q Name
+dataConNameToDataName con_name = do
+  info <- reifyWithWarning con_name
+  case info of
+    DataConI _name _type parent_name _fixity -> return parent_name
+    _ -> fail $ "The name " ++ show con_name ++ " does not appear to be " ++
+                "a data constructor."
+
 -- | From the name of a data constructor, retrieve its definition as a @Con@
 dataConNameToCon :: Quasi q => Name -> q Con
 dataConNameToCon con_name = do
   -- we need to get the field ordering from the constructor. We must reify
   -- the constructor to get the tycon, and then reify the tycon to get the `Con`s
-  info <- reifyWithWarning con_name
-  type_name <- case info of
-                 DataConI _name _type parent_name _fixity -> return parent_name
-                 _ -> impossible "Non-data-con used to construct a record."
+  type_name <- dataConNameToDataName con_name
   (_, cons) <- getDataD "This seems to be an error in GHC." type_name
   let m_con = find ((con_name ==) . get_con_name) cons
   case m_con of
@@ -155,11 +165,6 @@ extractBoundNamesPat (ListP pats)        = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (SigP pat _)        = extractBoundNamesPat pat
 extractBoundNamesPat (ViewP _ pat)       = extractBoundNamesPat pat
 
--- | Concatenate the result of a @mapM@
-concatMapM :: Applicative m => (a -> m [b]) -> [a] -> m [b]
-concatMapM _ [] = pure []
-concatMapM f (a : as) = (++) <$> f a <*> concatMapM f as
-
 -- like GHC's
 splitAtList :: [a] -> [b] -> ([b], [b])
 splitAtList [] x = ([], x)
@@ -207,3 +212,12 @@ liftThdOf3 f (c, d, a) = (c, d, f a)
 
 liftThdOf3M :: Monad m => (a -> m b) -> (c, d, a) -> m (c, d, b)
 liftThdOf3M f (c, d, a) = f a >>= return . (c, d, )
+
+-- lift concatMap into a monad
+-- could this be more efficient?
+-- | Concatenate the result of a @mapM@
+concatMapM :: (Monad monad, Monoid monoid, Traversable t)
+           => (a -> monad monoid) -> t a -> monad monoid
+concatMapM fn list = do
+  bss <- mapM fn list
+  return $ fold bss
