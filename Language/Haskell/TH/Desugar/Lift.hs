@@ -14,8 +14,7 @@
 --
 ----------------------------------------------------------------------------
 
-{-# LANGUAGE TemplateHaskell, GeneralizedNewtypeDeriving, MagicHash,
-             StandaloneDeriving, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE TemplateHaskell, MagicHash, TypeSynonymInstances, FlexibleInstances #-}
 
 module Language.Haskell.TH.Desugar.Lift () where
 
@@ -152,9 +151,14 @@ instance Lift DTySynEqn where
                                  
 -- Template Haskell liftings
 
-deriving instance Lift OccName
-deriving instance Lift ModName
-deriving instance Lift PkgName
+instance Lift OccName where
+  lift (OccName n) = foldApp (ConE 'OccName) <$> sequence [lift n]
+
+instance Lift ModName where
+  lift (ModName n) = foldApp (ConE 'ModName) <$> sequence [lift n]
+
+instance Lift PkgName where
+  lift (PkgName n) = foldApp (ConE 'PkgName) <$> sequence [lift n]
 
 instance Lift NameSpace where
   lift VarName   = return $ ConE 'VarName

@@ -1,3 +1,10 @@
+Version 1.4.1
+-------------
+* Added `Language.Haskell.TH.Desugar.Lift`, which provides `Lift` instances
+for all of the th-desugar types.
+
+* Added `applyDExp` and `applyDType` as convenience functions.
+
 Version 1.4.0
 -------------
 * All `Dec`s can now be desugared, to the new `DDec` type.
