@@ -7,10 +7,19 @@ eir@cis.upenn.edu
 {-# LANGUAGE CPP, MultiParamTypeClasses, FunctionalDependencies,
              TypeSynonymInstances, FlexibleInstances #-}
 
-{-|
-Desugars full Template Haskell syntax into a smaller core syntax for further
-processing. The desugared types and constructors are prefixed with a D.
--}
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Language.Haskell.TH.Desugar
+-- Copyright   :  (C) 2014 Richard Eisenberg
+-- License     :  BSD-style (see LICENSE)
+-- Maintainer  :  Richard Eisenberg (eir@cis.upenn.edu)
+-- Stability   :  experimental
+-- Portability :  non-portable
+--
+-- Desugars full Template Haskell syntax into a smaller core syntax for further
+-- processing. The desugared types and constructors are prefixed with a D.
+--
+----------------------------------------------------------------------------
 
 module Language.Haskell.TH.Desugar (
   -- * Desugared data types
@@ -34,6 +43,7 @@ module Language.Haskell.TH.Desugar (
   dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses, 
 
   -- * Utility functions
+  applyDExp, applyDType,
   dPatToDExp, removeWilds, reifyWithWarning,
   getDataD, dataConNameToDataName, dataConNameToCon,
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,

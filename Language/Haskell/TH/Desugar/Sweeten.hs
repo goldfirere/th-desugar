@@ -8,8 +8,19 @@ Converts desugared TH back into real TH.
 
 {-# LANGUAGE CPP #-}
 
-{-| The functions in this module convert desugared Template Haskell back into
-    proper Template Haskell. -}
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Language.Haskell.TH.Desugar.Sweeten
+-- Copyright   :  (C) 2014 Richard Eisenberg
+-- License     :  BSD-style (see LICENSE)
+-- Maintainer  :  Richard Eisenberg (eir@cis.upenn.edu)
+-- Stability   :  experimental
+-- Portability :  non-portable
+--
+-- The functions in this module convert desugared Template Haskell back into
+-- proper Template Haskell.
+--
+----------------------------------------------------------------------------
 
 module Language.Haskell.TH.Desugar.Sweeten where
 

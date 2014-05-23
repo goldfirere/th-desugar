@@ -1,5 +1,5 @@
 name:           th-desugar
-version:        1.4.0
+version:        1.4.1
 cabal-version:  >= 1.10
 synopsis:       Functions to desugar Template Haskell
 homepage:       http://www.cis.upenn.edu/~eir/packages/th-desugar
@@ -26,7 +26,7 @@ description:
 source-repository this
   type:     git
   location: https://github.com/goldfirere/th-desugar.git
-  tag:      v1.4.0
+  tag:      v1.4.1
 
 library
   build-depends:      
@@ -37,7 +37,8 @@ library
       syb >= 0.4
   exposed-modules:    Language.Haskell.TH.Desugar,
                       Language.Haskell.TH.Desugar.Sweeten,
-                      Language.Haskell.TH.Desugar.Expand
+                      Language.Haskell.TH.Desugar.Expand,
+                      Language.Haskell.TH.Desugar.Lift
   other-modules:      Language.Haskell.TH.Desugar.Core,
                       Language.Haskell.TH.Desugar.Util
   default-language:   Haskell2010

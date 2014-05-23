@@ -921,3 +921,11 @@ isUniversalPattern (DConPa con_name pats) = do
 isUniversalPattern (DTildePa {}) = return True
 isUniversalPattern (DBangPa pat) = isUniversalPattern pat
 isUniversalPattern DWildPa       = return True
+
+-- | Apply one 'DExp' to a list of arguments
+applyDExp :: DExp -> [DExp] -> DExp
+applyDExp = foldl DAppE
+
+-- | Apply one 'DType' to a list of arguments
+applyDType :: DType -> [DType] -> DType
+applyDType = foldl DAppT

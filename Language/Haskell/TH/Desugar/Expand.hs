@@ -6,6 +6,21 @@ eir@cis.upenn.edu
 
 {-# LANGUAGE CPP #-}
 
+-----------------------------------------------------------------------------
+-- |
+-- Module      :  Language.Haskell.TH.Desugar.Expand
+-- Copyright   :  (C) 2014 Richard Eisenberg
+-- License     :  BSD-style (see LICENSE)
+-- Maintainer  :  Richard Eisenberg (eir@cis.upenn.edu)
+-- Stability   :  experimental
+-- Portability :  non-portable
+--
+-- Expands type synonyms in desugared types, ignoring type families.
+-- See also the package th-expand-syns for doing this to non-desugared types.
+--
+----------------------------------------------------------------------------
+
+
 {-| Expands type synonyms in desugared types, ignoring type families.
 See also the package th-expand-syns for doing this to non-desugared types.
 -}
