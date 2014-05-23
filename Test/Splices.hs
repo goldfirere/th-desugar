@@ -199,7 +199,7 @@ dectest10 = [d| type family Dec10 a :: * -> *
                 type instance Dec10 Int = Maybe
                 type instance Dec10 Bool = [] |]
 
-ds_role_test = DRoleAnnotD (mkName "Dec3") [Nominal]
+ds_role_test = DRoleAnnotD (mkName "Dec3") [NominalR]
 role_test = []
 #else
 dectest10 = [d| type family Dec10 a :: * -> * where
