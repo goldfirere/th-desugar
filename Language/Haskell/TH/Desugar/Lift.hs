@@ -15,6 +15,7 @@
 ----------------------------------------------------------------------------
 
 {-# LANGUAGE TemplateHaskell, MagicHash, TypeSynonymInstances, FlexibleInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Language.Haskell.TH.Desugar.Lift () where
 
