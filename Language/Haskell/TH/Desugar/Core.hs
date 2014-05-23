@@ -160,7 +160,7 @@ data DTySynEqn = DTySynEqn [DType] DType
 
 #if __GLASGOW_HASKELL__ < 707
 -- | Same as @Role@ from TH; defined here for GHC 7.6.3 compatibility.
-data Role = Nominal | Representational | Phantom
+data Role = NominalR | RepresentationalR | PhantomR | InferR
           deriving (Show, Typeable, Data)
 
 -- | Same as @AnnTarget@ from TH; defined here for GHC 7.6.3 compatibility.
