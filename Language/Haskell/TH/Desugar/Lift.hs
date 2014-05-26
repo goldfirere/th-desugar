@@ -19,6 +19,7 @@
 
 module Language.Haskell.TH.Desugar.Lift () where
 
+import Prelude hiding ( mod, words )
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Syntax
 import Control.Applicative
