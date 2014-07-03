@@ -84,9 +84,9 @@ expandCon n args = do
       |  length args >= length tvbs   -- this should always be true!
       -> do
         let (syn_args, rest_args) = splitAtList tvbs args
-        rhs' <- expandType rhs
-        ty <- substTy (M.fromList $ zip (map extractDTvbName tvbs) syn_args) rhs'
-        return $ foldl DAppT ty rest_args
+        ty <- substTy (M.fromList $ zip (map extractDTvbName tvbs) syn_args) rhs
+        ty' <- expandType ty
+        return $ foldl DAppT ty' rest_args
 
     DTyConI (DFamilyD TypeFam _n tvbs _mkind) _
       |  length args >= length tvbs   -- this should always be true!
@@ -98,10 +98,10 @@ expandCon n args = do
         dinsts <- dsDecs insts
         case dinsts of
           [DTySynInstD _n (DTySynEqn lhs rhs)] -> do
-            rhs' <- expandType rhs
             let subst = mconcat $ zipWith build_subst lhs syn_args
-            ty <- substTy subst rhs'
-            return $ foldl DAppT ty rest_args
+            ty <- substTy subst rhs
+            ty' <- expandType ty
+            return $ foldl DAppT ty' rest_args
           _ -> return $ foldl DAppT (DConT n) args
     
     _ -> return $ foldl DAppT (DConT n) args
