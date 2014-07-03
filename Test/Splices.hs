@@ -154,6 +154,16 @@ test36_expand = [| let f :: Const Int (,) Bool Char -> Char
                        f = snd in
                    f |]
 
+type family TFExpand x
+type instance TFExpand Int = Bool
+type instance TFExpand (Maybe a) = [a]
+test_expand3 = [| let f :: TFExpand Int -> ()
+                      f True = () in
+                  f |]
+test_expand4 = [| let f :: TFExpand (Maybe Bool) -> ()
+                      f [True, False] = () in
+                  f |]
+
 #if __GLASGOW_HASKELL__ >= 709
 test37_pred = [| let f :: (Read a, (Show a, Num a)) => a -> a
                      f x = read (show x) + x in
@@ -252,3 +262,4 @@ testRecSelTypes n = do
      $(return $ VarE $ mkName "hasSameType") x y |]
 
   
+-- used for expand

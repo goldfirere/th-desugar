@@ -1,3 +1,8 @@
+Version 1.4.2
+-------------
+* `expand` functions now consider open type families, as long as the type
+   to be expanded has no free variables.
+
 Version 1.4.1
 -------------
 * Added `Language.Haskell.TH.Desugar.Lift`, which provides `Lift` instances

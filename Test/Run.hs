@@ -84,13 +84,19 @@ test35a = $test35_expand
 test35b = $(test35_expand >>= dsExp >>= expand >>= return . expToTH)
 test36a = $test36_expand
 test36b = $(test36_expand >>= dsExp >>= expand >>= return . expToTH)
+test_e3a = $test_expand3
+test_e3b = $(test_expand3 >>= dsExp >>= expand >>= return . expToTH)
+test_e4a = $test_expand4
+test_e4b = $(test_expand4 >>= dsExp >>= expand >>= return . expToTH)
 
 hasSameType :: a -> a -> Bool
 hasSameType _ _ = True
 
 test_expand :: Bool
 test_expand = and [ hasSameType test35a test35b
-                  , hasSameType test36a test36b]
+                  , hasSameType test36a test36b
+                  , hasSameType test_e3a test_e3b
+                  , hasSameType test_e4a test_e4b ]
 
 test_dec :: [Bool]
 test_dec = $(do bools <- mapM testDecSplice dec_test_nums

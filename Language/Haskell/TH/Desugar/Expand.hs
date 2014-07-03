@@ -4,7 +4,7 @@
 eir@cis.upenn.edu
 -}
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, NoMonomorphismRestriction #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -15,8 +15,9 @@ eir@cis.upenn.edu
 -- Stability   :  experimental
 -- Portability :  non-portable
 --
--- Expands type synonyms in desugared types, ignoring type families.
--- See also the package th-expand-syns for doing this to non-desugared types.
+-- Expands type synonyms and open type families in desugared types, ignoring
+-- closed type families. See also the package th-expand-syns for doing this to
+-- non-desugared types.
 --
 ----------------------------------------------------------------------------
 
@@ -31,11 +32,14 @@ import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Syntax ( Quasi(..) )
 import Data.Data
 import Data.Generics
+import Data.Monoid
 
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
+import Language.Haskell.TH.Desugar.Sweeten
 
--- | Expands all type synonyms in a desugared type.
+-- | Expands all type synonyms in a desugared type. Also expands open type family
+-- applications, as long as the arguments have no free variables.
 expandType :: Quasi q => DType -> q DType
 expandType = go []
   where
@@ -74,16 +78,59 @@ expandCon :: Quasi q
           -> q DType  -- ^ Expanded type
 expandCon n args = do
   info <- reifyWithWarning n
-  case info of
-    TyConI (TySynD _n tvbs rhs)
-      | length args >= length tvbs -> do
+  dinfo <- dsInfo info
+  case dinfo of
+    DTyConI (DTySynD _n tvbs rhs) _
+      |  length args >= length tvbs   -- this should always be true!
+      -> do
         let (syn_args, rest_args) = splitAtList tvbs args
-        rhs' <- dsType rhs
-        rhs'' <- expandType rhs'
-        tvbs' <- mapM dsTvb tvbs
-        ty <- substTy (M.fromList $ zip (map extractDTvbName tvbs') syn_args) rhs''
+        rhs' <- expandType rhs
+        ty <- substTy (M.fromList $ zip (map extractDTvbName tvbs) syn_args) rhs'
         return $ foldl DAppT ty rest_args
+
+    DTyConI (DFamilyD TypeFam _n tvbs _mkind) _
+      |  length args >= length tvbs   -- this should always be true!
+      ,  all no_tyvars args
+      -> do
+        let (syn_args, rest_args) = splitAtList tvbs args
+        -- need to get the correct instance
+        insts <- qReifyInstances n (map typeToTH syn_args)
+        dinsts <- dsDecs insts
+        case dinsts of
+          [DTySynInstD _n (DTySynEqn lhs rhs)] -> do
+            rhs' <- expandType rhs
+            let subst = mconcat $ zipWith build_subst lhs syn_args
+            ty <- substTy subst rhs'
+            return $ foldl DAppT ty rest_args
+          _ -> return $ foldl DAppT (DConT n) args
+    
     _ -> return $ foldl DAppT (DConT n) args
+
+  where
+    no_tyvars :: Data a => a -> Bool
+    no_tyvars = everything (&&) (mkQ True no_tyvar)
+
+    no_tyvar :: DType -> Bool
+    no_tyvar (DVarT _) = False
+    no_tyvar t         = gmapQl (&&) True no_tyvars t
+
+    build_subst :: DType -> DType -> M.Map Name DType
+    build_subst (DVarT var_name) arg = M.singleton var_name arg
+      -- ignore kind signatures; any kind constraints are already
+      -- handled in reifyInstances
+    build_subst pat (DSigT ty _ki) = build_subst pat ty
+    build_subst (DSigT ty _ki) arg = build_subst ty arg
+    build_subst (DForallT {}) _ =
+      error "Impossible: forall-quantified pattern to type family"
+      -- reifyInstances should fail if an argument is forall-quantified.
+    build_subst _ (DForallT {}) =
+      error "Impossible: forall-quantified argument to type family"
+    build_subst (DAppT pat1 pat2) (DAppT arg1 arg2) =
+      build_subst pat1 arg1 <> build_subst pat2 arg2
+    build_subst (DConT _pat_con) (DConT _arg_con) = mempty
+    build_subst DArrowT DArrowT = mempty
+    build_subst (DLitT _pat_lit) (DLitT _arg_lit) = mempty
+    build_subst pat arg = error $ "Impossible: reifyInstances succeeded but unification failed; pat=" ++ show pat ++ "; arg=" ++ show arg
 
 -- | Capture-avoiding substitution on types
 substTy :: Quasi q => M.Map Name DType -> DType -> q DType
@@ -142,7 +189,8 @@ dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
 dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
 
 
--- | Expand all type synonyms in the desugared abstract syntax tree provided.
--- Normally, the first parameter should have a type like 'DExp' or 'DLetDec'.
+-- | Expand all type synonyms and open type families in the desugared abstract
+-- syntax tree provided. Normally, the first parameter should have a type like
+-- 'DExp' or 'DLetDec'.
 expand :: (Quasi q, Data a) => a -> q a
 expand = everywhereM (mkM expandType >=> mkM expandPred)
