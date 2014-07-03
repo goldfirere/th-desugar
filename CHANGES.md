@@ -1,7 +1,7 @@
 Version 1.4.1
 -------------
 * Added `Language.Haskell.TH.Desugar.Lift`, which provides `Lift` instances
-for all of the th-desugar types.
+for all of the th-desugar types, as well as several Template Haskell types.
 
 * Added `applyDExp` and `applyDType` as convenience functions.
 
