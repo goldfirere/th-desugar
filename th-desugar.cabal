@@ -48,7 +48,7 @@ library
 
 test-suite spec
   type:               exitcode-stdio-1.0
-  ghc-options:        -Wall -Werror -main-is Test.Run
+  ghc-options:        -Wall -main-is Test.Run
   default-language:   Haskell2010
   default-extensions: TemplateHaskell
   main-is:            Test/Run.hs
