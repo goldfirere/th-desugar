@@ -16,7 +16,7 @@ module Test.Run where
 import Prelude hiding ( exp )
 
 import Test.HUnit
-import Test.Hspec
+import Test.Hspec hiding ( runIO )
 import Test.Hspec.HUnit
 
 import Test.Splices
