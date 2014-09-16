@@ -262,7 +262,10 @@ dsExp (RecUpdE exp field_exps) = do
   let filtered_cons = filter_cons_with_names cons (map fst field_exps)
   exp' <- dsExp exp
   matches <- mapM con_to_dmatch filtered_cons
-  return $ DCaseE exp' (matches ++ [error_match])
+  let all_matches
+        | length filtered_cons == length cons = matches
+        | otherwise                           = matches ++ [error_match]
+  return $ DCaseE exp' all_matches
   where
     extract_first_arg :: Quasi q => Type -> q Type
     extract_first_arg (AppT (AppT ArrowT arg) _) = return arg
@@ -277,9 +280,13 @@ dsExp (RecUpdE exp field_exps) = do
     extract_type_name _ = impossible "Record selector domain not a datatype."
     
     filter_cons_with_names cons field_names =
-      filter (\case RecC _con_name args -> let con_field_names = map fst_of_3 args in
-                                           all (`elem` con_field_names) field_names
-                    _ -> False) cons
+      filter has_names cons
+      where
+        has_names (RecC _con_name args) =
+          let con_field_names = map fst_of_3 args in
+          all (`elem` con_field_names) field_names
+        has_names (ForallC _ _ c) = has_names c
+        has_names _               = False
 
     con_to_dmatch :: Quasi q => Con -> q DMatch
     con_to_dmatch (RecC con_name args) = do
@@ -288,10 +295,11 @@ dsExp (RecUpdE exp field_exps) = do
       DMatch (DConPa con_name (map DVarPa field_var_names)) <$>
              (foldl DAppE (DConE con_name) <$>
                     (reorderFields args field_exps (map DVarE field_var_names)))
+    con_to_dmatch (ForallC _ _ c) = con_to_dmatch c
     con_to_dmatch _ = impossible "Internal error within th-desugar."
 
     error_match = DMatch DWildPa (DAppE (DVarE 'error)
-                    (DLitE (StringL "Non-exhaustive patterns in record update")))
+                   (DLitE (StringL "Non-exhaustive patterns in record update")))
 
     fst_of_3 (x, _, _) = x
 
