@@ -42,6 +42,7 @@ instance Quasi q => Quasi (DsM q) where
   qLocation         = lift qLocation
   qRunIO            = lift `comp1` qRunIO
   qAddDependentFile = lift `comp1` qAddDependentFile
+#if __GLASGOW_HASKELL__ >= 707
   qReifyRoles       = lift `comp1` qReifyRoles
   qReifyAnnotations = lift `comp1` qReifyAnnotations
   qReifyModule      = lift `comp1` qReifyModule
@@ -49,7 +50,8 @@ instance Quasi q => Quasi (DsM q) where
   qAddModFinalizer  = lift `comp1` qAddModFinalizer
   qGetQ             = lift qGetQ
   qPutQ             = lift `comp1` qPutQ
-
+#endif
+                      
   qRecover (DsM handler) (DsM body) = DsM $ do
     env <- ask
     lift $ qRecover (runReaderT handler env) (runReaderT body env)

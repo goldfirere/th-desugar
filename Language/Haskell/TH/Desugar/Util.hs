@@ -12,7 +12,7 @@ module Language.Haskell.TH.Desugar.Util where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
 
-import Language.Haskell.TH
+import Language.Haskell.TH hiding ( cxt )
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Desugar.Monad
 
