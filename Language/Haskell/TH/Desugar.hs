@@ -44,12 +44,19 @@ module Language.Haskell.TH.Desugar (
 
   -- * Utility functions
   applyDExp, applyDType,
-  dPatToDExp, removeWilds, reifyWithWarning,
+  dPatToDExp, removeWilds,
   getDataD, dataConNameToDataName, dataConNameToCon,
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
   mkTypeName, mkDataName, newUniqueName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
 
+  -- ** Reification
+  reifyWithWarning,
+
+  -- | The following definitions allow you to register a list of
+  -- @Dec@s to be used in reification queries.
+  withLocalDeclarations, reifyWithLocals, DsMonad, DsM,
+  
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
   ) where
@@ -58,6 +65,7 @@ import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Sweeten
 import Language.Haskell.TH.Syntax
+import Language.Haskell.TH.Desugar.Monad
 
 import qualified Data.Set as S
 import Data.Foldable ( foldMap )

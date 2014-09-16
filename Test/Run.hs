@@ -6,7 +6,8 @@ eir@cis.upenn.edu
 
 {-# LANGUAGE TemplateHaskell, UnboxedTuples, ParallelListComp, CPP,
              RankNTypes, ImpredicativeTypes, TypeFamilies,
-             DataKinds, ConstraintKinds, PolyKinds #-}
+             DataKinds, ConstraintKinds, PolyKinds, MultiParamTypeClasses,
+             FlexibleInstances, ExistentialQuantification #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
@@ -27,8 +28,10 @@ import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Sweeten
 import Language.Haskell.TH
+import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 
 import Control.Monad
+import Control.Applicative
 
 #if __GLASGOW_HASKELL__ >= 707
 import Data.Proxy
@@ -138,6 +141,26 @@ test_rec_sels :: Bool
 test_rec_sels = and $(do bools <- mapM testRecSelTypes [1..rec_sel_test_num_sels]
                          return $ ListE bools)
 
+local_reifications :: [String]
+local_reifications = $(do decs <- reifyDecs
+                          m_infos <- withLocalDeclarations decs $
+                                     mapM reifyWithLocals reifyDecsNames
+                          ListE <$> mapM (Syn.lift . show) (unqualify m_infos))
+
+$reifyDecs
+
+$(return [])  -- somehow, this is necessary to get the staging correct for the
+              -- reifications below. Weird.
+
+normal_reifications :: [String]
+normal_reifications = $(do infos <- mapM reify reifyDecsNames
+                           ListE <$> mapM (Syn.lift . show . Just)
+                                          (dropTrailing0s $ unqualify infos))
+
+zipWith3M :: Monad m => (a -> b -> c -> m d) -> [a] -> [b] -> [c] -> m [d]
+zipWith3M f (a:as) (b:bs) (c:cs) = liftM2 (:) (f a b c) (zipWith3M f as bs cs)
+zipWith3M _ _ _ _ = return []
+
 main :: IO ()
 main = hspec $ do
   describe "th-desugar library" $ do
@@ -162,6 +185,9 @@ main = hspec $ do
 
     it "flattens DValDs" $ flatten_dvald
 
-    it "extract record selectors" $ test_rec_sels
+    it "extracts record selectors" $ test_rec_sels
+
+    zipWith3M (\a b n -> it ("reifies local definition " ++ show n) $ a == b)
+      local_reifications normal_reifications [1..]
 
     fromHUnitTest tests

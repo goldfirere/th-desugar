@@ -10,16 +10,28 @@ Utility functions for th-desugar package.
 
 module Language.Haskell.TH.Desugar.Util where
 
-import Prelude hiding (mapM)
+import Prelude hiding (mapM, foldl, concatMap, any)
 
 import Language.Haskell.TH
-import Language.Haskell.TH.Syntax ( Quasi(..), mkNameG_tc, mkNameG_d )
+import Language.Haskell.TH.Syntax
+import Language.Haskell.TH.Desugar.Monad
 
 import qualified Data.Set as S
 import Data.Foldable
-import Data.Generics
+import Data.Generics hiding ( Fixity )
 import Data.Traversable
 import Data.Monoid
+import Data.Maybe
+
+-- | Like @reify@ from Template Haskell, but looks also in any not-yet-typechecked
+-- declarations. To establish this list of not-yet-typechecked declarations,
+-- use 'withLocalDeclarations'. Returns 'Nothing' if reification fails.
+-- Note that no inferred type information is available from local declarations;
+-- bottoms may be used if necessary.
+reifyWithLocals :: DsMonad q => Name -> q (Maybe Info)
+reifyWithLocals name = qRecover
+  (return . reifyInDecs name =<< localDeclarations)
+  (Just `fmap` qReify name)
 
 -- | Reify a declaration, warning the user about splices if the reify fails.
 -- The warning says that reification can fail if you try to reify a type in
@@ -221,3 +233,218 @@ concatMapM :: (Monad monad, Monoid monoid, Traversable t)
 concatMapM fn list = do
   bss <- mapM fn list
   return $ fold bss
+
+---------------------------
+-- Reifying local declarations
+---------------------------
+
+firstMatch :: (a -> Maybe b) -> [a] -> Maybe b
+firstMatch f xs = listToMaybe $ mapMaybe f xs
+
+-- | Look through a list of declarations and possibly return a relevant 'Info'
+reifyInDecs :: Name -> [Dec] -> Maybe Info
+reifyInDecs n decs = firstMatch (reifyInDec n decs) decs
+
+reifyInDec :: Name -> [Dec] -> Dec -> Maybe Info
+reifyInDec n decs (FunD n' _) | n `matches` n' = Just $ mkVarI n decs
+reifyInDec n decs (ValD pat _ _)
+  | any (matches n) (S.elems (extractBoundNamesPat pat)) = Just $ mkVarI n decs
+reifyInDec n _    dec@(DataD    _ n' _ _ _) | n `matches` n' = Just $ TyConI dec
+reifyInDec n _    dec@(NewtypeD _ n' _ _ _) | n `matches` n' = Just $ TyConI dec
+reifyInDec n _    dec@(TySynD n' _ _)       | n `matches` n' = Just $ TyConI dec
+reifyInDec n decs dec@(ClassD _ n' _ _ _)   | n `matches` n'
+  = Just $ ClassI (stripClassDec dec) (findInstances n decs)
+reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `matches` n'
+  = Just $ mkVarITy n decs ty
+reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `matches` n'
+  = Just $ mkVarITy n decs ty
+reifyInDec n decs dec@(FamilyD _ n' _ _) | n `matches` n'
+  = Just $ FamilyI dec (findInstances n decs)
+reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `matches` n'
+  = Just $ FamilyI dec []
+
+reifyInDec n decs (DataD _ ty_name tvbs cons _)
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) cons
+  = Just info
+reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) [con]
+  = Just info
+reifyInDec n decs (ClassD _ _ _ _ sub_decs)
+  | Just info <- firstMatch (reifyInDec n (sub_decs ++ decs)) sub_decs
+  = Just info    -- must necessarily *not* be a method, because type signatures
+                 -- don't reify
+reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
+  | Just ty <- findType n sub_decs
+  = Just $ ClassOpI n (addClassCxt ty_name tvbs ty)
+                    ty_name (findFixity n $ sub_decs ++ decs)
+reifyInDec n decs (InstanceD _ _ sub_decs)
+  | Just info <- firstMatch reify_in_instance sub_decs
+  = Just info
+  where
+    reify_in_instance dec@(DataInstD {})    = reifyInDec n (sub_decs ++ decs) dec
+    reify_in_instance dec@(NewtypeInstD {}) = reifyInDec n (sub_decs ++ decs) dec
+    reify_in_instance _                     = Nothing
+reifyInDec n decs (DataInstD _ ty_name tys cons _)
+  | Just info <- maybeReifyCon n decs ty_name tys cons
+  = Just info
+reifyInDec n decs (NewtypeInstD _ ty_name tys con _)
+  | Just info <- maybeReifyCon n decs ty_name tys [con]
+  = Just info
+
+reifyInDec _ _ _ = Nothing
+
+maybeReifyCon :: Name -> [Dec] -> Name -> [Type] -> [Con] -> Maybe Info
+maybeReifyCon n decs ty_name ty_args cons
+  | Just con <- findCon n cons
+  = Just $ DataConI n (maybeForallT tvbs [] $ con_to_type con)
+                    ty_name fixity
+
+  | Just ty <- findRecSelector n cons
+      -- we don't try to ferret out naughty record selectors.
+  = Just $ VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing fixity
+  where
+    result_ty = foldl AppT (ConT ty_name) ty_args
+
+    con_to_type (NormalC _ stys) = mkArrows (map snd    stys)  result_ty
+    con_to_type (RecC _ vstys)   = mkArrows (map thdOf3 vstys) result_ty
+    con_to_type (InfixC t1 _ t2) = mkArrows (map snd [t1, t2]) result_ty
+    con_to_type (ForallC bndrs cxt c) = ForallT bndrs cxt (con_to_type c)
+
+    fixity = findFixity n decs
+    tvbs = map PlainTV $ S.elems $ freeNamesOfTypes ty_args
+maybeReifyCon _ _ _ _ _ = Nothing
+
+mkVarI :: Name -> [Dec] -> Info
+mkVarI n decs = mkVarITy n decs (fromMaybe no_type $ findType n decs)
+  where
+    no_type = error $ "No type information found in local declaration for "
+                      ++ show n    
+
+mkVarITy :: Name -> [Dec] -> Type -> Info
+mkVarITy n decs ty = VarI n ty Nothing (findFixity n decs)
+    
+findFixity :: Name -> [Dec] -> Fixity
+findFixity n = fromMaybe defaultFixity . firstMatch match_fixity
+  where
+    match_fixity (InfixD fixity n') | n `matches` n' = Just fixity
+    match_fixity _                                   = Nothing
+
+findType :: Name -> [Dec] -> Maybe Type
+findType n = firstMatch match_type
+  where
+    match_type (SigD n' ty) | n `matches` n' = Just ty
+    match_type _                             = Nothing
+
+findInstances :: Name -> [Dec] -> [Dec]
+findInstances n = map stripInstanceDec . concatMap match_instance
+  where
+    match_instance d@(InstanceD _ ty _)        | ConT n' <- ty_head ty
+                                               , n `matches` n' = [d]
+    match_instance d@(DataInstD _ n' _ _ _)    | n `matches` n' = [d]
+    match_instance d@(NewtypeInstD _ n' _ _ _) | n `matches` n' = [d]
+    match_instance d@(TySynInstD n' _)         | n `matches` n' = [d]
+    match_instance (InstanceD _ _ decs) = concatMap match_instance decs
+    match_instance _                    = []
+
+    ty_head (ForallT _ _ ty) = ty_head ty
+    ty_head (AppT ty _)      = ty_head ty
+    ty_head (SigT ty _)      = ty_head ty
+    ty_head ty               = ty
+
+stripClassDec :: Dec -> Dec
+stripClassDec (ClassD cxt name tvbs fds sub_decs)
+  = ClassD cxt name tvbs fds sub_decs'
+  where
+    sub_decs' = mapMaybe go sub_decs
+    go (SigD n ty) = Just $ SigD n $ addClassCxt name tvbs ty
+    go _           = Nothing
+stripClassDec dec = dec
+
+addClassCxt :: Name -> [TyVarBndr] -> Type -> Type
+addClassCxt class_name tvbs ty = ForallT tvbs class_cxt ty
+  where
+#if __GLASGOW_HASKELL__ < 709
+    class_cxt = [ClassP class_name (map (VarT . tvbName) tvbs)]
+#else
+    class_cxt = [applyTvbs ty_name tvbs]
+#endif
+
+stripInstanceDec :: Dec -> Dec
+stripInstanceDec (InstanceD cxt ty _) = InstanceD cxt ty []
+stripInstanceDec dec                  = dec
+
+mkArrows :: [Type] -> Type -> Type
+mkArrows []     res_ty = res_ty
+mkArrows (t:ts) res_ty = AppT (AppT ArrowT t) $ mkArrows ts res_ty
+
+maybeForallT :: [TyVarBndr] -> Cxt -> Type -> Type
+maybeForallT tvbs cxt ty
+  | null tvbs && null cxt        = ty
+  | ForallT tvbs2 cxt2 ty2 <- ty = ForallT (tvbs ++ tvbs2) (cxt ++ cxt2) ty2
+  | otherwise                    = ForallT tvbs cxt ty
+
+findCon :: Name -> [Con] -> Maybe Con
+findCon n = find match_con
+  where
+    match_con (NormalC n' _)  = n `matches` n'
+    match_con (RecC n' _)     = n `matches` n'
+    match_con (InfixC _ n' _) = n `matches` n'
+    match_con (ForallC _ _ c) = match_con c
+
+findRecSelector :: Name -> [Con] -> Maybe Type
+findRecSelector n = firstMatch match_con
+  where
+    match_con (RecC _ vstys)  = firstMatch match_rec_sel vstys
+    match_con (ForallC _ _ c) = match_con c
+    match_con _               = Nothing
+
+    match_rec_sel (n', _, ty) | n `matches` n' = Just ty
+    match_rec_sel _                     = Nothing
+    
+
+tvbName :: TyVarBndr -> Name
+tvbName (PlainTV n)    = n
+tvbName (KindedTV n _) = n
+
+tvbToType :: TyVarBndr -> Type
+tvbToType = VarT . tvbName
+
+applyTvbs :: Name -> [TyVarBndr] -> Type
+applyTvbs n tvbs = foldl AppT (ConT n) (map tvbToType tvbs)
+
+thdOf3 :: (a,b,c) -> c
+thdOf3 (_,_,c) = c
+
+freeNamesOfTypes :: [Type] -> S.Set Name
+freeNamesOfTypes = mconcat . map go
+  where
+    go (ForallT tvbs cxt ty) = (go ty <> mconcat (map go_pred cxt))
+                               S.\\ S.fromList (map tvbName tvbs)
+    go (AppT t1 t2)          = go t1 <> go t2
+    go (SigT ty _)           = go ty
+    go (VarT n)              = S.singleton n
+    go _                     = S.empty
+
+#if __GLASGOW_HASKELL__ > 709
+    go_pred = go
+#else
+    go_pred (ClassP _ tys) = freeNamesOfTypes tys
+    go_pred (EqualP t1 t2) = go t1 <> go t2
+#endif
+
+matches :: Name -> Name -> Bool
+matches n1@(Name occ1 flav1) n2@(Name occ2 flav2)
+  | NameS <- flav1 = occ1 == occ2
+  | NameS <- flav2 = occ1 == occ2
+  | NameQ mod1 <- flav1
+  , NameQ mod2 <- flav2
+  = mod1 == mod2 && occ1 == occ2
+  | NameQ mod1 <- flav1
+  , NameG _ _ mod2 <- flav2
+  = mod1 == mod2 && occ1 == occ2
+  | NameG _ _ mod1 <- flav1
+  , NameQ mod2 <- flav2
+  = mod1 == mod2 && occ1 == occ2
+  | otherwise
+  = n1 == n2
+    

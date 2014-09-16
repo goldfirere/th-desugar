@@ -15,6 +15,7 @@ eir@cis.upenn.edu
 module Test.Splices where
 
 import Data.List
+import Data.Char
 import GHC.Exts
 import GHC.TypeLits
 
@@ -49,6 +50,14 @@ testDecSplice n = do
 
 unqualify :: Data a => a -> a
 unqualify = everywhere (mkT (mkName . nameBase))
+
+dropTrailing0s :: Data a => a -> a
+dropTrailing0s = everywhere (mkT (mkName . frob . nameBase))
+  where
+    frob str
+      | head str == 'r' = str
+      | head str == 'R' = str
+      | otherwise       = dropWhileEnd isDigit str
 
 eqTH :: (Data a, Show a) => a -> a -> Bool
 eqTH a b = show (unqualify a) == show (unqualify b)
@@ -263,3 +272,42 @@ testRecSelTypes n = do
 
   
 -- used for expand
+
+
+reifyDecs :: Q [Dec]
+reifyDecs = [d|
+  r1 :: a -> a
+  r1 x = x
+
+  class R2 a b where
+    r3 :: a -> b -> c -> a
+    type R4 b a c :: *
+    data R5 a :: *
+
+  data R6 a = R7 { r8 :: a -> a, r9 :: Bool }
+
+  instance R2 (R6 a) a where
+    r3 = undefined
+    type R4 a (R6 a) c = a
+    data R5 (R6 a) = forall b. Show b => R10 { r11 :: a, naughty :: b }
+
+  type family R12 a b :: *
+
+  data family R13 a :: *
+
+  data instance R13 Int = R14 { r15 :: Bool }
+
+  r16, r17 :: Int
+  (r16, r17) = (5, 6)
+
+  newtype R18 = R19 Bool
+
+  type R20 = Bool
+
+  type family R21 (a :: k) (b :: k) :: k where R21 a b = b
+  |]
+
+reifyDecsNames :: [Name]
+reifyDecsNames = map mkName
+  [ "r1", "R2", "r3", "R4", "R5", "R6", "R7", "r8", "r9", "R10", "r11"
+  , "R12", "R13", "R14", "r15", "r16", "r17", "R18", "R19", "R20", "R21" ]
