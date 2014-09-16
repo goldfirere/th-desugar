@@ -10,11 +10,14 @@ This code is directly based on the analogous operation as written in GHC.
 -}
 
 {-# LANGUAGE TemplateHaskell, StandaloneDeriving #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}   -- we need Ord Lit. argh.
 
 module Language.Haskell.TH.Desugar.Match (scExp, scLetDec) where
 
+import Prelude hiding ( fail, exp )
+
 import Control.Applicative
-import Control.Monad
+import Control.Monad hiding ( fail )
 import qualified Data.Set as S
 import qualified Data.Map as Map
 import Language.Haskell.TH.Syntax
@@ -64,8 +67,7 @@ simplCaseExp :: DsMonad q
 simplCaseExp vars clauses =
   do let eis = [ EquationInfo pats (\_ -> rhs) |
                  DClause pats rhs <- clauses ]
-     exp <- matchResultToDExp `liftM` simplCase vars eis
-     return $ squashWildcards exp
+     matchResultToDExp `liftM` simplCase vars eis
 
 data EquationInfo = EquationInfo [DPat] MatchResult  -- like DClause, but with a hole
                             
@@ -104,7 +106,7 @@ deriving instance Ord Lit   -- ew. necessary for `subGroup`
 -- analogous to GHC's tidyEqnInfo
 tidyClause :: DsMonad q => Name -> EquationInfo -> q (DExp -> DExp, EquationInfo)
 tidyClause _ (EquationInfo [] _) =
-  fail "Internal error in th-desugar: no patterns in tidyClause."
+  error "Internal error in th-desugar: no patterns in tidyClause."
 tidyClause v (EquationInfo (pat : pats) body) = do
   (wrap, pat') <- tidy1 v pat
   return (wrap, EquationInfo (pat' : pats) body)
@@ -235,8 +237,8 @@ firstPat (EquationInfo (pat : _) _) = pat
 firstPat _ = error "Clause encountered with no patterns -- should never happen"
 
 data CaseAlt = CaseAlt { alt_con  :: Name         -- con name
-                       , alt_args :: [Name]       -- bound var names
-                       , alt_rhs  :: MatchResult  -- RHS
+                       , _alt_args :: [Name]       -- bound var names
+                       , _alt_rhs  :: MatchResult  -- RHS
                        }
 
 -- from GHC's MatchCon.lhs
