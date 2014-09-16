@@ -26,15 +26,14 @@ instance DsMonad IO where
   localDeclarations = return []
 
 newtype DsM q a = DsM (ReaderT [Dec] q a)
-  deriving (Functor, Applicative, Monad, Quasi, MonadTrans)
+  deriving (Functor, Applicative, Monad, MonadTrans)
 instance Quasi q => DsMonad (DsM q) where
   localDeclarations = DsM ask
 
 withLocalDeclarations :: [Dec] -> DsM q a -> q a
 withLocalDeclarations decs (DsM x) = runReaderT x decs
 
--- Need orphan Quasi instance for ReaderT.
-instance Quasi q => Quasi (ReaderT r q) where
+instance Quasi q => Quasi (DsM q) where
   qNewName          = lift `comp1` qNewName
   qReport           = lift `comp2` qReport
   qLookupName       = lift `comp2` qLookupName
@@ -51,7 +50,7 @@ instance Quasi q => Quasi (ReaderT r q) where
   qGetQ             = lift qGetQ
   qPutQ             = lift `comp1` qPutQ
 
-  qRecover handler body = do
+  qRecover (DsM handler) (DsM body) = DsM $ do
     env <- ask
     lift $ qRecover (runReaderT handler env) (runReaderT body env)
 
