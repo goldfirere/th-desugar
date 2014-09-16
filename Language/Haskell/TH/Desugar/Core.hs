@@ -28,6 +28,7 @@ import qualified Data.Set as S
 import GHC.Exts
 
 import Language.Haskell.TH.Desugar.Util
+import Language.Haskell.TH.Desugar.Monad
 
 -- | Corresponds to TH's @Exp@ type. Note that @DLamE@ takes names, not patterns.
 data DExp = DVarE Name
@@ -871,7 +872,14 @@ dsKind (LitT _) = impossible "Literal used in a kind."
 #if __GLASGOW_HASKELL__ >= 709
 dsKind EqualityT = impossible "(~) used in a kind."
 #endif
-                       
+
+-- | Like 'reify', but safer and desugared. Uses local declarations where
+-- available.
+dsReify :: DsMonad q => Name -> q (Maybe DInfo)
+dsReify name = do
+  m_info <- reifyWithLocals name
+  traverse dsInfo m_info
+  
 -- create a list of expressions in the same order as the fields in the first argument
 -- but with the values as given in the second argument
 -- if a field is missing from the second argument, use the corresponding expression

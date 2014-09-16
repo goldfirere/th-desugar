@@ -40,7 +40,8 @@ library
   exposed-modules:    Language.Haskell.TH.Desugar,
                       Language.Haskell.TH.Desugar.Sweeten,
                       Language.Haskell.TH.Desugar.Expand,
-                      Language.Haskell.TH.Desugar.Lift
+                      Language.Haskell.TH.Desugar.Lift,
+                      Language.Haskell.TH.Desugar.Match
   other-modules:      Language.Haskell.TH.Desugar.Core,
                       Language.Haskell.TH.Desugar.Util,
                       Language.Haskell.TH.Desugar.Monad
