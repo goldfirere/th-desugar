@@ -8,7 +8,15 @@ Utility functions for th-desugar package.
 
 {-# LANGUAGE CPP, TupleSections #-}
 
-module Language.Haskell.TH.Desugar.Util where
+module Language.Haskell.TH.Desugar.Util (
+  reifyWithLocals, reifyWithWarning, newUniqueName,
+  impossible, getDataD, dataConNameToCon,
+  nameOccursIn, allNamesIn, mkTypeName, mkDataName,
+  stripVarP_maybe, extractBoundNamesStmt, concatMapM,
+  liftSndM, liftThdOf3M, stripPlainTV_maybe, dataConNameToDataName,
+  liftSnd, liftThdOf3, splitAtList, extractBoundNamesDec,
+  extractBoundNamesPat
+  ) where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
 

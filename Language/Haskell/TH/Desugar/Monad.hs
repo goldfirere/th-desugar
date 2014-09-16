@@ -7,7 +7,7 @@ Defines a desugaring monad class, capable of storing local declarations for
 aid in reification.
 -}
 
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE CPP, GeneralizedNewtypeDeriving #-}
 
 module Language.Haskell.TH.Desugar.Monad (
   DsMonad(..), DsM, withLocalDeclarations
