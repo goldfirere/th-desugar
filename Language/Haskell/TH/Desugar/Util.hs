@@ -240,8 +240,10 @@ reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `matches` n'
   = Just $ mkVarITy n decs ty
 reifyInDec n decs dec@(FamilyD _ n' _ _) | n `matches` n'
   = Just $ FamilyI dec (findInstances n decs)
+#if __GLASGOW_HASKELL__ >= 707
 reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `matches` n'
   = Just $ FamilyI dec []
+#endif
 
 reifyInDec n decs (DataD _ ty_name tvbs cons _)
   | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) cons
