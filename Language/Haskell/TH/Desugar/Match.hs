@@ -4,7 +4,7 @@
 eir@cis.upenn.edu
 
 Simplifies case statements in desugared TH. After this pass, there are no
-more overlapping or nested patterns.
+more nested patterns.
 
 This code is directly based on the analogous operation as written in GHC.
 -}
@@ -46,9 +46,12 @@ scExp e = return e
 
 scLetDec :: DsMonad q => DLetDec -> q DLetDec
 scLetDec (DFunD name clauses@(DClause pats1 _ : _)) = do
-  arg_names <- mapM (const (newUniqueName "arg")) pats1
-  case_exp <- simplCaseExp arg_names clauses
+  arg_names <- mapM (const (newUniqueName "_arg")) pats1
+  clauses' <- mapM sc_clause_rhs clauses
+  case_exp <- simplCaseExp arg_names clauses'
   return $ DFunD name [DClause (map DVarPa arg_names) case_exp]
+  where
+    sc_clause_rhs (DClause pats exp) = DClause pats <$> scExp exp
 scLetDec (DValD pat exp) = DValD pat <$> scExp exp
 scLetDec dec = return dec
 
@@ -369,8 +372,8 @@ selectMatchVars = mapM selectMatchVar
 selectMatchVar :: DsMonad q => DPat -> q Name
 selectMatchVar (DBangPa pat)  = selectMatchVar pat
 selectMatchVar (DTildePa pat) = selectMatchVar pat
-selectMatchVar (DVarPa var)   = return var
-selectMatchVar _              = newUniqueName "pat"
+selectMatchVar (DVarPa var)   = newUniqueName ('_' : nameBase var)
+selectMatchVar _              = newUniqueName "_pat"
 
 -- like GHC's runs
 runs :: (a -> a -> Bool) -> [a] -> [[a]]
