@@ -27,6 +27,7 @@ import Test.Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Sweeten
+import Language.Haskell.TH.Desugar.Match
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 
@@ -161,6 +162,14 @@ zipWith3M :: Monad m => (a -> b -> c -> m d) -> [a] -> [b] -> [c] -> m [d]
 zipWith3M f (a:as) (b:bs) (c:cs) = liftM2 (:) (f a b c) (zipWith3M f as bs cs)
 zipWith3M _ _ _ _ = return []
 
+simplCase :: [Bool]
+simplCase = $( do exps <- sequence simplCaseTests
+                  dexps <- mapM dsExp exps
+                  sexps <- mapM scExp dexps
+                  bools <- zipWithM (\e1 e2 -> [| $(return e1) == $(return e2) |])
+                    exps (map sweeten sexps)
+                  return $ ListE bools )
+
 main :: IO ()
 main = hspec $ do
   describe "th-desugar library" $ do
@@ -189,5 +198,7 @@ main = hspec $ do
 
     zipWith3M (\a b n -> it ("reifies local definition " ++ show n) $ a == b)
       local_reifications normal_reifications [1..]
+
+    zipWithM (\b n -> it ("works on simplCase test " ++ show n) b) simplCase [1..]
 
     fromHUnitTest tests

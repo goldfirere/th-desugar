@@ -311,3 +311,14 @@ reifyDecsNames :: [Name]
 reifyDecsNames = map mkName
   [ "r1", "R2", "r3", "R4", "R5", "R6", "R7", "r8", "r9", "R10", "r11"
   , "R12", "R13", "R14", "r15", "r16", "r17", "R18", "R19", "R20", "R21" ]
+
+simplCaseTests :: [Q Exp]
+simplCaseTests =
+  [ [| map (\a -> case a :: [Int] of
+        (_:_:_:_) -> (5 :: Int)
+        _         -> 6) [[], [1], [1,2,3]]
+     |]
+  , [| let foo [] = True
+           foo _  = False in (foo [], foo "hi") |]
+  ]
+                             
