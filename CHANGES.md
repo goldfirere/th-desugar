@@ -1,3 +1,12 @@
+Version 1.5
+-----------
+* There is now a facility to register a list of `Dec` that internal reification
+  should use when necessary. This avoids the user needing to break up their
+  definition across different top-level splices. See `withLocalDeclarations`.
+
+* "Match flattening" is implemented! The functions `scExp` and `scLetDec` remove
+  any nested pattern matches.
+
 Version 1.4.2
 -------------
 * `expand` functions now consider open type families, as long as the type

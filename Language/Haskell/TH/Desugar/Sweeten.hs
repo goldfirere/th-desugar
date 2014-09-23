@@ -22,7 +22,13 @@ Converts desugared TH back into real TH.
 --
 ----------------------------------------------------------------------------
 
-module Language.Haskell.TH.Desugar.Sweeten where
+module Language.Haskell.TH.Desugar.Sweeten (
+  expToTH, matchToTH, patToTH, decsToTH, decToTH,
+  letDecToTH, typeToTH, kindToTH,
+
+  conToTH, foreignToTH, pragmaToTH, ruleBndrToTH,
+  clauseToTH, tvbToTH, cxtToTH, predToTH
+  ) where
 
 import Prelude hiding (exp)
 import Language.Haskell.TH hiding (cxt)

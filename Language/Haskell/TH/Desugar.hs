@@ -42,6 +42,23 @@ module Language.Haskell.TH.Desugar (
   PatM, dsPred, dsPat, dsDec, dsLetDec,
   dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses, 
 
+  -- * Converting desugared AST back to TH AST
+  module Language.Haskell.TH.Desugar.Sweeten,
+  
+  -- * Expanding type synonyms
+  expand, expandType,
+
+  -- * Reification
+  reifyWithWarning,
+
+  -- | The following definitions allow you to register a list of
+  -- @Dec@s to be used in reification queries.
+  withLocalDeclarations, dsReify, reifyWithLocals_maybe, reifyWithLocals,
+  DsMonad(..), DsM,
+
+  -- * Nested pattern flattening
+  scExp, scLetDec,
+
   -- * Utility functions
   applyDExp, applyDType,
   dPatToDExp, removeWilds,
@@ -49,13 +66,7 @@ module Language.Haskell.TH.Desugar (
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
   mkTypeName, mkDataName, newUniqueName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
-
-  -- ** Reification
-  reifyWithWarning,
-
-  -- | The following definitions allow you to register a list of
-  -- @Dec@s to be used in reification queries.
-  withLocalDeclarations, reifyWithLocals, DsMonad, DsM,
+  substTy,
   
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
@@ -65,7 +76,9 @@ import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Sweeten
 import Language.Haskell.TH.Syntax
-import Language.Haskell.TH.Desugar.Monad
+import Language.Haskell.TH.Desugar.Reify
+import Language.Haskell.TH.Desugar.Expand
+import Language.Haskell.TH.Desugar.Match
 
 import qualified Data.Set as S
 import Data.Foldable ( foldMap )
@@ -76,7 +89,7 @@ import Prelude hiding ( exp )
 -- way because `Type` and `Kind` are type synonyms, but they desugar
 -- to different types.
 class Desugar th ds | ds -> th where
-  desugar :: Quasi q => th -> q ds
+  desugar :: DsMonad q => th -> q ds
   sweeten :: ds -> th
 
 instance Desugar Exp DExp where

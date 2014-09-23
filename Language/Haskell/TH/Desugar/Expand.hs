@@ -37,10 +37,11 @@ import Data.Monoid
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Sweeten
+import Language.Haskell.TH.Desugar.Reify
 
 -- | Expands all type synonyms in a desugared type. Also expands open type family
 -- applications, as long as the arguments have no free variables.
-expandType :: Quasi q => DType -> q DType
+expandType :: DsMonad q => DType -> q DType
 expandType = go []
   where
     go [] (DForallT tvbs cxt ty) =
@@ -57,7 +58,7 @@ expandType = go []
     go args ty = return $ foldl DAppT ty args
 
 -- | Expands all type synonyms in a desugared predicate.
-expandPred :: Quasi q => DPred -> q DPred
+expandPred :: DsMonad q => DPred -> q DPred
 expandPred = go []
   where
     go args (DAppPr p t) = do
@@ -72,12 +73,12 @@ expandPred = go []
     go args p = return $ foldl DAppPr p args
 
 -- | Expand a constructor with given arguments
-expandCon :: Quasi q
+expandCon :: DsMonad q
           => Name     -- ^ Tycon name
           -> [DType]  -- ^ Arguments
           -> q DType  -- ^ Expanded type
 expandCon n args = do
-  info <- reifyWithWarning n
+  info <- reifyWithLocals n
   dinfo <- dsInfo info
   case dinfo of
     DTyConI (DTySynD _n tvbs rhs) _
@@ -133,7 +134,7 @@ expandCon n args = do
     build_subst pat arg = error $ "Impossible: reifyInstances succeeded but unification failed; pat=" ++ show pat ++ "; arg=" ++ show arg
 
 -- | Capture-avoiding substitution on types
-substTy :: Quasi q => M.Map Name DType -> DType -> q DType
+substTy :: DsMonad q => M.Map Name DType -> DType -> q DType
 substTy vars (DForallT tvbs cxt ty) =
   substTyVarBndrs vars tvbs $ \vars' tvbs' -> do
     cxt' <- mapM (substPred vars') cxt
@@ -150,7 +151,7 @@ substTy vars (DVarT n)
   = return $ DVarT n
 substTy _ ty = return ty
 
-substTyVarBndrs :: Quasi q => M.Map Name DType -> [DTyVarBndr]
+substTyVarBndrs :: DsMonad q => M.Map Name DType -> [DTyVarBndr]
                 -> (M.Map Name DType -> [DTyVarBndr] -> q DType)
                 -> q DType
 substTyVarBndrs vars tvbs thing = do
@@ -168,7 +169,7 @@ extractDTvbName :: DTyVarBndr -> Name
 extractDTvbName (DPlainTV n) = n
 extractDTvbName (DKindedTV n _) = n
 
-substPred :: Quasi q => M.Map Name DType -> DPred -> q DPred
+substPred :: DsMonad q => M.Map Name DType -> DPred -> q DPred
 substPred vars (DAppPr p t) = DAppPr <$> substPred vars p <*> substTy vars t
 substPred vars (DSigPr p k) = DSigPr <$> substPred vars p <*> pure k
 substPred vars (DVarPr n)
@@ -179,7 +180,7 @@ substPred vars (DVarPr n)
 substPred _ p = return p
 
 -- | Convert a 'DType' to a 'DPred'
-dTypeToDPred :: Quasi q => DType -> q DPred
+dTypeToDPred :: DsMonad q => DType -> q DPred
 dTypeToDPred (DForallT _ _ _) = impossible "Forall-type used as constraint"
 dTypeToDPred (DAppT t1 t2)   = DAppPr <$> dTypeToDPred t1 <*> pure t2
 dTypeToDPred (DSigT ty ki)   = DSigPr <$> dTypeToDPred ty <*> pure ki
@@ -192,5 +193,5 @@ dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constrai
 -- | Expand all type synonyms and open type families in the desugared abstract
 -- syntax tree provided. Normally, the first parameter should have a type like
 -- 'DExp' or 'DLetDec'.
-expand :: (Quasi q, Data a) => a -> q a
+expand :: (DsMonad q, Data a) => a -> q a
 expand = everywhereM (mkM expandType >=> mkM expandPred)

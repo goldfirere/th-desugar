@@ -24,8 +24,12 @@ import Language.Haskell.TH.Syntax
 
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
-import Language.Haskell.TH.Desugar.Monad
+import Language.Haskell.TH.Desugar.Reify
 
+-- | Remove all nested pattern-matches within this expression. This also
+-- removes all 'DTildePa's and 'DBangPa's. After this is run, every pattern
+-- is guaranteed to be either a 'DConPa' with bare variables as arguments,
+-- a 'DLitPa', or a 'DWildPa'.
 scExp :: DsMonad q => DExp -> q DExp
 scExp (DAppE e1 e2) = DAppE <$> scExp e1 <*> scExp e2
 scExp (DLamE names exp) = DLamE names <$> scExp exp
@@ -44,6 +48,7 @@ scExp (DLetE decs body) = DLetE <$> mapM scLetDec decs <*> scExp body
 scExp (DSigE exp ty) = DSigE <$> scExp exp <*> pure ty
 scExp e = return e
 
+-- | Like 'scExp', but for a 'DLetDec'.
 scLetDec :: DsMonad q => DLetDec -> q DLetDec
 scLetDec (DFunD name clauses@(DClause pats1 _ : _)) = do
   arg_names <- mapM (const (newUniqueName "_arg")) pats1
