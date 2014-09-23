@@ -3,6 +3,9 @@ Version 1.5
 * There is now a facility to register a list of `Dec` that internal reification
   should use when necessary. This avoids the user needing to break up their
   definition across different top-level splices. See `withLocalDeclarations`.
+  This has a side effect of changing the `Quasi` typeclass constraint on many
+  functions to be the new `DsMonad` constraint. Happily, there are `DsMonad`
+  instances for `Q` and `IO`, the two normal inhabitants of `Quasi`.
 
 * "Match flattening" is implemented! The functions `scExp` and `scLetDec` remove
   any nested pattern matches.
