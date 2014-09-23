@@ -239,7 +239,7 @@ reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `matches` n'
 reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `matches` n'
   = Just $ mkVarITy n decs ty
 reifyInDec n decs dec@(FamilyD _ n' _ _) | n `matches` n'
-  = Just $ FamilyI dec (findInstances n decs)
+  = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
 #if __GLASGOW_HASKELL__ >= 707
 reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `matches` n'
   = Just $ FamilyI dec []
@@ -324,7 +324,11 @@ findInstances n = map stripInstanceDec . concatMap match_instance
                                                , n `matches` n' = [d]
     match_instance d@(DataInstD _ n' _ _ _)    | n `matches` n' = [d]
     match_instance d@(NewtypeInstD _ n' _ _ _) | n `matches` n' = [d]
+#if __GLASGOW_HASKELL__ >= 707
     match_instance d@(TySynInstD n' _)         | n `matches` n' = [d]
+#else
+    match_instance d@(TySynInstD n' _ _)       | n `matches` n' = [d]
+#endif
     match_instance (InstanceD _ _ decs) = concatMap match_instance decs
     match_instance _                    = []
 
@@ -383,6 +387,24 @@ findRecSelector n = firstMatch match_con
     match_rec_sel (n', _, ty) | n `matches` n' = Just ty
     match_rec_sel _                     = Nothing
     
+
+handleBug8884 :: Dec -> Dec
+#if __GLASGOW_HASKELL__ >= 707
+handleBug8884 = id
+#else
+handleBug8884 (FamilyD flav name tvbs m_kind)
+  = FamilyD flav name tvbs (Just stupid_kind)
+  where
+    kind_from_maybe = fromMaybe StarT
+    tvb_kind (PlainTV _)    = Nothing
+    tvb_kind (KindedTV _ k) = Just k
+    
+    result_kind = kind_from_maybe m_kind
+    args_kinds  = map (kind_from_maybe . tvb_kind) tvbs
+
+    stupid_kind = mkArrows args_kinds result_kind
+handleBug8884 dec = dec
+#endif    
 
 tvbName :: TyVarBndr -> Name
 tvbName (PlainTV n)    = n

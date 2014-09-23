@@ -281,14 +281,14 @@ reifyDecs = [d|
 
   class R2 a b where
     r3 :: a -> b -> c -> a
-    type R4 b a c :: *
+    type R4 b a :: *
     data R5 a :: *
 
   data R6 a = R7 { r8 :: a -> a, r9 :: Bool }
 
   instance R2 (R6 a) a where
     r3 = undefined
-    type R4 a (R6 a) c = a
+    type R4 a (R6 a) = a
     data R5 (R6 a) = forall b. Show b => R10 { r11 :: a, naughty :: b }
 
   type family R12 a b :: *
@@ -303,14 +303,19 @@ reifyDecs = [d|
   newtype R18 = R19 Bool
 
   type R20 = Bool
-
+#if __GLASGOW_HASKELL__ >= 707
   type family R21 (a :: k) (b :: k) :: k where R21 a b = b
+#endif
   |]
 
 reifyDecsNames :: [Name]
 reifyDecsNames = map mkName
   [ "r1", "R2", "r3", "R4", "R5", "R6", "R7", "r8", "r9", "R10", "r11"
-  , "R12", "R13", "R14", "r15", "r16", "r17", "R18", "R19", "R20", "R21" ]
+  , "R12", "R13", "R14", "r15", "r16", "r17", "R18", "R19", "R20"
+#if __GLASGOW_HASKELL__ >= 707
+  , "R21"
+#endif
+  ]
 
 simplCaseTests :: [Q Exp]
 simplCaseTests =
