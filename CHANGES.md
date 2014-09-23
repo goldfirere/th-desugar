@@ -7,6 +7,8 @@ Version 1.5
 * "Match flattening" is implemented! The functions `scExp` and `scLetDec` remove
   any nested pattern matches.
 
+* More is now exported from `Language.Haskell.TH.Desugar` for ease of use.
+
 Version 1.4.2
 -------------
 * `expand` functions now consider open type families, as long as the type
