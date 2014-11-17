@@ -21,7 +21,6 @@ import Test.Splices ( dsDecSplice, unqualify )
 
 import Language.Haskell.TH  ( reportError )
 import Language.Haskell.TH.Desugar
-import Language.Haskell.TH.Desugar.Sweeten
 
 import Control.Monad
 

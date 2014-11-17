@@ -26,13 +26,15 @@ module Language.Haskell.TH.Desugar.Expand (
   ) where
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Control.Monad
 import Control.Applicative
 import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Syntax ( Quasi(..) )
 import Data.Data
 import Data.Generics
-import Data.Monoid
+import Data.List
+import qualified Data.Traversable as T
 
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
@@ -80,6 +82,7 @@ expandCon :: DsMonad q
 expandCon n args = do
   info <- reifyWithLocals n
   dinfo <- dsInfo info
+  args_ok <- allM no_tyvars_tyfams args
   case dinfo of
     DTyConI (DTySynD _n tvbs rhs) _
       |  length args >= length tvbs   -- this should always be true!
@@ -91,7 +94,7 @@ expandCon n args = do
 
     DTyConI (DFamilyD TypeFam _n tvbs _mkind) _
       |  length args >= length tvbs   -- this should always be true!
-      ,  all no_tyvars args
+      ,  args_ok
       -> do
         let (syn_args, rest_args) = splitAtList tvbs args
         -- need to get the correct instance
@@ -99,39 +102,87 @@ expandCon n args = do
         dinsts <- dsDecs insts
         case dinsts of
           [DTySynInstD _n (DTySynEqn lhs rhs)] -> do
-            let subst = mconcat $ zipWith build_subst lhs syn_args
+            subst <-
+              expectJustM "Impossible: reification returned a bogus instance" $
+              merge_maps $ zipWith build_subst lhs syn_args
             ty <- substTy subst rhs
             ty' <- expandType ty
             return $ foldl DAppT ty' rest_args
           _ -> return $ foldl DAppT (DConT n) args
-    
+
+    DTyConI (DClosedTypeFamilyD _n tvbs _resk eqns) _
+      |  length args >= length tvbs
+      ,  args_ok
+      -> do
+        let (syn_args, rest_args) = splitAtList tvbs args
+        rhss <- mapMaybeM (check_eqn syn_args) eqns
+        case rhss of
+          (rhs : _) -> do
+            rhs' <- expandType rhs
+            return $ foldl DAppT rhs' rest_args
+          [] -> return $ foldl DAppT (DConT n) args
+
+      where
+         -- returns the substed rhs
+        check_eqn :: DsMonad q => [DType] -> DTySynEqn -> q (Maybe DType)
+        check_eqn arg_tys (DTySynEqn lhs rhs) = do
+          let m_subst = merge_maps $ zipWith build_subst lhs arg_tys
+          T.mapM (flip substTy rhs) m_subst
+          
     _ -> return $ foldl DAppT (DConT n) args
 
   where
-    no_tyvars :: Data a => a -> Bool
-    no_tyvars = everything (&&) (mkQ True no_tyvar)
+    no_tyvars_tyfams :: (DsMonad q, Data a) => a -> q Bool
+    no_tyvars_tyfams = everything (liftM2 (&&)) (mkQ (return True) no_tyvar_tyfam)
 
-    no_tyvar :: DType -> Bool
-    no_tyvar (DVarT _) = False
-    no_tyvar t         = gmapQl (&&) True no_tyvars t
+    no_tyvar_tyfam :: DsMonad q => DType -> q Bool
+    no_tyvar_tyfam (DVarT _) = return False
+    no_tyvar_tyfam (DConT con_name) = do
+      m_info <- dsReify con_name
+      return $ case m_info of
+        Nothing -> False   -- we don't know anything. False is safe.
+        Just (DTyConI (DFamilyD {}) _)           -> False
+        Just (DTyConI (DClosedTypeFamilyD {}) _) -> False
+        _                                        -> True
+    no_tyvar_tyfam t = gmapQl (liftM2 (&&)) (return True) no_tyvars_tyfams t
 
-    build_subst :: DType -> DType -> M.Map Name DType
-    build_subst (DVarT var_name) arg = M.singleton var_name arg
-      -- ignore kind signatures; any kind constraints are already
-      -- handled in reifyInstances
+    build_subst :: DType -> DType -> Maybe (M.Map Name DType)
+    build_subst (DVarT var_name) arg = Just $ M.singleton var_name arg
+      -- if a pattern has a kind signature, it's really easy to get
+      -- this wrong.
+    build_subst (DSigT {}) _ = Nothing
+      -- but we can safely ignore kind signatures on the target
     build_subst pat (DSigT ty _ki) = build_subst pat ty
-    build_subst (DSigT ty _ki) arg = build_subst ty arg
     build_subst (DForallT {}) _ =
       error "Impossible: forall-quantified pattern to type family"
       -- reifyInstances should fail if an argument is forall-quantified.
     build_subst _ (DForallT {}) =
       error "Impossible: forall-quantified argument to type family"
     build_subst (DAppT pat1 pat2) (DAppT arg1 arg2) =
-      build_subst pat1 arg1 <> build_subst pat2 arg2
-    build_subst (DConT _pat_con) (DConT _arg_con) = mempty
-    build_subst DArrowT DArrowT = mempty
-    build_subst (DLitT _pat_lit) (DLitT _arg_lit) = mempty
-    build_subst pat arg = error $ "Impossible: reifyInstances succeeded but unification failed; pat=" ++ show pat ++ "; arg=" ++ show arg
+      merge_maps [build_subst pat1 arg1, build_subst pat2 arg2]
+    build_subst (DConT pat_con) (DConT arg_con)
+      | pat_con == arg_con = Just M.empty
+    build_subst DArrowT DArrowT = Just M.empty
+    build_subst (DLitT pat_lit) (DLitT arg_lit)
+      | pat_lit == arg_lit = Just M.empty
+    build_subst _ _ = Nothing
+
+    merge_maps :: [Maybe (M.Map Name DType)] -> Maybe (M.Map Name DType)
+    merge_maps = foldl' merge_map1 (Just M.empty)
+
+    merge_map1 :: Maybe (M.Map Name DType) -> Maybe (M.Map Name DType)
+               -> Maybe (M.Map Name DType)
+    merge_map1 ma mb = do
+      a <- ma
+      b <- mb
+      let shared_key_set = M.keysSet a `S.intersection` M.keysSet b
+          matches_up     = S.foldr (\name -> ((a M.! name) `geq` (b M.! name) &&))
+                                   True shared_key_set
+      if matches_up then return (a `M.union` b) else Nothing
+
+    allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
+    allM f = foldM (\b x -> (b &&) `liftM` f x) True
+
 
 -- | Capture-avoiding substitution on types
 substTy :: DsMonad q => M.Map Name DType -> DType -> q DType

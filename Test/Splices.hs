@@ -21,7 +21,6 @@ import GHC.TypeLits
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Desugar
-import Language.Haskell.TH.Desugar.Sweeten
 import Data.Generics
 
 #if __GLASGOW_HASKELL__ < 707
@@ -172,6 +171,19 @@ test_expand3 = [| let f :: TFExpand Int -> ()
 test_expand4 = [| let f :: TFExpand (Maybe Bool) -> ()
                       f [True, False] = () in
                   f |]
+
+#if __GLASGOW_HASKELL__ >= 707
+type family ClosedTF a where
+  ClosedTF Int = Bool
+  ClosedTF x   = Char
+
+test_expand5 = [| let f :: ClosedTF Int -> ()
+                      f True = () in
+                  f |]
+test_expand6 = [| let f :: ClosedTF Double -> ()
+                      f 'x' = () in
+                  f |]
+#endif
 
 #if __GLASGOW_HASKELL__ >= 709
 test37_pred = [| let f :: (Read a, (Show a, Num a)) => a -> a

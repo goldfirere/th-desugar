@@ -12,7 +12,8 @@ module Language.Haskell.TH.Desugar.Util (
   newUniqueName,
   impossible, 
   nameOccursIn, allNamesIn, mkTypeName, mkDataName,
-  stripVarP_maybe, extractBoundNamesStmt, concatMapM,
+  stripVarP_maybe, extractBoundNamesStmt,
+  concatMapM, mapMaybeM, expectJustM,
   liftSndM, liftThdOf3M, stripPlainTV_maybe,
   liftSnd, liftThdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat
@@ -143,3 +144,17 @@ concatMapM :: (Monad monad, Monoid monoid, Traversable t)
 concatMapM fn list = do
   bss <- mapM fn list
   return $ fold bss
+
+-- like GHC's
+mapMaybeM :: Monad m => (a -> m (Maybe b)) -> [a] -> m [b]
+mapMaybeM _ [] = return []
+mapMaybeM f (x:xs) = do
+  y <- f x
+  ys <- mapMaybeM f xs
+  return $ case y of
+    Nothing -> ys
+    Just z  -> z : ys
+
+expectJustM :: Monad m => String -> Maybe a -> m a
+expectJustM _   (Just x) = return x
+expectJustM err Nothing  = fail err

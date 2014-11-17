@@ -25,9 +25,6 @@ import qualified Test.DsDec
 import qualified Test.Dec
 import Test.Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
-import Language.Haskell.TH.Desugar.Expand
-import Language.Haskell.TH.Desugar.Sweeten
-import Language.Haskell.TH.Desugar.Match
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 
@@ -92,6 +89,12 @@ test_e3a = $test_expand3
 test_e3b = $(test_expand3 >>= dsExp >>= expand >>= return . expToTH)
 test_e4a = $test_expand4
 test_e4b = $(test_expand4 >>= dsExp >>= expand >>= return . expToTH)
+#if __GLASGOW_HASKELL__ >= 707
+test_e5a = $test_expand5
+test_e5b = $(test_expand5 >>= dsExp >>= expand >>= return . expToTH)
+test_e6a = $test_expand6
+test_e6b = $(test_expand6 >>= dsExp >>= expand >>= return . expToTH)
+#endif
 
 hasSameType :: a -> a -> Bool
 hasSameType _ _ = True
@@ -100,7 +103,12 @@ test_expand :: Bool
 test_expand = and [ hasSameType test35a test35b
                   , hasSameType test36a test36b
                   , hasSameType test_e3a test_e3b
-                  , hasSameType test_e4a test_e4b ]
+                  , hasSameType test_e4a test_e4b
+#if __GLASGOW_HASKELL__ >= 707
+                  , hasSameType test_e5a test_e5b
+                  , hasSameType test_e6a test_e6b
+#endif
+                  ]
 
 test_dec :: [Bool]
 test_dec = $(do bools <- mapM testDecSplice dec_test_nums
@@ -145,7 +153,7 @@ test_rec_sels = and $(do bools <- mapM testRecSelTypes [1..rec_sel_test_num_sels
 local_reifications :: [String]
 local_reifications = $(do decs <- reifyDecs
                           m_infos <- withLocalDeclarations decs $
-                                     mapM reifyWithLocals reifyDecsNames
+                                     mapM reifyWithLocals_maybe reifyDecsNames
                           ListE <$> mapM (Syn.lift . show) (unqualify m_infos))
 
 $reifyDecs
