@@ -18,7 +18,7 @@ import Prelude hiding ( exp )
 
 import Test.HUnit
 import Test.Hspec hiding ( runIO )
-import Test.Hspec.HUnit
+-- import Test.Hspec.HUnit
 
 import Test.Splices
 import qualified Test.DsDec
@@ -34,6 +34,23 @@ import Control.Applicative
 #if __GLASGOW_HASKELL__ >= 707
 import Data.Proxy
 #endif
+
+-- |
+-- Convert a HUnit test suite to a spec.  This can be used to run existing
+-- HUnit tests with Hspec.
+fromHUnitTest :: Test -> Spec
+-- copied from https://github.com/hspec/hspec/blob/master/hspec-contrib/src/Test/Hspec/Contrib/HUnit.hs
+fromHUnitTest t = case t of
+  TestList xs -> mapM_ go xs
+  x -> go x
+  where
+    go :: Test -> Spec
+    go t_ = case t_ of
+      TestLabel s (TestCase e) -> it s e
+      TestLabel s (TestList xs) -> describe s (mapM_ go xs)
+      TestLabel s x -> describe s (go x)
+      TestList xs -> describe "<unlabeled>" (mapM_ go xs)
+      TestCase e -> it "<unlabeled>" e
 
 tests :: Test
 tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
