@@ -12,6 +12,9 @@ Version 1.5
 
 * More is now exported from `Language.Haskell.TH.Desugar` for ease of use.
 
+* `expand` can now expand closed type families! It still requires that the
+  type to expand contain no type variables.
+
 Version 1.4.2
 -------------
 * `expand` functions now consider open type families, as long as the type
