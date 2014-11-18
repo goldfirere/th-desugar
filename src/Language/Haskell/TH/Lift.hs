@@ -11,7 +11,9 @@ module Language.Haskell.TH.Lift (deriveLift, deriveLiftMany, deriveLift', derive
 import Data.PackedString (PackedString, packString, unpackPS)
 #endif /* MIN_VERSION_template_haskell(2,4,0) */
 
+#if !(MIN_VERSION_template_haskell(2,10,0))
 import GHC.Exts
+#endif /* !(MIN_VERSION_template_haskell(2,10,0)) */
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Control.Monad ((<=<))
@@ -51,7 +53,12 @@ deriveLiftOne i =
         ctxt dcx = fmap (dcx ++) . cxt . concatMap liftPred
         -- Only consider *-kinded type variables, because Lift instances cannot
         -- meaningfully be given to types of other kinds.
-#if MIN_VERSION_template_haskell(2,8,0)
+#if MIN_VERSION_template_haskell(2,10,0)
+        unTyVarBndr (PlainTV v) = (v, StarT)
+        unTyVarBndr (KindedTV v k) = (v, k)
+        liftPred (v, StarT) = [conT ''Lift `appT` varT v]
+        liftPred (_, _) = []
+#elif MIN_VERSION_template_haskell(2,8,0)
         unTyVarBndr (PlainTV v) = (v, StarT)
         unTyVarBndr (KindedTV v k) = (v, k)
         liftPred (v, StarT) = [classP ''Lift [varT v]]
@@ -74,7 +81,7 @@ doCons (NormalC c sts) = do
       e = foldl (\e1 e2 -> [| appE $e1 $e2 |]) con args
   clause [conP c (map (varP . mkName) ns)] (normalB e) []
 doCons (RecC c sts) = doCons $ NormalC c [(s, t) | (_, s, t) <- sts]
-doCons (InfixC sty1 c sty2) = do
+doCons (InfixC _sty1 c _sty2) = do
   let con = [| conE c |]
       left = [| lift $(varE (mkName "x0")) |]
       right = [| lift $(varE (mkName "x1")) |]
@@ -103,10 +110,15 @@ instance Lift PackedString where
 instance Lift NameFlavour where
     lift NameS = [| NameS |]
     lift (NameQ modnam) = [| NameQ modnam |]
+#if MIN_VERSION_template_haskell(2,10,0)
+    lift (NameU i) = [| NameU i |]
+    lift (NameL i) = [| NameL i |]
+#else /* MIN_VERSION_template_haskell(2,10,0) */
     lift (NameU i) = [| case $( lift (I# i) ) of
                             I# i' -> NameU i' |]
     lift (NameL i) = [| case $( lift (I# i) ) of
                             I# i' -> NameL i' |]
+#endif /* MIN_VERSION_template_haskell(2,10,0) */
     lift (NameG nameSpace pkgName modnam)
      = [| NameG nameSpace pkgName modnam |]
 
