@@ -15,6 +15,9 @@ Version 1.5
 * `expand` can now expand closed type families! It still requires that the
   type to expand contain no type variables.
 
+* Support for standalone-deriving and default signatures in GHC 7.10.
+  This means that there are now two new constructors for `DDec`.
+
 Version 1.4.2
 -------------
 * `expand` functions now consider open type families, as long as the type

@@ -67,6 +67,8 @@ module Language.Haskell.TH.Desugar (
   mkTypeName, mkDataName, newUniqueName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
   substTy,
+  tupleDegree_maybe, tupleNameDegree_maybe,
+  unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
   
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
@@ -81,7 +83,9 @@ import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Match
 
 import qualified Data.Set as S
+#if __GLASGOW_HASKELL__ < 709
 import Data.Foldable ( foldMap )
+#endif
 import Prelude hiding ( exp )
 
 -- | This class relates a TH type with its th-desugar type and allows

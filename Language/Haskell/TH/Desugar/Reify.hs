@@ -20,11 +20,13 @@ module Language.Haskell.TH.Desugar.Reify (
   DsMonad(..), DsM, withLocalDeclarations
   ) where
 
-import Control.Applicative
 import Control.Monad.Reader
 import Data.List
 import Data.Maybe
+#if __GLASGOW_HASKELL__ < 709
+import Control.Applicative
 import Data.Monoid
+#endif
 import qualified Data.Set as S
 
 import Language.Haskell.TH.Syntax hiding ( lift )
@@ -184,22 +186,22 @@ reifyInDecs :: Name -> [Dec] -> Maybe Info
 reifyInDecs n decs = firstMatch (reifyInDec n decs) decs
 
 reifyInDec :: Name -> [Dec] -> Dec -> Maybe Info
-reifyInDec n decs (FunD n' _) | n `matches` n' = Just $ mkVarI n decs
+reifyInDec n decs (FunD n' _) | n `nameMatches` n' = Just $ mkVarI n decs
 reifyInDec n decs (ValD pat _ _)
-  | any (matches n) (S.elems (extractBoundNamesPat pat)) = Just $ mkVarI n decs
-reifyInDec n _    dec@(DataD    _ n' _ _ _) | n `matches` n' = Just $ TyConI dec
-reifyInDec n _    dec@(NewtypeD _ n' _ _ _) | n `matches` n' = Just $ TyConI dec
-reifyInDec n _    dec@(TySynD n' _ _)       | n `matches` n' = Just $ TyConI dec
-reifyInDec n decs dec@(ClassD _ n' _ _ _)   | n `matches` n'
+  | any (nameMatches n) (S.elems (extractBoundNamesPat pat)) = Just $ mkVarI n decs
+reifyInDec n _    dec@(DataD    _ n' _ _ _) | n `nameMatches` n' = Just $ TyConI dec
+reifyInDec n _    dec@(NewtypeD _ n' _ _ _) | n `nameMatches` n' = Just $ TyConI dec
+reifyInDec n _    dec@(TySynD n' _ _)       | n `nameMatches` n' = Just $ TyConI dec
+reifyInDec n decs dec@(ClassD _ n' _ _ _)   | n `nameMatches` n'
   = Just $ ClassI (stripClassDec dec) (findInstances n decs)
-reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `matches` n'
+reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `nameMatches` n'
   = Just $ mkVarITy n decs ty
-reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `matches` n'
+reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `nameMatches` n'
   = Just $ mkVarITy n decs ty
-reifyInDec n decs dec@(FamilyD _ n' _ _) | n `matches` n'
+reifyInDec n decs dec@(FamilyD _ n' _ _) | n `nameMatches` n'
   = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
 #if __GLASGOW_HASKELL__ >= 707
-reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `matches` n'
+reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `nameMatches` n'
   = Just $ FamilyI dec []
 #endif
 
@@ -266,26 +268,26 @@ mkVarITy n decs ty = VarI n ty Nothing (findFixity n decs)
 findFixity :: Name -> [Dec] -> Fixity
 findFixity n = fromMaybe defaultFixity . firstMatch match_fixity
   where
-    match_fixity (InfixD fixity n') | n `matches` n' = Just fixity
+    match_fixity (InfixD fixity n') | n `nameMatches` n' = Just fixity
     match_fixity _                                   = Nothing
 
 findType :: Name -> [Dec] -> Maybe Type
 findType n = firstMatch match_type
   where
-    match_type (SigD n' ty) | n `matches` n' = Just ty
+    match_type (SigD n' ty) | n `nameMatches` n' = Just ty
     match_type _                             = Nothing
 
 findInstances :: Name -> [Dec] -> [Dec]
 findInstances n = map stripInstanceDec . concatMap match_instance
   where
     match_instance d@(InstanceD _ ty _)        | ConT n' <- ty_head ty
-                                               , n `matches` n' = [d]
-    match_instance d@(DataInstD _ n' _ _ _)    | n `matches` n' = [d]
-    match_instance d@(NewtypeInstD _ n' _ _ _) | n `matches` n' = [d]
+                                               , n `nameMatches` n' = [d]
+    match_instance d@(DataInstD _ n' _ _ _)    | n `nameMatches` n' = [d]
+    match_instance d@(NewtypeInstD _ n' _ _ _) | n `nameMatches` n' = [d]
 #if __GLASGOW_HASKELL__ >= 707
-    match_instance d@(TySynInstD n' _)         | n `matches` n' = [d]
+    match_instance d@(TySynInstD n' _)         | n `nameMatches` n' = [d]
 #else
-    match_instance d@(TySynInstD n' _ _)       | n `matches` n' = [d]
+    match_instance d@(TySynInstD n' _ _)       | n `nameMatches` n' = [d]
 #endif
     match_instance (InstanceD _ _ decs) = concatMap match_instance decs
     match_instance _                    = []
@@ -308,9 +310,9 @@ addClassCxt :: Name -> [TyVarBndr] -> Type -> Type
 addClassCxt class_name tvbs ty = ForallT tvbs class_cxt ty
   where
 #if __GLASGOW_HASKELL__ < 709
-    class_cxt = [ClassP class_name (map (VarT . tvbName) tvbs)]
+    class_cxt = [ClassP class_name (map tvbToType tvbs)]
 #else
-    class_cxt = [applyTvbs ty_name tvbs]
+    class_cxt = [foldl AppT (ConT class_name) (map tvbToType tvbs)]
 #endif
 
 stripInstanceDec :: Dec -> Dec
@@ -330,9 +332,9 @@ maybeForallT tvbs cxt ty
 findCon :: Name -> [Con] -> Maybe Con
 findCon n = find match_con
   where
-    match_con (NormalC n' _)  = n `matches` n'
-    match_con (RecC n' _)     = n `matches` n'
-    match_con (InfixC _ n' _) = n `matches` n'
+    match_con (NormalC n' _)  = n `nameMatches` n'
+    match_con (RecC n' _)     = n `nameMatches` n'
+    match_con (InfixC _ n' _) = n `nameMatches` n'
     match_con (ForallC _ _ c) = match_con c
 
 findRecSelector :: Name -> [Con] -> Maybe Type
@@ -342,7 +344,7 @@ findRecSelector n = firstMatch match_con
     match_con (ForallC _ _ c) = match_con c
     match_con _               = Nothing
 
-    match_rec_sel (n', _, ty) | n `matches` n' = Just ty
+    match_rec_sel (n', _, ty) | n `nameMatches` n' = Just ty
     match_rec_sel _                     = Nothing
     
 
@@ -364,49 +366,3 @@ handleBug8884 (FamilyD flav name tvbs m_kind)
 handleBug8884 dec = dec
 #endif    
 
-tvbName :: TyVarBndr -> Name
-tvbName (PlainTV n)    = n
-tvbName (KindedTV n _) = n
-
-tvbToType :: TyVarBndr -> Type
-tvbToType = VarT . tvbName
-
-thdOf3 :: (a,b,c) -> c
-thdOf3 (_,_,c) = c
-
-firstMatch :: (a -> Maybe b) -> [a] -> Maybe b
-firstMatch f xs = listToMaybe $ mapMaybe f xs
-
-freeNamesOfTypes :: [Type] -> S.Set Name
-freeNamesOfTypes = mconcat . map go
-  where
-    go (ForallT tvbs cxt ty) = (go ty <> mconcat (map go_pred cxt))
-                               S.\\ S.fromList (map tvbName tvbs)
-    go (AppT t1 t2)          = go t1 <> go t2
-    go (SigT ty _)           = go ty
-    go (VarT n)              = S.singleton n
-    go _                     = S.empty
-
-#if __GLASGOW_HASKELL__ > 709
-    go_pred = go
-#else
-    go_pred (ClassP _ tys) = freeNamesOfTypes tys
-    go_pred (EqualP t1 t2) = go t1 <> go t2
-#endif
-
-matches :: Name -> Name -> Bool
-matches n1@(Name occ1 flav1) n2@(Name occ2 flav2)
-  | NameS <- flav1 = occ1 == occ2
-  | NameS <- flav2 = occ1 == occ2
-  | NameQ mod1 <- flav1
-  , NameQ mod2 <- flav2
-  = mod1 == mod2 && occ1 == occ2
-  | NameQ mod1 <- flav1
-  , NameG _ _ mod2 <- flav2
-  = mod1 == mod2 && occ1 == occ2
-  | NameG _ _ mod1 <- flav1
-  , NameQ mod2 <- flav2
-  = mod1 == mod2 && occ1 == occ2
-  | otherwise
-  = n1 == n2
-    

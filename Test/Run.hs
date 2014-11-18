@@ -148,7 +148,11 @@ test_bug8884 = $(do info <- reify ''Poly
                                    (Just [DTySynInstD _name2 (DTySynEqn lhs _rhs)]))
                       <- dsInfo info
                     case (resK, lhs) of
+#if __GLASGOW_HASKELL__ < 709
                       (DStarK, [DVarT _]) -> [| True |]
+#else
+                      (DStarK, [DSigT (DVarT _) (DVarK _)]) -> [| True |]
+#endif
                       _                                     -> do
                         runIO $ do
                           putStrLn "Failed bug8884 test:"
@@ -167,11 +171,19 @@ test_rec_sels :: Bool
 test_rec_sels = and $(do bools <- mapM testRecSelTypes [1..rec_sel_test_num_sels]
                          return $ ListE bools)
 
+test_standalone_deriving :: Bool
+#if __GLASGOW_HASKELL__ >= 709
+test_standalone_deriving = (MkBlarggie 5 'x') == (MkBlarggie 5 'x')
+#else
+test_standalone_deriving = True
+#endif
+
 local_reifications :: [String]
 local_reifications = $(do decs <- reifyDecs
                           m_infos <- withLocalDeclarations decs $
                                      mapM reifyWithLocals_maybe reifyDecsNames
-                          ListE <$> mapM (Syn.lift . show) (unqualify m_infos))
+                          let m_infos' = assumeStarT m_infos
+                          ListE <$> mapM (Syn.lift . show) (unqualify m_infos'))
 
 $reifyDecs
 
@@ -220,6 +232,8 @@ main = hspec $ do
     it "flattens DValDs" $ flatten_dvald
 
     it "extracts record selectors" $ test_rec_sels
+
+    it "works with standalone deriving" $ test_standalone_deriving
 
     zipWith3M (\a b n -> it ("reifies local definition " ++ show n) $ a == b)
       local_reifications normal_reifications [1..]

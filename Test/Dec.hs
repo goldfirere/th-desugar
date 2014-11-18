@@ -6,7 +6,8 @@ eir@cis.upenn.edu
 
 {-# LANGUAGE TemplateHaskell, GADTs, PolyKinds, TypeFamilies,
              MultiParamTypeClasses, FunctionalDependencies,
-             FlexibleInstances, DataKinds, CPP, RankNTypes #-}
+             FlexibleInstances, DataKinds, CPP, RankNTypes,
+             StandaloneDeriving, DefaultSignatures #-}
 #if __GLASGOW_HASKELL__ >= 707
 {-# LANGUAGE RoleAnnotations #-}
 #endif
@@ -28,6 +29,9 @@ $(S.dectest7)
 $(S.dectest8)
 $(S.dectest9)
 $(S.dectest10)
+#if __GLASGOW_HASKELL__ >= 709
+$(S.dectest11)
+#endif
 
 $(fmap unqualify S.instance_test)
 

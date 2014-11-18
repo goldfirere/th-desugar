@@ -96,6 +96,16 @@ decToTH (DClosedTypeFamilyD n tvbs m_k eqns) =
                        (map tySynEqnToTH eqns)]
 decToTH (DRoleAnnotD n roles) = [RoleAnnotD n roles]
 #endif
+#if __GLASGOW_HASKELL__ < 709
+decToTH (DStandaloneDerivD {}) =
+  error "Standalone deriving supported only in GHC 7.10+"
+decToTH (DDefaultSigD {})      =
+  error "Default method signatures supported only in GHC 7.10+"
+#else
+decToTH (DStandaloneDerivD cxt ty) =
+  [StandaloneDerivD (cxtToTH cxt) (typeToTH ty)]
+decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
+#endif
 decToTH _ = error "Newtype declaration without exactly 1 constructor."
 
 letDecToTH :: DLetDec -> Dec
@@ -128,6 +138,11 @@ pragmaToTH (DRuleP str rbs lhs rhs phases) =
 pragmaToTH (DAnnP {}) = Nothing
 #else
 pragmaToTH (DAnnP target exp) = Just $ AnnP target (expToTH exp)
+#endif
+#if __GLASGOW_HASKELL__ < 709
+pragmaToTH (DLineP {}) = Nothing
+#else
+pragmaToTH (DLineP n str) = Just $ LineP n str
 #endif
 
 ruleBndrToTH :: DRuleBndr -> RuleBndr

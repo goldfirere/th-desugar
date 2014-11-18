@@ -8,7 +8,8 @@ eir@cis.upenn.edu
              MultiWayIf, ParallelListComp, CPP, BangPatterns,
              ScopedTypeVariables, RankNTypes, TypeFamilies, ImpredicativeTypes,
              DataKinds, PolyKinds, GADTs, MultiParamTypeClasses,
-             FunctionalDependencies, FlexibleInstances #-}
+             FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
+             DefaultSignatures #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
@@ -49,6 +50,17 @@ testDecSplice n = do
 
 unqualify :: Data a => a -> a
 unqualify = everywhere (mkT (mkName . nameBase))
+
+assumeStarT :: Data a => a -> a
+#if __GLASGOW_HASKELL__ < 709
+assumeStarT = id
+#else
+assumeStarT = everywhere (mkT go)
+  where
+    go :: TyVarBndr -> TyVarBndr
+    go (PlainTV n) = KindedTV n StarT
+    go (KindedTV n k) = KindedTV n (assumeStarT k)
+#endif
 
 dropTrailing0s :: Data a => a -> a
 dropTrailing0s = everywhere (mkT (mkName . frob . nameBase))
@@ -201,8 +213,10 @@ test39_eq = [| let f :: (a ~ b) => a -> b
 
 #if __GLASGOW_HASKELL__ < 707
 dec_test_nums = [1..9] :: [Int]
-#else
+#elif __GLASGOW_HASKELL__ < 709
 dec_test_nums = [1..10] :: [Int]
+#else
+dec_test_nums = [1..11] :: [Int]
 #endif
 
 dectest1 = [d| data Dec1 = Foo | Bar Int |]
@@ -236,6 +250,16 @@ role_test = []
 dectest10 = [d| type family Dec10 a :: * -> * where
                   Dec10 Int = Maybe
                   Dec10 Bool = [] |]
+#endif
+
+data Blarggie a = MkBlarggie Int a
+#if __GLASGOW_HASKELL__ >= 709
+dectest11 = [d| class Dec11 a where
+                  meth13 :: a -> a -> Bool
+                  default meth13 :: Eq a => a -> a -> Bool
+                  meth13 = (==)
+              |]
+standalone_deriving_test = [d| deriving instance Eq a => Eq (Blarggie a) |]
 #endif
 
 instance_test = [d| instance (Show a, Show b) => Show (a -> b) where

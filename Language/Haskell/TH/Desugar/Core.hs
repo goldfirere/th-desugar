@@ -119,6 +119,8 @@ data DDec = DLetDec DLetDec
           | DTySynInstD Name DTySynEqn
           | DClosedTypeFamilyD Name [DTyVarBndr] (Maybe DKind) [DTySynEqn]
           | DRoleAnnotD Name [Role]
+          | DStandaloneDerivD DCxt DType
+          | DDefaultSigD Name DType
           deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Con@ type.
@@ -148,6 +150,7 @@ data DPragma = DInlineP Name Inline RuleMatch Phases
              | DSpecialiseInstP DType
              | DRuleP String [DRuleBndr] DExp DExp Phases
              | DAnnP AnnTarget DExp
+             | DLineP Int String
              deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @RuleBndr@ type.
@@ -656,7 +659,13 @@ dsDec (ClosedTypeFamilyD n tvbs m_k eqns) =
                                   <*> mapM dsTySynEqn eqns)
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #endif
-             
+#if __GLASGOW_HASKELL__ >= 709
+dsDec (StandaloneDerivD cxt ty) = (:[]) <$> (DStandaloneDerivD <$> dsCxt cxt
+                                                               <*> dsType ty)
+dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
+#endif
+
+  
 -- | Desugar @Dec@s that can appear in a let expression
 dsLetDecs :: DsMonad q => [Dec] -> q [DLetDec]
 dsLetDecs = concatMapM dsLetDec
@@ -712,6 +721,9 @@ dsPragma (RuleP str rbs lhs rhs phases)  = DRuleP str <$> mapM dsRuleBndr rbs
                                                       <*> pure phases
 #if __GLASGOW_HASKELL__ >= 707
 dsPragma (AnnP target exp)               = DAnnP target <$> dsExp exp
+#endif
+#if __GLASGOW_HASKELL__ >= 709
+dsPragma (LineP n str)                   = return $ DLineP n str
 #endif
 
 -- | Desugar a @RuleBndr@.
