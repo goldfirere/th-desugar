@@ -46,58 +46,59 @@ deriveLiftMany' = mapM deriveLiftOne
 
 deriveLiftOne :: Info -> Q Dec
 deriveLiftOne i =
-  case i of
-    TyConI (DataD dcx n vsk cons _) ->
-      liftInstance dcx n (map unTyVarBndr vsk) (map doCons cons)
-    TyConI (NewtypeD dcx n vsk con _) ->
-      liftInstance dcx n (map unTyVarBndr vsk) [doCons con]
-    _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
-  where liftInstance dcx n vs cases =
-          instanceD (ctxt dcx vs)
-                    (conT ''Lift `appT` typ n (map fst vs))
-                    [funD 'lift cases]
-        typ n = foldl appT (conT n) . map varT
-        ctxt dcx = fmap (dcx ++) . cxt . concatMap liftPred
-        -- Only consider *-kinded type variables, because Lift instances cannot
-        -- meaningfully be given to types of other kinds.
+    case i of
+      TyConI (DataD dcx n vsk cons _) ->
+        liftInstance dcx n (map unTyVarBndr vsk) (map doCons cons)
+      TyConI (NewtypeD dcx n vsk con _) ->
+        liftInstance dcx n (map unTyVarBndr vsk) [doCons con]
+      _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
+  where
+    liftInstance dcx n vs cases =
+      instanceD (ctxt dcx vs)
+                (conT ''Lift `appT` typ n (map fst vs))
+                [funD 'lift cases]
+    typ n = foldl appT (conT n) . map varT
+    ctxt dcx = fmap (dcx ++) . cxt . concatMap liftPred
+    -- Only consider *-kinded type variables, because Lift instances cannot
+    -- meaningfully be given to types of other kinds.
 #if MIN_VERSION_template_haskell(2,10,0)
-        unTyVarBndr (PlainTV v) = (v, StarT)
-        unTyVarBndr (KindedTV v k) = (v, k)
-        liftPred (v, StarT) = [conT ''Lift `appT` varT v]
-        liftPred (_, _) = []
+    unTyVarBndr (PlainTV v) = (v, StarT)
+    unTyVarBndr (KindedTV v k) = (v, k)
+    liftPred (v, StarT) = [conT ''Lift `appT` varT v]
+    liftPred (_, _) = []
 #elif MIN_VERSION_template_haskell(2,8,0)
-        unTyVarBndr (PlainTV v) = (v, StarT)
-        unTyVarBndr (KindedTV v k) = (v, k)
-        liftPred (v, StarT) = [classP ''Lift [varT v]]
-        liftPred (_, _) = []
+    unTyVarBndr (PlainTV v) = (v, StarT)
+    unTyVarBndr (KindedTV v k) = (v, k)
+    liftPred (v, StarT) = [classP ''Lift [varT v]]
+    liftPred (_, _) = []
 #elif MIN_VERSION_template_haskell(2,4,0)
-        unTyVarBndr (PlainTV v) = (v, StarK)
-        unTyVarBndr (KindedTV v k) = (v, k)
-        liftPred (v, StarK) = [classP ''Lift [varT v]]
-        liftPred (_, _) = []
+    unTyVarBndr (PlainTV v) = (v, StarK)
+    unTyVarBndr (KindedTV v k) = (v, k)
+    liftPred (v, StarK) = [classP ''Lift [varT v]]
+    liftPred (_, _) = []
 #else /* template-haskell < 2.4.0 */
-        unTyVarBndr v = v
-        liftPred n = conT ''Lift `appT` varT n
+    unTyVarBndr v = v
+    liftPred n = conT ''Lift `appT` varT n
 #endif
 
 doCons :: Con -> Q Clause
 doCons (NormalC c sts) = do
-  let ns = zipWith (\_ i -> "x" ++ show (i :: Int)) sts [0..]
-      con = [| conE c |]
-      args = [ [| lift $(varE (mkName n)) |] | n <- ns ]
-      e = foldl (\e1 e2 -> [| appE $e1 $e2 |]) con args
-  clause [conP c (map (varP . mkName) ns)] (normalB e) []
+    let ns = zipWith (\_ i -> "x" ++ show (i :: Int)) sts [0..]
+        con = [| conE c |]
+        args = [ [| lift $(varE (mkName n)) |] | n <- ns ]
+        e = foldl (\e1 e2 -> [| appE $e1 $e2 |]) con args
+    clause [conP c (map (varP . mkName) ns)] (normalB e) []
 doCons (RecC c sts) = doCons $ NormalC c [(s, t) | (_, s, t) <- sts]
 doCons (InfixC _sty1 c _sty2) = do
-  let con = [| conE c |]
-      left = [| lift $(varE (mkName "x0")) |]
-      right = [| lift $(varE (mkName "x1")) |]
-      e = [| infixApp $left $con $right |]
-  clause [infixP (varP (mkName "x0")) c (varP (mkName "x1"))] (normalB e) []
+    let con = [| conE c |]
+        left = [| lift $(varE (mkName "x0")) |]
+        right = [| lift $(varE (mkName "x1")) |]
+        e = [| infixApp $left $con $right |]
+    clause [infixP (varP (mkName "x0")) c (varP (mkName "x1"))] (normalB e) []
 doCons (ForallC _ _ c) = doCons c
 
 instance Lift Name where
-    lift (Name occName nameFlavour) = [| Name occName nameFlavour |]
+  lift (Name occName nameFlavour) = [| Name occName nameFlavour |]
 
 #if MIN_VERSION_template_haskell(2,4,0)
 instance Lift OccName where
@@ -115,24 +116,24 @@ instance Lift PackedString where
 
 #endif /* MIN_VERSION_template_haskell(2,4,0) */
 instance Lift NameFlavour where
-    lift NameS = [| NameS |]
-    lift (NameQ modnam) = [| NameQ modnam |]
+  lift NameS = [| NameS |]
+  lift (NameQ modnam) = [| NameQ modnam |]
 #if MIN_VERSION_template_haskell(2,10,0)
-    lift (NameU i) = [| NameU i |]
-    lift (NameL i) = [| NameL i |]
+  lift (NameU i) = [| NameU i |]
+  lift (NameL i) = [| NameL i |]
 #else /* MIN_VERSION_template_haskell(2,10,0) */
-    lift (NameU i) = [| case $( lift (I# i) ) of
-                            I# i' -> NameU i' |]
-    lift (NameL i) = [| case $( lift (I# i) ) of
-                            I# i' -> NameL i' |]
+  lift (NameU i) = [| case $( lift (I# i) ) of
+                          I# i' -> NameU i' |]
+  lift (NameL i) = [| case $( lift (I# i) ) of
+                          I# i' -> NameL i' |]
 #endif /* MIN_VERSION_template_haskell(2,10,0) */
-    lift (NameG nameSpace pkgName modnam)
-     = [| NameG nameSpace pkgName modnam |]
+  lift (NameG nameSpace pkgName modnam)
+   = [| NameG nameSpace pkgName modnam |]
 
 instance Lift NameSpace where
-    lift VarName = [| VarName |]
-    lift DataName = [| DataName |]
-    lift TcClsName = [| TcClsName |]
+  lift VarName = [| VarName |]
+  lift DataName = [| DataName |]
+  lift TcClsName = [| TcClsName |]
 
 -- These instances should really go in the template-haskell package.
 
