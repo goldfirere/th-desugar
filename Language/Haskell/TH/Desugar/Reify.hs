@@ -25,7 +25,6 @@ import Data.List
 import Data.Maybe
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
-import Data.Monoid
 #endif
 import qualified Data.Set as S
 
