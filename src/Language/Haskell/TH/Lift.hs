@@ -1,11 +1,18 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-module Language.Haskell.TH.Lift (deriveLift, deriveLiftMany, deriveLift', deriveLiftMany', Lift(..)) where
+
+module Language.Haskell.TH.Lift
+  ( deriveLift
+  , deriveLiftMany
+  , deriveLift'
+  , deriveLiftMany'
+  , Lift(..)
+  ) where
 
 #if !(MIN_VERSION_template_haskell(2,4,0))
 import Data.PackedString (PackedString, packString, unpackPS)
