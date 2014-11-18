@@ -19,7 +19,7 @@ import Data.PackedString (PackedString, packString, unpackPS)
 #endif /* MIN_VERSION_template_haskell(2,4,0) */
 
 #if !(MIN_VERSION_template_haskell(2,10,0))
-import GHC.Exts
+import GHC.Exts (Int(..))
 #endif /* !(MIN_VERSION_template_haskell(2,10,0)) */
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
