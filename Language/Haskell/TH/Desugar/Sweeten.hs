@@ -188,7 +188,7 @@ predToTH = go []
     go _   (DVarPr _)
       = error "Template Haskell in GHC <= 7.8 does not support variable constraints."
     go acc (DConPr n) 
-      | nameBase n == "(~)"
+      | nameBase n == "~"
       , [t1, t2] <- acc
       = EqualP t1 t2
       | otherwise
