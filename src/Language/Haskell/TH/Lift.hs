@@ -24,8 +24,7 @@ import GHC.Exts (Int(..))
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Control.Monad ((<=<))
-import Data.Set (Set)
-import qualified Data.Set as Set
+import Data.Maybe (catMaybes)
 
 modName :: String
 modName = "Language.Haskell.TH.Lift"
@@ -55,16 +54,22 @@ deriveLiftOne i =
         liftInstance dcx n (map unTyVarBndr vsk) [con]
       _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
   where
-    liftInstance dcx n vs cons =
-      instanceD (ctxt dcx (Set.toList $ Set.unions $ map freevars cons) vs)
+    liftInstance dcx n vs cons = do
+      roles <- qReifyRoles n
+      -- Compute the set of phantom variables.
+      let phvars = catMaybes $
+            zipWith (\v role -> if role == PhantomR then Just v else Nothing)
+                    vs
+                    roles
+      instanceD (ctxt dcx phvars vs)
                 (conT ''Lift `appT` typ n (map fst vs))
                 [funD 'lift (map doCons cons)]
     typ n = foldl appT (conT n) . map varT
     -- Only consider *-kinded type variables, because Lift instances cannot
     -- meaningfully be given to types of other kinds. Further, filter out type
     -- variables that are obviously phantom.
-    ctxt dcx nonphvars =
-        fmap (dcx ++) . cxt . concatMap liftPred . filter ((`elem` nonphvars) . fst)
+    ctxt dcx phvars =
+        fmap (dcx ++) . cxt . concatMap liftPred . filter (`notElem` phvars)
 
 unTyVarBndr :: TyVarBndr -> (Name, Type)
 liftPred :: (Name, Type) -> [PredQ]
@@ -87,25 +92,6 @@ liftPred (_, _) = []
 unTyVarBndr v = v
 liftPred n = conT ''Lift `appT` varT n
 #endif
-
-freevars :: Con -> Set Name
-freevars (NormalC _ stys) =
-    case map snd stys of
-      tys -> Set.unions (map freevarsTy tys)
-freevars (RecC _ stys) =
-    case map (\(_, _, x) -> x) stys of
-      tys -> Set.unions (map freevarsTy tys)
-freevars (InfixC (_, ty1) _ (_, ty2)) =
-    Set.union (freevarsTy ty1) (freevarsTy ty2)
-freevars (ForallC binds _ con) =
-    freevars con `Set.difference` Set.fromList (map (fst . unTyVarBndr) binds)
-
-freevarsTy :: Type -> Set Name
-freevarsTy (ForallT binds _ ty) =
-    freevarsTy ty `Set.difference` Set.fromList (map (fst . unTyVarBndr) binds)
-freevarsTy (SigT ty k) = Set.union (freevarsTy ty) (freevarsTy k)
-freevarsTy (VarT n) = Set.singleton n
-freevarsTy _ = Set.empty -- XXX assume no other recursive constructor.
 
 doCons :: Con -> Q Clause
 doCons (NormalC c sts) = do
