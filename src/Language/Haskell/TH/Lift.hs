@@ -161,6 +161,7 @@ instance Lift NameSpace where
   lift DataName = [| DataName |]
   lift TcClsName = [| TcClsName |]
 
+#if !(MIN_VERSION_template_haskell(2,10,0))
 -- These instances should really go in the template-haskell package.
 
 instance Lift () where
@@ -168,3 +169,4 @@ instance Lift () where
 
 instance Lift Rational where
   lift x = return (LitE (RationalL x))
+#endif
