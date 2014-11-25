@@ -24,7 +24,9 @@ import GHC.Exts (Int(..))
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Control.Monad ((<=<))
+#if MIN_VERSION_template_haskell(2,9,0)
 import Data.Maybe (catMaybes)
+#endif /* MIN_VERSION_template_haskell(2,9,0) */
 
 modName :: String
 modName = "Language.Haskell.TH.Lift"
