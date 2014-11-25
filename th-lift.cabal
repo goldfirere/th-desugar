@@ -14,6 +14,10 @@ Tested-With:        GHC==6.12, GHC==7.0.1, GHC==7.2
 build-type:         Simple
 Extra-source-files: BSD3, GPL-2, Changelog, t/Foo.hs, t/Test.hs
 
+source-repository head
+  type:     git
+  location: git://github.com/mboes/th-lift
+
 Library
   Exposed-modules: Language.Haskell.TH.Lift
   Extensions:      CPP, TemplateHaskell, MagicHash, TypeSynonymInstances, FlexibleInstances
@@ -27,7 +31,3 @@ Library
                    template-haskell >= 2.2 && < 2.4
   else
     Build-Depends: template-haskell >= 2.4 && < 2.11
-
-source-repository head
-  type:     git
-  location: git://github.com/mboes/th-lift
