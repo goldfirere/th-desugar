@@ -76,27 +76,24 @@ deriveLiftOne i =
     -- variables that are obviously phantom.
     ctxt dcx phvars =
         fmap (dcx ++) . cxt . concatMap liftPred . filter (`notElem` phvars)
-
-unTyVarBndr :: TyVarBndr -> (Name, Type)
-liftPred :: (Name, Type) -> [PredQ]
 #if MIN_VERSION_template_haskell(2,10,0)
-unTyVarBndr (PlainTV v) = (v, StarT)
-unTyVarBndr (KindedTV v k) = (v, k)
-liftPred (v, StarT) = [conT ''Lift `appT` varT v]
-liftPred (_, _) = []
+    unTyVarBndr (PlainTV v) = (v, StarT)
+    unTyVarBndr (KindedTV v k) = (v, k)
+    liftPred (v, StarT) = [conT ''Lift `appT` varT v]
+    liftPred (_, _) = []
 #elif MIN_VERSION_template_haskell(2,8,0)
-unTyVarBndr (PlainTV v) = (v, StarT)
-unTyVarBndr (KindedTV v k) = (v, k)
-liftPred (v, StarT) = [classP ''Lift [varT v]]
-liftPred (_, _) = []
+    unTyVarBndr (PlainTV v) = (v, StarT)
+    unTyVarBndr (KindedTV v k) = (v, k)
+    liftPred (v, StarT) = [classP ''Lift [varT v]]
+    liftPred (_, _) = []
 #elif MIN_VERSION_template_haskell(2,4,0)
-unTyVarBndr (PlainTV v) = (v, StarK)
-unTyVarBndr (KindedTV v k) = (v, k)
-liftPred (v, StarK) = [classP ''Lift [varT v]]
-liftPred (_, _) = []
+    unTyVarBndr (PlainTV v) = (v, StarK)
+    unTyVarBndr (KindedTV v k) = (v, k)
+    liftPred (v, StarK) = [classP ''Lift [varT v]]
+    liftPred (_, _) = []
 #else /* template-haskell < 2.4.0 */
-unTyVarBndr v = v
-liftPred n = conT ''Lift `appT` varT n
+    unTyVarBndr v = v
+    liftPred n = conT ''Lift `appT` varT n
 #endif
 
 doCons :: Con -> Q Clause
