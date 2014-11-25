@@ -10,7 +10,7 @@ Synopsis:           Derive Template Haskell's Lift class for datatypes.
 Description:
     Derive Template Haskell's Lift class for datatypes.
 Category:           Language
-Tested-With:        GHC==6.12, GHC==7.0.1, GHC==7.2
+Tested-With:        GHC==6.12, GHC==7.0.1, GHC==7.2, GHC==7.8
 build-type:         Simple
 Extra-source-files: BSD3, GPL-2, Changelog, t/Foo.hs, t/Test.hs
 
