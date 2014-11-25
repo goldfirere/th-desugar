@@ -55,12 +55,16 @@ deriveLiftOne i =
       _ -> error (modName ++ ".deriveLift: unhandled: " ++ pprint i)
   where
     liftInstance dcx n vs cons = do
+#if MIN_VERSION_template_haskell(2,9,0)
       roles <- qReifyRoles n
       -- Compute the set of phantom variables.
       let phvars = catMaybes $
             zipWith (\v role -> if role == PhantomR then Just v else Nothing)
                     vs
                     roles
+#else /* MIN_VERSION_template_haskell(2,9,0) */
+      let phvars = []
+#endif
       instanceD (ctxt dcx phvars vs)
                 (conT ''Lift `appT` typ n (map fst vs))
                 [funD 'lift (map doCons cons)]
