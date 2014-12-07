@@ -3,7 +3,7 @@ Version:            0.6.1
 Cabal-Version:      >= 1.8
 License:            BSD3
 License-Files:      COPYING, BSD3, GPL-2
-Copyright:          Ian Lynagh, 2006
+Copyright:          © 2006 Ian Lynagh, © 2010-2014 Mathieu Boespflugg
 Author:             Ian Lynagh
 Maintainer:         Mathieu Boespflug <mboes@tweag.net>
 Synopsis:           Derive Template Haskell's Lift class for datatypes.
