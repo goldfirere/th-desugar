@@ -8,7 +8,7 @@ Author:             Ian Lynagh
 Maintainer:         Mathieu Boespflug <mboes@tweag.net>
 Synopsis:           Derive Template Haskell's Lift class for datatypes.
 Description:
-    Derive Template Haskell's Lift class for datatypes.
+  Derive Template Haskell's Lift class for datatypes.
 Category:           Language
 Tested-With:        GHC==6.12, GHC==7.0.1, GHC==7.2, GHC==7.8
 build-type:         Simple

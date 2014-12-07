@@ -1,15 +1,15 @@
-2010-09-19  Mathieu Boespflug  <mboes@tweag.net>
+2010-09-19  Mathieu Boespflug <mboes@tweag.net>
 
 	* Support older GHCs and Cabal, thanks to Ben Millwood.
 
-2010-08-05  Mathieu Boespflug  <mboes@tweag.net>
+2010-08-05  Mathieu Boespflug <mboes@tweag.net>
 
 	* Support for contexts in datatypes, thanks to Ben Millwood.
 	* deriveLiftWith becomes deriveLift' and takes an Info structure
 	rather than a custom reification function.
 	* Add deriveLiftMany to derive many Lift instances in one go.
 
-2010-08-02  Mathieu Boespflug  <mboes@tweag.net>
+2010-08-02  Mathieu Boespflug <mboes@tweag.net>
 
 	* Add support for newtypes and records syntax, thanks to a patch
 	by Ben Millwood.
@@ -18,7 +18,7 @@
 	* New deriveLiftWith function with custom reification, following a
 	feature request by Jonas Duregård.
 
-2010-03-24  Mathieu Boespflug  <mboes@tweag.net>
+2010-03-24  Mathieu Boespflug <mboes@tweag.net>
 
 	* Port to Template Haskell 2.4.
 	* Maintainer is now Mathieu Boespflug.
