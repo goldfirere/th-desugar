@@ -1,8 +1,8 @@
 Name:               th-lift
 Version:            0.6.1
 Cabal-Version:      >= 1.8
-License:            OtherLicense
-License-File:       COPYING
+License:            BSD3
+License-Files:      COPYING, BSD3, GPL-2
 Copyright:          Ian Lynagh, 2006
 Author:             Ian Lynagh
 Maintainer:         Mathieu Boespflug <mboes@tweag.net>
@@ -12,7 +12,7 @@ Description:
 Category:           Language
 Tested-With:        GHC==6.12, GHC==7.0.1, GHC==7.2, GHC==7.8
 build-type:         Simple
-Extra-source-files: BSD3, GPL-2, Changelog, t/Foo.hs, t/Test.hs
+Extra-source-files: Changelog, t/Foo.hs, t/Test.hs
 
 source-repository head
   type:     git
