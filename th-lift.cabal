@@ -6,6 +6,7 @@ License-Files:      COPYING, BSD3, GPL-2
 Copyright:          © 2006 Ian Lynagh, © 2010-2014 Mathieu Boespflugg
 Author:             Ian Lynagh
 Maintainer:         Mathieu Boespflug <mboes@tweag.net>
+Homepage:           http://github.com/mboes/th-lift
 Synopsis:           Derive Template Haskell's Lift class for datatypes.
 Description:
   Derive Template Haskell's Lift class for datatypes.
