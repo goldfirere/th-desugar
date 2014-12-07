@@ -1,3 +1,10 @@
+2013-12-09  Mathieu Boespflug <mboes@tweag.net>
+
+	* Support GHC 7.8, thanks to Michael Snoyberg.
+	* Support existentially quantified type variables in datatype
+	declarations.
+	* Handle exotic kinds properly.
+
 2010-09-19  Mathieu Boespflug <mboes@tweag.net>
 
 	* Support older GHCs and Cabal, thanks to Ben Millwood.
