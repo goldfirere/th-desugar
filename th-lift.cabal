@@ -3,7 +3,7 @@ Version:            0.7
 Cabal-Version:      >= 1.8
 License:            BSD3
 License-Files:      COPYING, BSD3, GPL-2
-Copyright:          © 2006 Ian Lynagh, © 2010-2014 Mathieu Boespflugg
+Copyright:          © 2006 Ian Lynagh, © 2010-2014 Mathieu Boespflug
 Author:             Ian Lynagh
 Maintainer:         Mathieu Boespflug <mboes@tweag.net>
 Homepage:           http://github.com/mboes/th-lift
