@@ -13,7 +13,7 @@ Description:
 Category:           Language
 Tested-With:        GHC==7.4, GHC==7.6, GHC==7.8
 build-type:         Simple
-Extra-source-files: Changelog, t/Foo.hs, t/Test.hs
+Extra-source-files: Changelog
 
 source-repository head
   type:     git
@@ -36,6 +36,7 @@ Test-Suite test
   Type:             exitcode-stdio-1.0
   Main-Is:          Test.hs
   Hs-Source-Dirs:   t
+  other-modules:    Foo
   ghc-options:      -Wall
   Build-Depends:    base >= 3 && < 5,
                     th-lift
