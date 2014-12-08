@@ -7,7 +7,6 @@ module Language.Haskell.TH.Desugar.Context
     ) where
 
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (foldM)
 import Control.Monad.State (StateT, get, modify, runStateT)
 import Control.Monad.Trans (lift)
 import Data.Generics (Data, everywhere, mkT, everywhereM, mkM)
@@ -15,7 +14,7 @@ import Data.List ({-dropWhileEnd,-} intercalate)
 import Data.Map as Map (Map, lookup, insert)
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax hiding (lift)
-import Language.Haskell.TH.Desugar.Reify as DS (DsMonad, withLocalDeclarations)
+import Language.Haskell.TH.Desugar.Reify as DS (DsMonad)
 import Language.Haskell.TH.Desugar.Core as DS (dsType)
 import qualified Language.Haskell.TH.Desugar.Expand as DS (expandType)
 import Language.Haskell.TH.Desugar.Sweeten as DS (typeToTH)
@@ -44,22 +43,22 @@ simplifyContext :: DS.DsMonad m => [Pred] -> StateT (Map Pred Bool) m [Pred]
 simplifyContext context =
     do (expanded :: [Pred]) <- expandTypes context
        let (context' :: [Pred]) = concat $ map unify expanded
-       context'' <- foldM testPredicate context' context'
+       let context'' = foldl testPredicate context' context'
        if (context'' == context) then return context'' else simplifyContext context''
 
 -- | Try to simplify the context by eliminating of one of the predicates.
 -- If we succeed start again with the new context.
-testPredicate :: Quasi m => [Pred] -> Pred -> StateT (Map Pred Bool) m [Pred]
-testPredicate context (EqualP v@(VarT _) b) = return $ everywhere (mkT (\ x -> if x == v then b else x)) context
-testPredicate context (EqualP a v@(VarT _)) = return $ everywhere (mkT (\ x -> if x == v then a else x)) context
-testPredicate context p@(EqualP a b) | a == b = return $ filter (/= p) context
-testPredicate context _ = return context
+testPredicate :: [Pred] -> Pred -> [Pred]
+testPredicate context (EqualP v@(VarT _) b) = everywhere (mkT (\ x -> if x == v then b else x)) context
+testPredicate context (EqualP a v@(VarT _)) = everywhere (mkT (\ x -> if x == v then a else x)) context
+testPredicate context p@(EqualP a b) | a == b = filter (/= p) context
+testPredicate context _ = context
 
 expandTypes :: (Data a, DS.DsMonad m) => a -> StateT (Map Pred Bool) m a
 expandTypes = everywhereM (mkM (lift . expandType))
     where
       expandType :: (Quasi m, DS.DsMonad m) => Type -> m Type
-      expandType t = DS.typeToTH <$> DS.withLocalDeclarations [] (DS.dsType t >>= DS.expandType)
+      expandType t = DS.typeToTH <$> (DS.dsType t >>= DS.expandType)
 
 -- | Unify the two arguments of an EqualP predicate, return a list of
 -- simpler predicates associating types with a variables.
