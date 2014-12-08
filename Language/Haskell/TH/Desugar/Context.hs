@@ -110,11 +110,11 @@ anyInstances cls argTypes =
          Nothing -> do
            -- Add an entry with a bogus value to limit recursion on
            -- this predicate we are currently testing
-           modify (Map.insert p False)
+           _ <- record cls argTypes False
            insts <- lift $ qReifyInstances cls argTypes
            r <- or <$> mapM (testInstance [] cls argTypes) insts
            -- Now insert the correct value into the map.
-           modify (Map.insert p r)
+           _ <- record cls argTypes r
            -- st <- get
            -- trace (pprint' (ClassP cls argTypes) ++ " now in [" ++ intercalate ", " (map pprint' (keys (imp st))) ++ "]") (return ())
            -- trace ("anyInstances " ++ pprint' (ClassP cls argTypes) ++ " -> " ++ show r) (return ())
@@ -129,8 +129,8 @@ magicHashName (Name (OccName s) _) = last s == '#'
 -- for the class and argument types, we now need to unify those with the
 -- type returned by the instance and generate some EqualP predicates.
 testInstance :: DS.DsMonad m => [Pred] -> Name -> [Type] -> InstanceDec -> StateT (Map Pred Bool) m Bool
-testInstance oldContext cls argTypes (InstanceD newContext instType _) =
-    testContext (instancePredicates (reverse argTypes) instType ++ newContext ++ oldContext)
+testInstance oldContext cls argTypes (InstanceD newContext instType _) = do
+  testContext (instancePredicates (reverse argTypes) instType ++ newContext ++ oldContext) >>= record cls argTypes
     where
       instancePredicates :: [Type] -> Type -> [Pred]
       instancePredicates (x : xs) (AppT l r) = EqualP x r : instancePredicates xs l
@@ -144,4 +144,7 @@ testInstance _ _ _ x = error $ "Unexpected InstanceDec.  If this happens there m
 -- more slowly if the empty map is used and discard the returned Map.
 testInstances :: DS.DsMonad m => Name -> [Type] -> Map Pred Bool -> m (Bool, Map Pred Bool)
 testInstances className argumentTypes mp =
-    runStateT (testContext [ClassP className argumentTypes]) mp
+    runStateT (let p = ClassP className argumentTypes in testContext [p] >>= record className argumentTypes) mp
+
+record :: Monad m => Name -> [Type] -> Bool -> StateT (Map Pred Bool) m Bool
+record cls types result = modify (Map.insert (ClassP cls types) result) >> return result
