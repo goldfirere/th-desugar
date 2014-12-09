@@ -37,9 +37,9 @@ test40_cxt =
        bot <- [t|()|]
        ((a, b, c), _mp) <-
            runStateT
-             (do a <- testContext (const False) [ClassP ''IArray [uarray, bool]] -- This instance exists
-                 b <- testContext (const False) [ClassP ''IArray [uarray, bot]]  -- No such instance
-                 c <- testContext (const False) [ClassP ''IArray [array, bot]]   -- This instance exists
+             (do a <- testContext [ClassP ''IArray [uarray, bool]] -- This instance exists
+                 b <- testContext [ClassP ''IArray [uarray, bot]]  -- No such instance
+                 c <- testContext [ClassP ''IArray [array, bot]]   -- This instance exists
                  return (a, b, c))
            empty
        [|($(boolE a), $(boolE b), $(boolE c)) :: (Bool, Bool, Bool)|]

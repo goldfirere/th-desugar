@@ -4,7 +4,6 @@
 module Language.Haskell.TH.Desugar.Context
     ( testContext
     , testInstances
-    , magicHashName
     ) where
 
 import Control.Applicative ((<$>), (<*>))
@@ -34,9 +33,9 @@ deriving instance Ord Type
 -- left of the @=>@ in a Haskell declaration.  These can either be
 -- @ClassP@ values which represent superclasses, or @EqualP@ values
 -- which represent the @~@ operator.
-testContext :: DS.DsMonad m => ([Type] -> Bool) -> [Pred] -> StateT (Map Pred Bool) m Bool
-testContext ok context =
-    and <$> (mapM (consistent ok) =<< simplifyContext context)
+testContext :: DS.DsMonad m => [Pred] -> StateT (Map Pred Bool) m Bool
+testContext context =
+    and <$> (mapM consistent =<< simplifyContext context)
 
 -- | Perform type expansion on the predicates, then simplify using
 -- variable substitution and eliminate vacuous equivalences.
@@ -70,13 +69,13 @@ unify (EqualP a@(VarT _) b) = [EqualP a b]
 unify (EqualP a b@(VarT _)) = [EqualP a b]
 unify x = [x]
 
-consistent :: DS.DsMonad m => ([Type] -> Bool) -> Pred -> StateT (Map Pred Bool) m Bool
-consistent ok (ClassP cls args) = anyInstances ok cls args -- Do we need additional context here?
-consistent ok (EqualP (AppT a b) (AppT c d)) = (&&) <$> consistent ok (EqualP a c) <*> consistent ok (EqualP b d)
-consistent _ (EqualP (VarT _) _) = return True
-consistent _ (EqualP _ (VarT _)) = return True
-consistent _ (EqualP a b) | a == b = return True
-consistent _ (EqualP _ _) = return False
+consistent :: DS.DsMonad m => Pred -> StateT (Map Pred Bool) m Bool
+consistent (ClassP cls args) = anyInstances cls args -- Do we need additional context here?
+consistent (EqualP (AppT a b) (AppT c d)) = (&&) <$> consistent (EqualP a c) <*> consistent (EqualP b d)
+consistent (EqualP (VarT _) _) = return True
+consistent (EqualP _ (VarT _)) = return True
+consistent (EqualP a b) | a == b = return True
+consistent (EqualP _ _) = return False
 
 -- | Is there a variable assignment for which this predicate is
 -- satisfiable?  The Pred type looks like this:
@@ -95,15 +94,10 @@ consistent _ (EqualP _ _) = return False
 --  2. make that substitution into @Parsable a@, to get @Parsable Circuit@
 --
 --  3. test for instances of @Parsable Circuit@.
-anyInstances :: DS.DsMonad m => ([Type] -> Bool) -> Name -> [Type] -> StateT (Map Pred Bool) m Bool -- [Dec]
--- If this is an unlifted type we can't call qReifyInstances (it will
--- get a kind error) but we want to indicate that the instance should
--- be used.  This is because I don't know how to properly generate an
--- instance for an unlifted type automatically.
-anyInstances ok _ args | ok args = return True
+anyInstances :: DS.DsMonad m => Name -> [Type] -> StateT (Map Pred Bool) m Bool -- [Dec]
 -- Ask for matching instances for this list of types, then see whether
 -- any of them can be unified with the instance context.
-anyInstances ok cls argTypes =
+anyInstances cls argTypes =
     do let p = (ClassP cls argTypes)
        mp <- get
        case Map.lookup p mp of
@@ -113,7 +107,7 @@ anyInstances ok cls argTypes =
            -- this predicate we are currently testing
            _ <- record cls argTypes False
            insts <- lift $ qReifyInstances cls argTypes
-           r <- or <$> mapM (testInstance ok [] cls argTypes) insts
+           r <- or <$> mapM (testInstance [] cls argTypes) insts
            -- Now insert the correct value into the map.
            _ <- record cls argTypes r
            -- st <- get
@@ -121,32 +115,27 @@ anyInstances ok cls argTypes =
            -- trace ("anyInstances " ++ pprint' (ClassP cls argTypes) ++ " -> " ++ show r) (return ())
            return r
 
--- | This will usually recognize an unlifted type by convention.
-magicHashName :: [Type] -> Bool
-magicHashName [ConT (Name (OccName s) _)] = last s == '#'
-magicHashName _ = False
-
 -- | Test one of the instances returned by qReifyInstances against the
 -- context we have computed so far.  We have already added a ClassP predicate
 -- for the class and argument types, we now need to unify those with the
 -- type returned by the instance and generate some EqualP predicates.
-testInstance :: DS.DsMonad m => ([Type] -> Bool) -> [Pred] -> Name -> [Type] -> InstanceDec -> StateT (Map Pred Bool) m Bool
-testInstance ok oldContext cls argTypes (InstanceD newContext instType _) = do
-  testContext ok (instancePredicates (reverse argTypes) instType ++ newContext ++ oldContext) >>= record cls argTypes
+testInstance :: DS.DsMonad m => [Pred] -> Name -> [Type] -> InstanceDec -> StateT (Map Pred Bool) m Bool
+testInstance oldContext cls argTypes (InstanceD newContext instType _) = do
+  testContext (instancePredicates (reverse argTypes) instType ++ newContext ++ oldContext) >>= record cls argTypes
     where
       instancePredicates :: [Type] -> Type -> [Pred]
       instancePredicates (x : xs) (AppT l r) = EqualP x r : instancePredicates xs l
       instancePredicates [] (ConT cls') | cls == cls' = []
       instancePredicates _ _ = error $ "testInstance: Failure unifying instance with arguments.  This should never happen because qReifyInstance returned this instance for these exact arguments: argTypes=[" ++ intercalate ", " (map show argTypes) ++ "], instType=" ++ show instType
-testInstance _ _ _ _ x = error $ "Unexpected InstanceDec.  If this happens there must be some new sort of instance declaration I wasn't expecting: " ++ show x
+testInstance _ _ _ x = error $ "Unexpected InstanceDec.  If this happens there must be some new sort of instance declaration I wasn't expecting: " ++ show x
 
 -- | Call testContext to see whether there are any usable instances
 -- for the given class name and argument types.  The Map used by the
 -- state monad is passed in for efficiency - we get the same result
 -- more slowly if the empty map is used and discard the returned Map.
-testInstances :: DS.DsMonad m => ([Type] -> Bool) -> Name -> [Type] -> Map Pred Bool -> m (Bool, Map Pred Bool)
-testInstances ok className argumentTypes mp =
-    runStateT (let p = ClassP className argumentTypes in testContext ok [p] >>= record className argumentTypes) mp
+testInstances :: DS.DsMonad m => Name -> [Type] -> Map Pred Bool -> m (Bool, Map Pred Bool)
+testInstances className argumentTypes mp =
+    runStateT (let p = ClassP className argumentTypes in testContext [p] >>= record className argumentTypes) mp
 
 record :: Monad m => Name -> [Type] -> Bool -> StateT (Map Pred Bool) m Bool
 record cls types result = modify (Map.insert (ClassP cls types) result) >> return result
