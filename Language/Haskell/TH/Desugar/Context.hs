@@ -7,14 +7,14 @@ module Language.Haskell.TH.Desugar.Context
     ) where
 
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad.State (StateT, get, modify, runStateT)
+import Control.Monad.State (MonadState, StateT(StateT), get, modify, runStateT)
 import Control.Monad.Trans (lift)
 import Data.Generics (Data, everywhere, mkT, everywhereM, mkM)
 import Data.List ({-dropWhileEnd,-} intercalate)
 import Data.Map as Map (Map, lookup, insert)
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax hiding (lift)
-import Language.Haskell.TH.Desugar.Reify as DS (DsMonad)
+import Language.Haskell.TH.Desugar.Reify as DS (DsMonad(localDeclarations))
 import Language.Haskell.TH.Desugar.Core as DS (dsType)
 import qualified Language.Haskell.TH.Desugar.Expand as DS (expandType)
 import Language.Haskell.TH.Desugar.Sweeten as DS (typeToTH)
@@ -25,6 +25,27 @@ deriving instance Ord Pred
 deriving instance Ord TyVarBndr
 deriving instance Ord Type
 
+instance Quasi m => Quasi (StateT s m) where
+  qNewName  	    = lift . qNewName
+  qReport a b  	    = lift $ qReport a b
+  qRecover m1 m2    = StateT $ \ s -> runStateT m1 s `qRecover` runStateT m2 s
+  qReify    	    = lift . qReify
+  qReifyInstances a b = lift $ qReifyInstances a b
+  qReifyRoles       = lift . qReifyRoles
+  qReifyAnnotations = lift . qReifyAnnotations
+  qReifyModule      = lift . qReifyModule
+  qLookupName a b   = lift $ qLookupName a b
+  qLocation 	    = lift qLocation
+  qRunIO    	    = lift . qRunIO
+  qAddDependentFile = lift . qAddDependentFile
+  qAddTopDecls      = lift . qAddTopDecls
+  qAddModFinalizer  = lift . qAddModFinalizer
+  qGetQ             = lift qGetQ
+  qPutQ             = lift . qPutQ
+
+instance DsMonad m => DsMonad (StateT s m) where
+    localDeclarations = lift localDeclarations
+
 -- | Is this list of predicates satisfiable?  Find out using type
 -- synonym expansion, variable substitution, elimination of vacuous
 -- predicates, and unification.
@@ -33,13 +54,13 @@ deriving instance Ord Type
 -- left of the @=>@ in a Haskell declaration.  These can either be
 -- @ClassP@ values which represent superclasses, or @EqualP@ values
 -- which represent the @~@ operator.
-testContext :: DS.DsMonad m => [Pred] -> StateT (Map Pred Bool) m Bool
+testContext :: (DS.DsMonad m, MonadState (Map Pred Bool) m) => [Pred] -> m Bool
 testContext context =
     and <$> (mapM consistent =<< simplifyContext context)
 
 -- | Perform type expansion on the predicates, then simplify using
 -- variable substitution and eliminate vacuous equivalences.
-simplifyContext :: DS.DsMonad m => [Pred] -> StateT (Map Pred Bool) m [Pred]
+simplifyContext :: (DS.DsMonad m, MonadState (Map Pred Bool) m) => [Pred] -> m [Pred]
 simplifyContext context =
     do (expanded :: [Pred]) <- expandTypes context
        let (context' :: [Pred]) = concat $ map unify expanded
@@ -54,8 +75,8 @@ testPredicate context (EqualP a v@(VarT _)) = everywhere (mkT (\ x -> if x == v 
 testPredicate context p@(EqualP a b) | a == b = filter (/= p) context
 testPredicate context _ = context
 
-expandTypes :: (Data a, DS.DsMonad m) => a -> StateT (Map Pred Bool) m a
-expandTypes = everywhereM (mkM (lift . expandType))
+expandTypes :: (Data a, DS.DsMonad m, MonadState (Map Pred Bool) m) => a -> m a
+expandTypes = everywhereM (mkM expandType)
     where
       expandType :: (Quasi m, DS.DsMonad m) => Type -> m Type
       expandType t = DS.typeToTH <$> (DS.dsType t >>= DS.expandType)
@@ -69,7 +90,7 @@ unify (EqualP a@(VarT _) b) = [EqualP a b]
 unify (EqualP a b@(VarT _)) = [EqualP a b]
 unify x = [x]
 
-consistent :: DS.DsMonad m => Pred -> StateT (Map Pred Bool) m Bool
+consistent :: (DS.DsMonad m, MonadState (Map Pred Bool) m) => Pred -> m Bool
 consistent (ClassP cls args) = anyInstances cls args -- Do we need additional context here?
 consistent (EqualP (AppT a b) (AppT c d)) = (&&) <$> consistent (EqualP a c) <*> consistent (EqualP b d)
 consistent (EqualP (VarT _) _) = return True
@@ -94,7 +115,7 @@ consistent (EqualP _ _) = return False
 --  2. make that substitution into @Parsable a@, to get @Parsable Circuit@
 --
 --  3. test for instances of @Parsable Circuit@.
-anyInstances :: DS.DsMonad m => Name -> [Type] -> StateT (Map Pred Bool) m Bool -- [Dec]
+anyInstances :: (DS.DsMonad m, MonadState (Map Pred Bool) m) => Name -> [Type] -> m Bool -- [Dec]
 -- Ask for matching instances for this list of types, then see whether
 -- any of them can be unified with the instance context.
 anyInstances cls argTypes =
@@ -106,7 +127,7 @@ anyInstances cls argTypes =
            -- Add an entry with a bogus value to limit recursion on
            -- this predicate we are currently testing
            _ <- record cls argTypes False
-           insts <- lift $ qReifyInstances cls argTypes
+           insts <- qReifyInstances cls argTypes
            r <- or <$> mapM (testInstance [] cls argTypes) insts
            -- Now insert the correct value into the map.
            _ <- record cls argTypes r
@@ -119,7 +140,7 @@ anyInstances cls argTypes =
 -- context we have computed so far.  We have already added a ClassP predicate
 -- for the class and argument types, we now need to unify those with the
 -- type returned by the instance and generate some EqualP predicates.
-testInstance :: DS.DsMonad m => [Pred] -> Name -> [Type] -> InstanceDec -> StateT (Map Pred Bool) m Bool
+testInstance :: (DS.DsMonad m, MonadState (Map Pred Bool) m) => [Pred] -> Name -> [Type] -> InstanceDec -> m Bool
 testInstance oldContext cls argTypes (InstanceD newContext instType _) = do
   testContext (instancePredicates (reverse argTypes) instType ++ newContext ++ oldContext) >>= record cls argTypes
     where
@@ -137,5 +158,5 @@ testInstances :: DS.DsMonad m => Name -> [Type] -> Map Pred Bool -> m (Bool, Map
 testInstances className argumentTypes mp =
     runStateT (let p = ClassP className argumentTypes in testContext [p] >>= record className argumentTypes) mp
 
-record :: Monad m => Name -> [Type] -> Bool -> StateT (Map Pred Bool) m Bool
+record :: MonadState (Map Pred Bool) m => Name -> [Type] -> Bool -> m Bool
 record cls types result = modify (Map.insert (ClassP cls types) result) >> return result
