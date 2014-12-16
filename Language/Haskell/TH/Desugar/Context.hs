@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, FlexibleContexts, MultiParamTypeClasses, ScopedTypeVariables, StandaloneDeriving #-}
+{-# LANGUAGE CPP, DeriveDataTypeable, FlexibleContexts, MultiParamTypeClasses, ScopedTypeVariables, StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wall -fno-warn-orphans #-}
 module Language.Haskell.TH.Desugar.Context
@@ -31,19 +31,21 @@ instance Quasi m => Quasi (StateT s m) where
   qNewName  	    = lift . qNewName
   qReport a b  	    = lift $ qReport a b
   qRecover m1 m2    = StateT $ \ s -> runStateT m1 s `qRecover` runStateT m2 s
+  qLookupName a b   = lift $ qLookupName a b
   qReify    	    = lift . qReify
   qReifyInstances a b = lift $ qReifyInstances a b
-  qReifyRoles       = lift . qReifyRoles
-  qReifyAnnotations = lift . qReifyAnnotations
-  qReifyModule      = lift . qReifyModule
-  qLookupName a b   = lift $ qLookupName a b
   qLocation 	    = lift qLocation
   qRunIO    	    = lift . qRunIO
   qAddDependentFile = lift . qAddDependentFile
+#if MIN_VERSION_template_haskell(2,9,0)
+  qReifyRoles       = lift . qReifyRoles
+  qReifyAnnotations = lift . qReifyAnnotations
+  qReifyModule      = lift . qReifyModule
   qAddTopDecls      = lift . qAddTopDecls
   qAddModFinalizer  = lift . qAddModFinalizer
   qGetQ             = lift qGetQ
   qPutQ             = lift . qPutQ
+#endif
 
 instance DsMonad m => DsMonad (StateT s m) where
     localDeclarations = lift localDeclarations
