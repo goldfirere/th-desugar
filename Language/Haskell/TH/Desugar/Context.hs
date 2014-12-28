@@ -5,13 +5,14 @@ module Language.Haskell.TH.Desugar.Context
     ( instances
     , testInstance
     , testContext
+    , expandTypes
     ) where
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (filterM)
 import Control.Monad.State (MonadState, StateT(StateT), get, modify, runStateT)
 import Control.Monad.Trans (lift)
-import Data.Generics (everywhere, mkT, everywhereM, mkM)
+import Data.Generics (Data, everywhere, mkT, everywhereM, mkM)
 import Data.List ({-dropWhileEnd,-} intercalate)
 import Data.Map as Map (Map, lookup, insert)
 import Language.Haskell.TH
@@ -57,18 +58,18 @@ instances :: (DS.DsMonad m, MonadState (Map Pred [InstanceDec]) m) => Name -> [T
 -- Ask for matching instances for this list of types, then see whether
 -- any of them can be unified with the instance context.
 instances cls argTypes =
-    do let p = ClassP cls argTypes
+    do p <- expandTypes (ClassP cls argTypes)
        mp <- get
        case Map.lookup p mp of
          Just x -> return x
          Nothing -> do
            -- Add an entry with a bogus value to limit recursion on
            -- the predicate we are currently testing
-           modify (Map.insert (ClassP cls argTypes) [])
+           modify (Map.insert p [])
            insts <- qReifyInstances cls argTypes
            r <- filterM (testInstance cls argTypes) insts
            -- Now insert the correct value into the map.
-           modify (Map.insert (ClassP cls argTypes) r)
+           modify (Map.insert p r)
            return r
 
 -- | Test one of the instances returned by qReifyInstances against the
@@ -104,7 +105,7 @@ testContext context =
 -- variable substitution and eliminate vacuous equivalences.
 simplifyContext :: (DS.DsMonad m, MonadState (Map Pred [InstanceDec]) m) => [Pred] -> m [Pred]
 simplifyContext context =
-    do (expanded :: [Pred]) <- everywhereM (mkM expandType) context
+    do (expanded :: [Pred]) <- expandTypes context
        let (context' :: [Pred]) = concat $ map unify expanded
        let context'' = foldl testPredicate context' context'
        if (context'' == context) then return context'' else simplifyContext context''
@@ -116,6 +117,9 @@ testPredicate context (EqualP v@(VarT _) b) = everywhere (mkT (\ x -> if x == v 
 testPredicate context (EqualP a v@(VarT _)) = everywhere (mkT (\ x -> if x == v then a else x)) context
 testPredicate context p@(EqualP a b) | a == b = filter (/= p) context
 testPredicate context _ = context
+
+expandTypes :: (DsMonad m, Data a) => a -> m a
+expandTypes = everywhereM (mkM expandType)
 
 expandType :: (Quasi m, DS.DsMonad m) => Type -> m Type
 expandType t = DS.typeToTH <$> (DS.dsType t >>= DS.expandType)
