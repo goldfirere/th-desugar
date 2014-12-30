@@ -9,8 +9,12 @@ more nested patterns.
 This code is directly based on the analogous operation as written in GHC.
 -}
 
-{-# LANGUAGE TemplateHaskell, StandaloneDeriving #-}
+{-# LANGUAGE CPP, TemplateHaskell #-}
+
+#if !(MIN_VERSION_template_haskell(2,10,0))
+{-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}   -- we need Ord Lit. argh.
+#endif
 
 module Language.Haskell.TH.Desugar.Match (scExp, scLetDec) where
 
@@ -109,7 +113,9 @@ simplCase vars@(v:_) clauses = do
 
     drop_group = map snd
 
+#if !(MIN_VERSION_template_haskell(2,10,0))
 deriving instance Ord Lit   -- ew. necessary for `subGroup`
+#endif
 
 -- analogous to GHC's tidyEqnInfo
 tidyClause :: DsMonad q => Name -> EquationInfo -> q (DExp -> DExp, EquationInfo)
