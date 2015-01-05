@@ -14,7 +14,7 @@
 --
 ----------------------------------------------------------------------------
 
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE CPP, TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Language.Haskell.TH.Desugar.Lift () where
@@ -22,7 +22,9 @@ module Language.Haskell.TH.Desugar.Lift () where
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Lift
 import Language.Haskell.TH
+#if !(MIN_VERSION_template_haskell(2,10,0))
 import Data.Word
+#endif
 
 $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DKind, ''DPred, ''DTyVarBndr
                  , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DCon
@@ -32,7 +34,9 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DKind, ''DPred, ''DTyVarBndr
                  , ''Callconv, ''Safety, ''Inline, ''RuleMatch, ''Phases
                  , ''AnnTarget, ''FunDep, ''FamFlavour, ''Role ])
 
+#if !(MIN_VERSION_template_haskell(2,10,0))
 -- Other type liftings:
                                       
 instance Lift Word8 where
   lift word = return $ (VarE 'fromInteger) `AppE` (LitE $ IntegerL (toInteger word))
+#endif
