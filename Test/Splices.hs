@@ -141,7 +141,7 @@ test26_forall = [| let f :: Num a => a -> a
 
 test27_kisig = [| let f :: Proxy (a :: Bool) -> ()
                       f _ = () in
-                  (f (Proxy :: Proxy False), f (Proxy :: Proxy True)) |]
+                  (f (Proxy :: Proxy 'False), f (Proxy :: Proxy 'True)) |]
 test28_tupt = [| let f :: (a,b) -> a
                      f (a,_) = a in
                  map f [(1,'a'),(2,'b')] |]

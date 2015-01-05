@@ -39,6 +39,7 @@ data DExp = DVarE Name
           | DCaseE DExp [DMatch]
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
+          | DStaticE DExp
           deriving (Show, Typeable, Data)
 
 
@@ -306,6 +307,9 @@ dsExp (RecUpdE exp field_exps) = do
                    (DLitE (StringL "Non-exhaustive patterns in record update")))
 
     fst_of_3 (x, _, _) = x
+#if __GLASGOW_HASKELL__ >= 709
+dsExp (StaticE exp) = DStaticE <$> dsExp exp
+#endif
 
 -- | Desugar a lambda expression, where the body has already been desugared
 dsLam :: DsMonad q => [Pat] -> DExp -> q DExp

@@ -47,6 +47,11 @@ expToTH (DLamE names exp)    = LamE (map VarP names) (expToTH exp)
 expToTH (DCaseE exp matches) = CaseE (expToTH exp) (map matchToTH matches)
 expToTH (DLetE decs exp)     = LetE (map letDecToTH decs) (expToTH exp)
 expToTH (DSigE exp ty)       = SigE (expToTH exp) (typeToTH ty)
+#if __GLASGOW_HASKELL__ < 709
+expToTH (DStaticE exp)       = expToTH exp   -- no support for static here
+#else
+expToTH (DStaticE exp)       = StaticE (expToTH exp)
+#endif
 
 matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
