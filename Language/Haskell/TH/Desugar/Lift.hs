@@ -22,7 +22,7 @@ module Language.Haskell.TH.Desugar.Lift () where
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Lift
 import Language.Haskell.TH
-#if !(MIN_VERSION_template_haskell(2,10,0))
+#if __GLASGOW_HASKELL__ <= 708
 import Data.Word
 #endif
 
@@ -34,7 +34,7 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DKind, ''DPred, ''DTyVarBndr
                  , ''Callconv, ''Safety, ''Inline, ''RuleMatch, ''Phases
                  , ''AnnTarget, ''FunDep, ''FamFlavour, ''Role ])
 
-#if !(MIN_VERSION_template_haskell(2,10,0))
+#if __GLASGOW_HASKELL__ <= 708
 -- Other type liftings:
                                       
 instance Lift Word8 where

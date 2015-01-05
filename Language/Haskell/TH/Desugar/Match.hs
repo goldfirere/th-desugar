@@ -11,7 +11,7 @@ This code is directly based on the analogous operation as written in GHC.
 
 {-# LANGUAGE CPP, TemplateHaskell #-}
 
-#if !(MIN_VERSION_template_haskell(2,10,0))
+#if __GLASGOW_HASKELL__ <= 708
 {-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}   -- we need Ord Lit. argh.
 #endif
@@ -113,7 +113,7 @@ simplCase vars@(v:_) clauses = do
 
     drop_group = map snd
 
-#if !(MIN_VERSION_template_haskell(2,10,0))
+#if __GLASGOW_HASKELL__ <= 708
 deriving instance Ord Lit   -- ew. necessary for `subGroup`
 #endif
 
