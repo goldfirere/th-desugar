@@ -48,7 +48,7 @@ expToTH (DCaseE exp matches) = CaseE (expToTH exp) (map matchToTH matches)
 expToTH (DLetE decs exp)     = LetE (map letDecToTH decs) (expToTH exp)
 expToTH (DSigE exp ty)       = SigE (expToTH exp) (typeToTH ty)
 #if __GLASGOW_HASKELL__ < 709
-expToTH (DStaticE exp)       = expToTH exp   -- no support for static here
+expToTH (DStaticE exp)       = error "Static expressions supported only in GHC 7.10+"
 #else
 expToTH (DStaticE exp)       = StaticE (expToTH exp)
 #endif
