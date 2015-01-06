@@ -23,6 +23,7 @@ import Test.Hspec hiding ( runIO )
 import Test.Splices
 import qualified Test.DsDec
 import qualified Test.Dec
+import Test.Context (test40_cxt)
 import Test.Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH
@@ -96,6 +97,7 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "pred2"    ~: $test38_pred2    @=? $(dsSplice test38_pred2)
              , "eq"       ~: $test39_eq       @=? $(dsSplice test39_eq)
 #endif
+             , "context"  ~: (True, False, True) @=? $test40_cxt
              ]
 
 test35a = $test35_expand

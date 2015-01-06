@@ -71,7 +71,10 @@ module Language.Haskell.TH.Desugar (
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
   
   -- ** Extracting bound names
-  extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
+  extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat,
+
+  -- ** Test instances
+  module Language.Haskell.TH.Desugar.Context
   ) where
 
 import Language.Haskell.TH.Desugar.Core
@@ -81,6 +84,7 @@ import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Desugar.Reify
 import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Match
+import Language.Haskell.TH.Desugar.Context
 
 import qualified Data.Set as S
 #if __GLASGOW_HASKELL__ < 709
