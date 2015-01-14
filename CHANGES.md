@@ -1,3 +1,7 @@
+Version 1.4.2.1
+---------------
+* Fix compilation error with updated HSpec.
+
 Version 1.4.2
 -------------
 * `expand` functions now consider open type families, as long as the type

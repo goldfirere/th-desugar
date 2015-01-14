@@ -16,7 +16,7 @@ module Test.Run where
 import Prelude hiding ( exp )
 
 import Test.HUnit
-import Test.Hspec hiding ( runIO )
+import Test.Hspec
 import Test.Hspec.HUnit
 
 import Test.Splices
@@ -26,7 +26,7 @@ import Test.Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Sweeten
-import Language.Haskell.TH
+import Language.Haskell.TH as TH
 
 import Control.Monad
 
@@ -121,7 +121,7 @@ test_bug8884 = $(do info <- reify ''Poly
                     case (resK, lhs) of
                       (DStarK, [DVarT _]) -> [| True |]
                       _                                     -> do
-                        runIO $ do
+                        TH.runIO $ do
                           putStrLn "Failed bug8884 test:"
                           putStrLn $ show dinfo
                         [| False |] )
