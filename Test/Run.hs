@@ -9,7 +9,8 @@ eir@cis.upenn.edu
              DataKinds, ConstraintKinds, PolyKinds #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
-            -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
+            -fno-warn-missing-signatures -fno-warn-unused-do-bind
+            -fno-warn-warnings-deprecations #-}
 
 module Test.Run where
 
