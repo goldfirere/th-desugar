@@ -19,6 +19,7 @@ import Data.PackedString (PackedString, packString, unpackPS)
 #endif /* MIN_VERSION_template_haskell(2,4,0) */
 
 #if !(MIN_VERSION_template_haskell(2,10,0))
+import Data.Ratio (Ratio)
 import GHC.Exts (Int(..))
 #endif /* !(MIN_VERSION_template_haskell(2,10,0)) */
 import Language.Haskell.TH
@@ -156,6 +157,6 @@ instance Lift NameSpace where
 instance Lift () where
   lift _ = [| () |]
 
-instance Lift Rational where
-  lift x = return (LitE (RationalL x))
+instance Integral a => Lift (Ratio a) where
+  lift x = return (LitE (RationalL (toRational x)))
 #endif
