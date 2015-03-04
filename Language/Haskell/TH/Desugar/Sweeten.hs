@@ -173,6 +173,9 @@ typeToTH (DForallT tvbs cxt ty) = ForallT (map tvbToTH tvbs) (map predToTH cxt) 
 typeToTH (DAppT t1 t2)          = AppT (typeToTH t1) (typeToTH t2)
 typeToTH (DSigT ty ki)          = SigT (typeToTH ty) (kindToTH ki)
 typeToTH (DVarT n)              = VarT n
+#if __GLASGOW_HASKELL__ >= 709
+typeToTH (DConT n) | n == ''(~) = EqualityT
+#endif
 typeToTH (DConT n)              = ConT n
 typeToTH DArrowT                = ArrowT
 typeToTH (DLitT lit)            = LitT lit
