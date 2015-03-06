@@ -7,6 +7,7 @@ Converts desugared TH back into real TH.
 -}
 
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -176,6 +177,7 @@ typeToTH (DVarT n)              = VarT n
 #if __GLASGOW_HASKELL__ >= 709
 typeToTH (DConT n) | n == ''(~) = EqualityT
 #endif
+typeToTH (DConT n) | n == ''[] = ListT
 typeToTH (DConT n)              = ConT n
 typeToTH DArrowT                = ArrowT
 typeToTH (DLitT lit)            = LitT lit
