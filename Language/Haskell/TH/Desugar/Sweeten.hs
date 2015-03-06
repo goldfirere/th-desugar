@@ -37,6 +37,7 @@ import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 
+import Data.List ( stripPrefix )
 import Data.Maybe ( maybeToList )
 
 expToTH :: DExp -> Exp
@@ -178,9 +179,13 @@ typeToTH (DVarT n)              = VarT n
 typeToTH (DConT n) | n == ''(~) = EqualityT
 #endif
 typeToTH (DConT n) | n == ''[] = ListT
-typeToTH (DConT n)              = ConT n
+typeToTH (DConT n)              = maybe (ConT n) TupleT (parseTupleFunctionName n)
 typeToTH DArrowT                = ArrowT
 typeToTH (DLitT lit)            = LitT lit
+
+parseTupleFunctionName :: Name -> Maybe Int
+parseTupleFunctionName n =
+    fmap ((2 +) . length . takeWhile (== ',')) (stripPrefix "(," (nameBase n))
 
 tvbToTH :: DTyVarBndr -> TyVarBndr
 tvbToTH (DPlainTV n)           = PlainTV n
