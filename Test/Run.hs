@@ -235,6 +235,13 @@ main = hspec $ do
 
     it "works with standalone deriving" $ test_standalone_deriving
 
+    -- Remove map pprints here after switch to th-orphans
+    zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')
+             $(sequence round_trip_types >>= Syn.lift . map pprint)
+             $(sequence round_trip_types >>=
+               mapM (\ t -> withLocalDeclarations [] (dsType t >>= expandType >>= return . typeToTH)) >>=
+              Syn.lift . map pprint)
+
     zipWith3M (\a b n -> it ("reifies local definition " ++ show n) $ a == b)
       local_reifications normal_reifications [1..]
 
