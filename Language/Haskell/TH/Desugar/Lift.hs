@@ -14,29 +14,6 @@
 --
 ----------------------------------------------------------------------------
 
-{-# LANGUAGE CPP, TemplateHaskell #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-
 module Language.Haskell.TH.Desugar.Lift () where
 
-import Language.Haskell.TH.Desugar
-import Language.Haskell.TH.Lift
-import Language.Haskell.TH
-#if __GLASGOW_HASKELL__ <= 708
-import Data.Word
-#endif
-
-$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DKind, ''DPred, ''DTyVarBndr
-                 , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DCon
-                 , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
-                 , ''NewOrData
-                 , ''Lit, ''TyLit, ''Fixity, ''FixityDirection, ''Strict
-                 , ''Callconv, ''Safety, ''Inline, ''RuleMatch, ''Phases
-                 , ''AnnTarget, ''FunDep, ''FamFlavour, ''Role ])
-
-#if __GLASGOW_HASKELL__ <= 708
--- Other type liftings:
-                                      
-instance Lift Word8 where
-  lift word = return $ (VarE 'fromInteger) `AppE` (LitE $ IntegerL (toInteger word))
-#endif
+import Language.Haskell.TH.Instances ()
