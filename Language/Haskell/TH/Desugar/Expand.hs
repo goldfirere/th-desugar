@@ -42,7 +42,9 @@ import Language.Haskell.TH.Desugar.Sweeten
 import Language.Haskell.TH.Desugar.Reify
 
 -- | Expands all type synonyms in a desugared type. Also expands open type family
--- applications, as long as the arguments have no free variables.
+-- applications, as long as the arguments have no free variables. Attempts to
+-- expand closed type family applications, but aborts the moment it spots anything
+-- strange, like a nested type family application or type variable.
 expandType :: DsMonad q => DType -> q DType
 expandType = go []
   where
