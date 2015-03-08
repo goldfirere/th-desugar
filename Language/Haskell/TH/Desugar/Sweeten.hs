@@ -37,7 +37,6 @@ import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 
-import Data.List ( stripPrefix )
 import Data.Maybe ( maybeToList )
 
 expToTH :: DExp -> Exp
