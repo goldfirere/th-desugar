@@ -11,7 +11,7 @@ Utility functions for th-desugar package.
 module Language.Haskell.TH.Desugar.Util (
   newUniqueName,
   impossible, 
-  nameOccursIn, allNamesIn, mkTypeName, mkDataName,
+  nameOccursIn, allNamesIn, mkTypeName, mkDataName, isDataName,
   stripVarP_maybe, extractBoundNamesStmt,
   concatMapM, mapMaybeM, expectJustM,
   liftSndM, liftThdOf3M, stripPlainTV_maybe,
@@ -67,6 +67,11 @@ mkDataName str = do
     Nothing -> do
       Loc { loc_package = pkg, loc_module = modu } <- qLocation
       return $ mkNameG_d pkg modu str
+
+-- | Is this name a data constructor name? A 'False' answer means "unsure".
+isDataName :: Name -> Bool
+isDataName (Name _ (NameG DataName _ _)) = True
+isDataName _                             = False
 
 -- | Extracts the name out of a variable pattern, or returns @Nothing@
 stripVarP_maybe :: Pat -> Maybe Name

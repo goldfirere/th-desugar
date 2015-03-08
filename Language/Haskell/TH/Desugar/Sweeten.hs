@@ -175,17 +175,20 @@ typeToTH (DForallT tvbs cxt ty) = ForallT (map tvbToTH tvbs) (map predToTH cxt) 
 typeToTH (DAppT t1 t2)          = AppT (typeToTH t1) (typeToTH t2)
 typeToTH (DSigT ty ki)          = SigT (typeToTH ty) (kindToTH ki)
 typeToTH (DVarT n)              = VarT n
+typeToTH (DConT n)
+  | n == ''[]                   = ListT
 #if __GLASGOW_HASKELL__ >= 709
-typeToTH (DConT n) | n == ''(~) = EqualityT
+  | n == ''(~)                  = EqualityT
 #endif
-typeToTH (DConT n) | n == ''[] = ListT
-typeToTH (DConT n)              = maybe (ConT n) TupleT (parseTupleFunctionName n)
+  | n == '[]                    = PromotedNilT
+  | n == '(:)                   = PromotedConsT
+  | Just deg <- tupleNameDegree_maybe n        = if isDataName n
+                                                 then PromotedTupleT deg
+                                                 else TupleT deg
+  | Just deg <- unboxedTupleNameDegree_maybe n = UnboxedTupleT deg
+  | otherwise                   = ConT n
 typeToTH DArrowT                = ArrowT
 typeToTH (DLitT lit)            = LitT lit
-
-parseTupleFunctionName :: Name -> Maybe Int
-parseTupleFunctionName n =
-    fmap ((2 +) . length . takeWhile (== ',')) (stripPrefix "(," (nameBase n))
 
 tvbToTH :: DTyVarBndr -> TyVarBndr
 tvbToTH (DPlainTV n)           = PlainTV n
