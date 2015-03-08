@@ -1,3 +1,8 @@
+Version 1.5.1
+-------------
+* Thanks to David Fox, sweetening now tries to use more of TH's `Type`
+constructors.
+
 Version 1.5
 -----------
 * There is now a facility to register a list of `Dec` that internal reification
