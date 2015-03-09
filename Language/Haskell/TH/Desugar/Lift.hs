@@ -16,4 +16,11 @@
 
 module Language.Haskell.TH.Desugar.Lift () where
 
+import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Instances ()
+import Language.Haskell.TH.Lift
+
+$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DKind, ''DPred, ''DTyVarBndr
+                 , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DCon
+                 , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
+                 , ''NewOrData ])
