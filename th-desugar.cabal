@@ -35,6 +35,7 @@ library
       containers >= 0.5,
       mtl >= 2.1,
       syb >= 0.4,
+      th-lift,
       th-orphans >= 0.9.1
   default-extensions: TemplateHaskell
   exposed-modules:    Language.Haskell.TH.Desugar,

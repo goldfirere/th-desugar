@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Language.Haskell.TH.Desugar.Lift
