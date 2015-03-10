@@ -1,5 +1,3 @@
-{-# LANGUAGE TemplateHaskell #-}
-
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Language.Haskell.TH.Desugar.Lift
@@ -15,6 +13,9 @@
 -- downstream.
 --
 ----------------------------------------------------------------------------
+
+{-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Language.Haskell.TH.Desugar.Lift () where
 
