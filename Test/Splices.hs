@@ -362,4 +362,10 @@ simplCaseTests =
   , [| let foo [] = True
            foo _  = False in (foo [], foo "hi") |]
   ]
-                             
+
+-- These foralls are needed because of bug trac9262, fixed in ghc-7.10.
+round_trip_types :: [TypeQ]
+round_trip_types =
+    [ [t|forall a. a ~ Int => a|]
+    , [t|forall a. [a]|]
+    , [t|forall a b. (a,b)|] ]

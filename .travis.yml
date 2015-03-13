@@ -2,7 +2,6 @@
 # NB: don't set `language: haskell` here
 
 env:
- - CABALVER=1.18 GHCVER=7.6.3
  - CABALVER=1.18 GHCVER=7.8.2
  - CABALVER=1.18 GHCVER=7.8.3
  - CABALVER=1.18 GHCVER=7.8.4
