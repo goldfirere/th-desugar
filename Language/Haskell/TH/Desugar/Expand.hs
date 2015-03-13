@@ -28,7 +28,9 @@ module Language.Haskell.TH.Desugar.Expand (
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad
+#if __GLASGOW_HASKELL__ <= 708
 import Control.Applicative
+#endif
 import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Syntax ( Quasi(..) )
 import Data.Data

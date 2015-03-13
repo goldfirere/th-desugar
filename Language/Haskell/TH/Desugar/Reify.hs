@@ -23,7 +23,7 @@ module Language.Haskell.TH.Desugar.Reify (
 import Control.Monad.Reader
 import Data.List
 import Data.Maybe
-#if __GLASGOW_HASKELL__ < 709
+#if __GLASGOW_HASKELL__ <= 708
 import Control.Applicative
 #endif
 import qualified Data.Set as S

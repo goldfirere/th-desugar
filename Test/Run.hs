@@ -29,7 +29,9 @@ import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 
 import Control.Monad
+#if __GLASGOW_HASKELL__ <= 708
 import Control.Applicative
+#endif
 
 #if __GLASGOW_HASKELL__ >= 707
 import Data.Proxy

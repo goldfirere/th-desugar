@@ -20,7 +20,9 @@ module Language.Haskell.TH.Desugar.Match (scExp, scLetDec) where
 
 import Prelude hiding ( fail, exp )
 
+#if __GLASGOW_HASKELL__ <= 708
 import Control.Applicative
+#endif
 import Control.Monad hiding ( fail )
 import qualified Data.Set as S
 import qualified Data.Map as Map
