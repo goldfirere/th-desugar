@@ -16,7 +16,9 @@ import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (lift)
 
+#if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
+#endif
 import Control.Monad hiding (mapM)
 import Control.Monad.Zip
 import Control.Monad.Writer hiding (mapM)
