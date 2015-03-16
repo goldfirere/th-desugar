@@ -214,7 +214,7 @@ predToTH = go []
 predToTH (DAppPr p t) = AppT (predToTH p) (typeToTH t)
 predToTH (DSigPr p k) = SigT (predToTH p) (kindToTH k)
 predToTH (DVarPr n)   = VarT n
-predToTH (DConPr n)   = ConT n
+predToTH (DConPr n)   = typeToTH (DConT n)
 #endif
 
 kindToTH :: DKind -> Kind
