@@ -26,6 +26,7 @@ import Control.Applicative
 import Control.Monad hiding ( fail )
 import qualified Data.Set as S
 import qualified Data.Map as Map
+import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax
 
 import Language.Haskell.TH.Desugar.Core
@@ -114,10 +115,6 @@ simplCase vars@(v:_) clauses = do
         PgAny   -> matchVariables vars (drop_group eqns)
 
     drop_group = map snd
-
-#if __GLASGOW_HASKELL__ <= 708
-deriving instance Ord Lit   -- ew. necessary for `subGroup`
-#endif
 
 -- analogous to GHC's tidyEqnInfo
 tidyClause :: DsMonad q => Name -> EquationInfo -> q (DExp -> DExp, EquationInfo)
