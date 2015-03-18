@@ -1,7 +1,9 @@
 Version 1.5.1
 -------------
-* Thanks to David Fox, sweetening now tries to use more of TH's `Type`
+* Thanks to David Fox (@ddssff), sweetening now tries to use more of TH's `Type`
 constructors.
+
+* Also thanks to David Fox, depend usefully on the th-orphans package.
 
 Version 1.5
 -----------
