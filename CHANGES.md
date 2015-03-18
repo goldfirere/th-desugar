@@ -1,3 +1,7 @@
+Version 1.5.2
+-------------
+* Sweeten kinds more, too.
+
 Version 1.5.1
 -------------
 * Thanks to David Fox (@ddssff), sweetening now tries to use more of TH's `Type`

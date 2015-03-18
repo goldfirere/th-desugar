@@ -174,18 +174,7 @@ typeToTH (DForallT tvbs cxt ty) = ForallT (map tvbToTH tvbs) (map predToTH cxt) 
 typeToTH (DAppT t1 t2)          = AppT (typeToTH t1) (typeToTH t2)
 typeToTH (DSigT ty ki)          = SigT (typeToTH ty) (kindToTH ki)
 typeToTH (DVarT n)              = VarT n
-typeToTH (DConT n)
-  | n == ''[]                   = ListT
-#if __GLASGOW_HASKELL__ >= 709
-  | n == ''(~)                  = EqualityT
-#endif
-  | n == '[]                    = PromotedNilT
-  | n == '(:)                   = PromotedConsT
-  | Just deg <- tupleNameDegree_maybe n        = if isDataName n
-                                                 then PromotedTupleT deg
-                                                 else TupleT deg
-  | Just deg <- unboxedTupleNameDegree_maybe n = UnboxedTupleT deg
-  | otherwise                   = ConT n
+typeToTH (DConT n)              = tyconToTH n
 typeToTH DArrowT                = ArrowT
 typeToTH (DLitT lit)            = LitT lit
 
@@ -220,6 +209,20 @@ predToTH (DConPr n)   = typeToTH (DConT n)
 kindToTH :: DKind -> Kind
 kindToTH (DForallK names ki) = ForallT (map PlainTV names) [] (kindToTH ki)
 kindToTH (DVarK n)           = VarT n
-kindToTH (DConK n kis)       = foldl AppT (ConT n) (map kindToTH kis)
+kindToTH (DConK n kis)       = foldl AppT (tyconToTH n) (map kindToTH kis)
 kindToTH (DArrowK k1 k2)     = AppT (AppT ArrowT (kindToTH k1)) (kindToTH k2)
 kindToTH DStarK              = StarT
+
+tyconToTH :: Name -> Type
+tyconToTH n
+  | n == ''[]                   = ListT
+#if __GLASGOW_HASKELL__ >= 709
+  | n == ''(~)                  = EqualityT
+#endif
+  | n == '[]                    = PromotedNilT
+  | n == '(:)                   = PromotedConsT
+  | Just deg <- tupleNameDegree_maybe n        = if isDataName n
+                                                 then PromotedTupleT deg
+                                                 else TupleT deg
+  | Just deg <- unboxedTupleNameDegree_maybe n = UnboxedTupleT deg
+  | otherwise                   = ConT n
