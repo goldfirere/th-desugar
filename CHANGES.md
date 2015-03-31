@@ -1,3 +1,7 @@
+Version 1.5.3
+-------------
+* More `DsMonad` instances, thanks to David Fox.
+
 Version 1.5.2
 -------------
 * Sweeten kinds more, too.

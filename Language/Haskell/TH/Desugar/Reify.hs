@@ -23,6 +23,7 @@ module Language.Haskell.TH.Desugar.Reify (
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
+import Control.Monad.RWS
 import Data.List
 import Data.Maybe
 #if __GLASGOW_HASKELL__ < 709
@@ -137,42 +138,22 @@ instance DsMonad IO where
 -- | A convenient implementation of the 'DsMonad' class. Use by calling
 -- 'withLocalDeclarations'.
 newtype DsM q a = DsM (ReaderT [Dec] q a)
-  deriving (Functor, Applicative, Monad, MonadTrans)
-
-instance Quasi q => Quasi (DsM q) where
-  qNewName          = lift `comp1` qNewName
-  qReport           = lift `comp2` qReport
-  qLookupName       = lift `comp2` qLookupName
-  qReify            = lift `comp1` qReify
-  qReifyInstances   = lift `comp2` qReifyInstances
-  qLocation         = lift qLocation
-  qRunIO            = lift `comp1` qRunIO
-  qAddDependentFile = lift `comp1` qAddDependentFile
-#if __GLASGOW_HASKELL__ >= 707
-  qReifyRoles       = lift `comp1` qReifyRoles
-  qReifyAnnotations = lift `comp1` qReifyAnnotations
-  qReifyModule      = lift `comp1` qReifyModule
-  qAddTopDecls      = lift `comp1` qAddTopDecls
-  qAddModFinalizer  = lift `comp1` qAddModFinalizer
-  qGetQ             = lift qGetQ
-  qPutQ             = lift `comp1` qPutQ
-#endif
-                      
-  qRecover (DsM handler) (DsM body) = DsM $ do
-    env <- ask
-    lift $ qRecover (runReaderT handler env) (runReaderT body env)
+  deriving (Functor, Applicative, Monad, MonadTrans, Quasi)
 
 instance Quasi q => DsMonad (DsM q) where
   localDeclarations = DsM ask
 
 instance DsMonad m => DsMonad (ReaderT r m) where
-    localDeclarations = lift localDeclarations
+  localDeclarations = lift localDeclarations
 
 instance DsMonad m => DsMonad (StateT s m) where
-    localDeclarations = lift localDeclarations
+  localDeclarations = lift localDeclarations
 
 instance (DsMonad m, Monoid w) => DsMonad (WriterT w m) where
-    localDeclarations = lift localDeclarations
+  localDeclarations = lift localDeclarations
+
+instance (DsMonad m, Monoid w) => DsMonad (RWST r w s m) where
+  localDeclarations = lift localDeclarations  
 
 -- | Add a list of declarations to be considered when reifying local
 -- declarations.
@@ -180,13 +161,6 @@ withLocalDeclarations :: DsMonad q => [Dec] -> DsM q a -> q a
 withLocalDeclarations new_decs (DsM x) = do
   orig_decs <- localDeclarations
   runReaderT x (orig_decs ++ new_decs)
-
--- helper functions for composition
-comp1 :: (b -> c) -> (a -> b) -> a -> c
-comp1 = (.)
-
-comp2 :: (c -> d) -> (a -> b -> c) -> a -> b -> d
-comp2 f g a b = f (g a b)
 
 ---------------------------
 -- Reifying local declarations
