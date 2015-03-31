@@ -21,6 +21,8 @@ module Language.Haskell.TH.Desugar.Reify (
   ) where
 
 import Control.Monad.Reader
+import Control.Monad.State
+import Control.Monad.Writer
 import Data.List
 import Data.Maybe
 #if __GLASGOW_HASKELL__ < 709
@@ -28,6 +30,7 @@ import Control.Applicative
 #endif
 import qualified Data.Set as S
 
+import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax hiding ( lift )
 
 import Language.Haskell.TH.Desugar.Util
@@ -161,6 +164,15 @@ instance Quasi q => Quasi (DsM q) where
 
 instance Quasi q => DsMonad (DsM q) where
   localDeclarations = DsM ask
+
+instance DsMonad m => DsMonad (ReaderT r m) where
+    localDeclarations = lift localDeclarations
+
+instance DsMonad m => DsMonad (StateT s m) where
+    localDeclarations = lift localDeclarations
+
+instance (DsMonad m, Monoid w) => DsMonad (WriterT w m) where
+    localDeclarations = lift localDeclarations
 
 -- | Add a list of declarations to be considered when reifying local
 -- declarations.
