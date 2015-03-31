@@ -14,10 +14,10 @@ eir@cis.upenn.edu
 
 {-# OPTIONS_GHC -fno-warn-orphans -fno-warn-name-shadowing #-}
 
-module Test.Dec where
+module Dec where
 
-import qualified Test.Splices as S
-import Test.Splices ( unqualify )
+import qualified Splices as S
+import Splices ( unqualify )
 
 $(S.dectest1)
 $(S.dectest2)

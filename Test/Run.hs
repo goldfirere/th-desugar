@@ -12,7 +12,7 @@ eir@cis.upenn.edu
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
 
-module Test.Run where
+module Run where
 
 import Prelude hiding ( exp )
 
@@ -20,10 +20,10 @@ import Test.HUnit
 import Test.Hspec hiding ( runIO )
 -- import Test.Hspec.HUnit
 
-import Test.Splices
-import qualified Test.DsDec
-import qualified Test.Dec
-import Test.Dec ( RecordSel )
+import Splices
+import qualified DsDec
+import qualified Dec
+import Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as Syn ( lift )

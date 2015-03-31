@@ -13,7 +13,7 @@ eir@cis.upenn.edu
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
-module Test.Splices where
+module Splices where
 
 import Data.List
 import Data.Char
@@ -36,8 +36,8 @@ dsDecSplice decsQ = decsQ >>= dsDecs >>= (return . decsToTH)
 
 testDecSplice :: Int -> Q Exp
 testDecSplice n = do
-  let dsName  = mkName $ "Test.DsDec.Dec" ++ show n
-      regName = mkName $ "Test.Dec.Dec" ++ show n
+  let dsName  = mkName $ "DsDec.Dec" ++ show n
+      regName = mkName $ "Dec.Dec" ++ show n
   infoDs  <- reify dsName
   infoReg <- reify regName
 #if __GLASGOW_HASKELL__ < 707
@@ -295,8 +295,8 @@ rec_sel_test_num_sels = 4 :: Int   -- exclude naughty one
 
 testRecSelTypes :: Int -> Q Exp
 testRecSelTypes n = do
-  VarI _ ty1 _ _ <- reify (mkName ("Test.DsDec.recsel" ++ show n))
-  VarI _ ty2 _ _ <- reify (mkName ("Test.Dec.recsel"   ++ show n))
+  VarI _ ty1 _ _ <- reify (mkName ("DsDec.recsel" ++ show n))
+  VarI _ ty2 _ _ <- reify (mkName ("Dec.recsel"   ++ show n))
   let ty1' = return $ unqualify ty1
       ty2' = return $ unqualify ty2
   [| let x :: $ty1'

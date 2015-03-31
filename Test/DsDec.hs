@@ -15,10 +15,10 @@ eir@cis.upenn.edu
 {-# OPTIONS_GHC -fno-warn-orphans -fno-warn-incomplete-patterns
                 -fno-warn-name-shadowing #-}
 
-module Test.DsDec where
+module DsDec where
 
-import qualified Test.Splices as S
-import Test.Splices ( dsDecSplice, unqualify )
+import qualified Splices as S
+import Splices ( dsDecSplice, unqualify )
 
 import Language.Haskell.TH  ( reportError )
 import Language.Haskell.TH.Desugar
