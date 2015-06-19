@@ -1,3 +1,10 @@
+`th-desugar` release notes
+==========================
+
+Version 1.5.4
+-------------
+* Added
+
 Version 1.5.3
 -------------
 * More `DsMonad` instances, thanks to David Fox.

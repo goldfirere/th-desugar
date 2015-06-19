@@ -195,6 +195,17 @@ test_expand5 = [| let f :: ClosedTF Int -> ()
 test_expand6 = [| let f :: ClosedTF Double -> ()
                       f 'x' = () in
                   f |]
+
+type family PolyTF (x :: k) :: * where
+  PolyTF (x :: *) = Bool
+
+test_expand7 = [| let f :: PolyTF Int -> ()
+                      f True = () in
+                  f |]
+test_expand8 = [| let f :: PolyTF IO -> ()
+                      f True = () in
+                  f |]
+
 #endif
 
 #if __GLASGOW_HASKELL__ >= 709
@@ -306,7 +317,7 @@ testRecSelTypes n = do
      in
      $(return $ VarE $ mkName "hasSameType") x y |]
 
-  
+
 -- used for expand
 
 

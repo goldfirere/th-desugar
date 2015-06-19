@@ -15,14 +15,21 @@ eir@cis.upenn.edu
 -- Stability   :  experimental
 -- Portability :  non-portable
 --
--- Expands type synonyms and open type families in desugared types, ignoring
--- closed type families. See also the package th-expand-syns for doing this to
+-- Expands type synonyms and type families in desugared types.
+-- See also the package th-expand-syns for doing this to
 -- non-desugared types.
 --
 ----------------------------------------------------------------------------
 
 module Language.Haskell.TH.Desugar.Expand (
-  expand, expandType, substTy
+  -- * Expand synonyms soundly
+  expand, expandType,
+
+  -- * Expand synonyms potentially unsoundly
+  expandUnsoundly,
+
+  -- * Capture-avoiding substitution
+  substTy
   ) where
 
 import qualified Data.Map as M
@@ -43,47 +50,54 @@ import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Sweeten
 import Language.Haskell.TH.Desugar.Reify
 
+-- | Ignore kind annotations?
+data IgnoreKinds = YesIgnore | NoIgnore
+
 -- | Expands all type synonyms in a desugared type. Also expands open type family
 -- applications, as long as the arguments have no free variables. Attempts to
 -- expand closed type family applications, but aborts the moment it spots anything
 -- strange, like a nested type family application or type variable.
 expandType :: DsMonad q => DType -> q DType
-expandType = go []
+expandType = expand_type NoIgnore
+
+expand_type :: DsMonad q => IgnoreKinds -> DType -> q DType
+expand_type ign = go []
   where
     go [] (DForallT tvbs cxt ty) =
-      DForallT tvbs <$> mapM expand cxt <*> expandType ty
+      DForallT tvbs <$> mapM (expand_ ign) cxt <*> expand_type ign ty
     go _ (DForallT {}) =
       impossible "A forall type is applied to another type."
     go args (DAppT t1 t2) = do
-      t2' <- expandType t2
+      t2' <- expand_type ign t2
       go (t2' : args) t1
     go args (DSigT ty ki) = do
       ty' <- go [] ty
       return $ foldl DAppT (DSigT ty' ki) args
-    go args (DConT n) = expandCon n args
+    go args (DConT n) = expand_con ign n args
     go args ty = return $ foldl DAppT ty args
 
 -- | Expands all type synonyms in a desugared predicate.
-expandPred :: DsMonad q => DPred -> q DPred
-expandPred = go []
+expand_pred :: DsMonad q => IgnoreKinds -> DPred -> q DPred
+expand_pred ign = go []
   where
     go args (DAppPr p t) = do
-      t' <- expandType t
+      t' <- expand_type ign t
       go (t' : args) p
     go args (DSigPr p k) = do
       p' <- go [] p
       return $ foldl DAppPr (DSigPr p' k) args
     go args (DConPr n) = do
-      ty <- expandCon n args
+      ty <- expand_con ign n args
       dTypeToDPred ty
     go args p = return $ foldl DAppPr p args
 
 -- | Expand a constructor with given arguments
-expandCon :: DsMonad q
-          => Name     -- ^ Tycon name
-          -> [DType]  -- ^ Arguments
-          -> q DType  -- ^ Expanded type
-expandCon n args = do
+expand_con :: DsMonad q
+           => IgnoreKinds
+           -> Name     -- ^ Tycon name
+           -> [DType]  -- ^ Arguments
+           -> q DType  -- ^ Expanded type
+expand_con ign n args = do
   info <- reifyWithLocals n
   dinfo <- dsInfo info
   args_ok <- allM no_tyvars_tyfams args
@@ -93,7 +107,7 @@ expandCon n args = do
       -> do
         let (syn_args, rest_args) = splitAtList tvbs args
         ty <- substTy (M.fromList $ zip (map extractDTvbName tvbs) syn_args) rhs
-        ty' <- expandType ty
+        ty' <- expand_type ign ty
         return $ foldl DAppT ty' rest_args
 
     DTyConI (DFamilyD TypeFam _n tvbs _mkind) _
@@ -110,7 +124,7 @@ expandCon n args = do
               expectJustM "Impossible: reification returned a bogus instance" $
               merge_maps $ zipWith build_subst lhs syn_args
             ty <- substTy subst rhs
-            ty' <- expandType ty
+            ty' <- expand_type ign ty
             return $ foldl DAppT ty' rest_args
           _ -> return $ foldl DAppT (DConT n) args
 
@@ -122,7 +136,7 @@ expandCon n args = do
         rhss <- mapMaybeM (check_eqn syn_args) eqns
         case rhss of
           (rhs : _) -> do
-            rhs' <- expandType rhs
+            rhs' <- expand_type ign rhs
             return $ foldl DAppT rhs' rest_args
           [] -> return $ foldl DAppT (DConT n) args
 
@@ -132,7 +146,7 @@ expandCon n args = do
         check_eqn arg_tys (DTySynEqn lhs rhs) = do
           let m_subst = merge_maps $ zipWith build_subst lhs arg_tys
           T.mapM (flip substTy rhs) m_subst
-          
+
     _ -> return $ foldl DAppT (DConT n) args
 
   where
@@ -154,7 +168,9 @@ expandCon n args = do
     build_subst (DVarT var_name) arg = Just $ M.singleton var_name arg
       -- if a pattern has a kind signature, it's really easy to get
       -- this wrong.
-    build_subst (DSigT {}) _ = Nothing
+    build_subst (DSigT ty _ki) arg = case ign of
+      YesIgnore -> build_subst ty arg
+      NoIgnore  -> Nothing
       -- but we can safely ignore kind signatures on the target
     build_subst pat (DSigT ty _ki) = build_subst pat ty
     build_subst (DForallT {}) _ =
@@ -186,7 +202,6 @@ expandCon n args = do
 
     allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
     allM f = foldM (\b x -> (b &&) `liftM` f x) True
-
 
 -- | Capture-avoiding substitution on types
 substTy :: DsMonad q => M.Map Name DType -> DType -> q DType
@@ -244,9 +259,31 @@ dTypeToDPred (DConT n)       = return $ DConPr n
 dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
 dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
 
-
--- | Expand all type synonyms and open type families in the desugared abstract
--- syntax tree provided. Normally, the first parameter should have a type like
+-- | Expand all type synonyms and type families in the desugared abstract
+-- syntax tree provided, where type family simplification is on a "best effort"
+-- basis. Normally, the first parameter should have a type like
 -- 'DExp' or 'DLetDec'.
 expand :: (DsMonad q, Data a) => a -> q a
-expand = everywhereM (mkM expandType >=> mkM expandPred)
+expand = expand_ NoIgnore
+
+-- | Expand all type synonyms and type families in the desugared abstract
+-- syntax tree provided, where type family simplification is on a "better
+-- than best effort" basis. This means that it will try so hard that it will
+-- sometimes do the wrong thing. Specifically, any kind parameters to type
+-- families are ignored. So, if we have
+--
+-- > type family F (x :: k) where
+-- >   F (a :: *) = Int
+--
+-- 'expandUnsoundly' will expand @F 'True@ to @Int@, ignoring that the
+-- expansion should only work for type of kind @*@.
+--
+-- This function is useful because plain old 'expand' will simply fail
+-- to expand type families that make use of kinds. Sometimes, the kinds
+-- are benign and we want to expand anyway. Use this function in that case.
+expandUnsoundly :: (DsMonad q, Data a) => a -> q a
+expandUnsoundly = expand_ YesIgnore
+
+-- | Generalization of 'expand' that either can or won't ignore kind annotations.sx
+expand_ :: (DsMonad q, Data a) => IgnoreKinds -> a -> q a
+expand_ ign = everywhereM (mkM (expand_type ign) >=> mkM (expand_pred ign))

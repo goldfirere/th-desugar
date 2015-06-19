@@ -25,6 +25,7 @@ import qualified DsDec
 import qualified Dec
 import Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
+import Language.Haskell.TH.Desugar.Expand  ( expandUnsoundly )
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 
@@ -114,6 +115,13 @@ test_e5b = $(test_expand5 >>= dsExp >>= expand >>= return . expToTH)
 test_e6a = $test_expand6
 test_e6b = $(test_expand6 >>= dsExp >>= expand >>= return . expToTH)
 #endif
+test_e7a = $test_expand7
+test_e7b = $(test_expand7 >>= dsExp >>= expand >>= return . expToTH)
+test_e7c = $(test_expand7 >>= dsExp >>= expandUnsoundly >>= return . expToTH)
+test_e8a = $(test_expand8 >>= dsExp >>= expand >>= return . expToTH)
+  -- the line above should fail once GHC#8953 is fixed for closed type
+  -- families
+test_e8b = $(test_expand8 >>= dsExp >>= expandUnsoundly >>= return . expToTH)
 
 hasSameType :: a -> a -> Bool
 hasSameType _ _ = True
@@ -127,6 +135,9 @@ test_expand = and [ hasSameType test35a test35b
                   , hasSameType test_e5a test_e5b
                   , hasSameType test_e6a test_e6b
 #endif
+                  , hasSameType test_e7a test_e7b
+                  , hasSameType test_e7a test_e7c
+                  , hasSameType test_e8a test_e8a
                   ]
 
 test_dec :: [Bool]
