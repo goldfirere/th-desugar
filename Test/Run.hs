@@ -25,7 +25,9 @@ import qualified DsDec
 import qualified Dec
 import Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
+#if __GLASGOW_HASKELL__ >= 707
 import Language.Haskell.TH.Desugar.Expand  ( expandUnsoundly )
+#endif
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 
