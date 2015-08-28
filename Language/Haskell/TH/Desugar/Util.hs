@@ -10,7 +10,7 @@ Utility functions for th-desugar package.
 
 module Language.Haskell.TH.Desugar.Util (
   newUniqueName,
-  impossible, 
+  impossible,
   nameOccursIn, allNamesIn, mkTypeName, mkDataName, isDataName,
   stripVarP_maybe, extractBoundNamesStmt,
   concatMapM, mapMaybeM, expectJustM,
@@ -40,7 +40,8 @@ import Data.Monoid
 ----------------------------------------
 
 -- | Like newName, but even more unique (unique across different splices),
--- and with unique @nameBase@s.
+-- and with unique @nameBase@s. Precondition: the string is a valid Haskell
+-- alphanumeric identifier (could be upper- or lower-case).
 newUniqueName :: Quasi q => String -> q Name
 newUniqueName str = do
   n <- qNewName str
@@ -166,7 +167,7 @@ nameOccursIn n = everything (||) $ mkQ False (== n)
 -- | Extract all Names mentioned in a TH tree.
 allNamesIn :: Data a => a -> [Name]
 allNamesIn = everything (++) $ mkQ [] (:[])
-               
+
 -- | Extract the names bound in a @Stmt@
 extractBoundNamesStmt :: Stmt -> S.Set Name
 extractBoundNamesStmt (BindS pat _) = extractBoundNamesPat pat
@@ -271,4 +272,3 @@ expectJustM err Nothing  = fail err
 
 firstMatch :: (a -> Maybe b) -> [a] -> Maybe b
 firstMatch f xs = listToMaybe $ mapMaybe f xs
-    
