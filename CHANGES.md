@@ -1,9 +1,13 @@
 `th-desugar` release notes
 ==========================
 
+Version 1.5.4.1
+---------------
+* Fix issue #32, concerning reification of classes with default methods.
+
 Version 1.5.4
 -------------
-* Added
+* Added `expandUnsoundly`
 
 Version 1.5.3
 -------------
