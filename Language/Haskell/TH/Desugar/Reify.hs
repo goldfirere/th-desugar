@@ -153,7 +153,7 @@ instance (DsMonad m, Monoid w) => DsMonad (WriterT w m) where
   localDeclarations = lift localDeclarations
 
 instance (DsMonad m, Monoid w) => DsMonad (RWST r w s m) where
-  localDeclarations = lift localDeclarations  
+  localDeclarations = lift localDeclarations
 
 -- | Add a list of declarations to be considered when reifying local
 -- declarations.
@@ -196,14 +196,13 @@ reifyInDec n decs (DataD _ ty_name tvbs cons _)
 reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
   | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) [con]
   = Just info
-reifyInDec n decs (ClassD _ _ _ _ sub_decs)
-  | Just info <- firstMatch (reifyInDec n (sub_decs ++ decs)) sub_decs
-  = Just info    -- must necessarily *not* be a method, because type signatures
-                 -- don't reify
 reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
   | Just ty <- findType n sub_decs
   = Just $ ClassOpI n (addClassCxt ty_name tvbs ty)
                     ty_name (findFixity n $ sub_decs ++ decs)
+reifyInDec n decs (ClassD _ _ _ _ sub_decs)
+  | Just info <- firstMatch (reifyInDec n (sub_decs ++ decs)) sub_decs
+  = Just info
 reifyInDec n decs (InstanceD _ _ sub_decs)
   | Just info <- firstMatch reify_in_instance sub_decs
   = Just info
@@ -245,11 +244,11 @@ mkVarI :: Name -> [Dec] -> Info
 mkVarI n decs = mkVarITy n decs (fromMaybe no_type $ findType n decs)
   where
     no_type = error $ "No type information found in local declaration for "
-                      ++ show n    
+                      ++ show n
 
 mkVarITy :: Name -> [Dec] -> Type -> Info
 mkVarITy n decs ty = VarI n ty Nothing (findFixity n decs)
-    
+
 findFixity :: Name -> [Dec] -> Fixity
 findFixity n = fromMaybe defaultFixity . firstMatch match_fixity
   where
@@ -331,7 +330,7 @@ findRecSelector n = firstMatch match_con
 
     match_rec_sel (n', _, ty) | n `nameMatches` n' = Just ty
     match_rec_sel _                     = Nothing
-    
+
 
 handleBug8884 :: Dec -> Dec
 #if __GLASGOW_HASKELL__ >= 707
@@ -343,11 +342,10 @@ handleBug8884 (FamilyD flav name tvbs m_kind)
     kind_from_maybe = fromMaybe StarT
     tvb_kind (PlainTV _)    = Nothing
     tvb_kind (KindedTV _ k) = Just k
-    
+
     result_kind = kind_from_maybe m_kind
     args_kinds  = map (kind_from_maybe . tvb_kind) tvbs
 
     stupid_kind = mkArrows args_kinds result_kind
 handleBug8884 dec = dec
-#endif    
-
+#endif
