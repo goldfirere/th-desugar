@@ -353,6 +353,10 @@ reifyDecs = [d|
 #if __GLASGOW_HASKELL__ >= 707
   type family R21 (a :: k) (b :: k) :: k where R21 a b = b
 #endif
+  class XXX a where
+    r22 :: a -> a
+    r22 = id   -- test #32
+
   |]
 
 reifyDecsNames :: [Name]
@@ -362,6 +366,7 @@ reifyDecsNames = map mkName
 #if __GLASGOW_HASKELL__ >= 707
   , "R21"
 #endif
+  , "r22"
   ]
 
 simplCaseTests :: [Q Exp]
