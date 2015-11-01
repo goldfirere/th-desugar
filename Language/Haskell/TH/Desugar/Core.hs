@@ -226,6 +226,11 @@ dsExp (MultiIfE guarded_exps) =
   let failure = DAppE (DVarE 'error) (DLitE (StringL "Non-exhaustive guards in multi-way if")) in
   dsGuards guarded_exps failure
 dsExp (LetE decs exp) = DLetE <$> dsLetDecs decs <*> dsExp exp
+    -- the following special case avoids creating a new "let" when it's not
+    -- necessary. See #34.
+dsExp (CaseE (VarE scrutinee) matches) = do
+  matches' <- dsMatches scrutinee matches
+  return $ DCaseE (DVarE scrutinee) matches'
 dsExp (CaseE exp matches) = do
   scrutinee <- newUniqueName "scrutinee"
   exp' <- dsExp exp
@@ -285,7 +290,7 @@ dsExp (RecUpdE exp field_exps) = do
     extract_type_name (SigT t _) = extract_type_name t
     extract_type_name (ConT n) = return n
     extract_type_name _ = impossible "Record selector domain not a datatype."
-    
+
     filter_cons_with_names cons field_names =
       filter has_names cons
       where
@@ -600,7 +605,7 @@ remove_arrows 0 k = return k
 remove_arrows n (DArrowK _ k) = remove_arrows (n-1) k
 remove_arrows _ _ =
   impossible "Internal error: Fix for bug 8884 ran out of arrows."
-  
+
 #else
 fixBug8884ForFamilies dec = return (dec, 0)   -- return value ignored
 #endif
@@ -671,7 +676,7 @@ dsDec (StandaloneDerivD cxt ty) = (:[]) <$> (DStandaloneDerivD <$> dsCxt cxt
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
 
-  
+
 -- | Desugar @Dec@s that can appear in a let expression
 dsLetDecs :: DsMonad q => [Dec] -> q [DLetDec]
 dsLetDecs = concatMapM dsLetDec
@@ -750,7 +755,7 @@ dsClauses :: DsMonad q
           -> q [DClause]
 dsClauses _ [] = return []
 dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
-  -- this is just a convenience optimization; we could tuple up all the patterns
+  -- this case is necessary to maintain the roundtrip property.
   rest' <- dsClauses n rest
   exp' <- dsExp exp
   where_decs' <- dsLetDecs where_decs
@@ -895,7 +900,7 @@ dsKind EqualityT = impossible "(~) used in a kind."
 -- available.
 dsReify :: DsMonad q => Name -> q (Maybe DInfo)
 dsReify = traverse dsInfo <=< reifyWithLocals_maybe
-  
+
 -- create a list of expressions in the same order as the fields in the first argument
 -- but with the values as given in the second argument
 -- if a field is missing from the second argument, use the corresponding expression

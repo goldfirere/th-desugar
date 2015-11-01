@@ -222,6 +222,16 @@ simplCase = $( do exps <- sequence simplCaseTests
                     exps (map sweeten sexps)
                   return $ ListE bools )
 
+test_roundtrip :: [Bool]
+test_roundtrip = $( do exprs <- sequence test_exprs
+                       ds_exprs1 <- mapM dsExp exprs
+                       let th_exprs1 = map expToTH ds_exprs1
+                       ds_exprs2 <- mapM dsExp th_exprs1
+                       let th_exprs2 = map expToTH ds_exprs2
+                       ds_exprs3 <- mapM dsExp th_exprs2
+                       let bools = zipWith eqTH ds_exprs2 ds_exprs3
+                       Syn.lift bools )
+
 main :: IO ()
 main = hspec $ do
   describe "th-desugar library" $ do
@@ -261,5 +271,7 @@ main = hspec $ do
       local_reifications normal_reifications [1..]
 
     zipWithM (\b n -> it ("works on simplCase test " ++ show n) b) simplCase [1..]
+
+    zipWithM (\b n -> it ("round-trip successfully on case " ++ show n) b) test_roundtrip [1..]
 
     fromHUnitTest tests

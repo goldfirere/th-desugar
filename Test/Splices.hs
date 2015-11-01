@@ -385,3 +385,46 @@ round_trip_types =
     [ [t|forall a. a ~ Int => a|]
     , [t|forall a. [a]|]
     , [t|forall a b. (a,b)|] ]
+
+test_exprs :: [Q Exp]
+test_exprs = [ test1_sections
+             , test2_lampats
+             , test3_lamcase
+-- see above             , test4_tuples
+             , test5_ifs
+             , test6_ifs2
+             , test7_let
+             , test8_case
+             , test9_do
+             , test10_comp
+#if __GLASGOW_HASKELL__ >= 707
+             , test11_parcomp
+             , test12_parcomp2
+#endif
+             , test13_sig
+             , test14_record
+             , test15_litp
+             , test16_tupp
+             , test17_infixp
+             , test18_tildep
+             , test19_bangp
+             , test20_asp
+             , test21_wildp
+             , test22_listp
+             , test24_fun
+             , test25_fun2
+             , test26_forall
+             , test27_kisig
+             , test28_tupt
+             , test29_listt
+             , test30_promoted
+             , test31_constraint
+             , test32_tylit
+             , test33_tvbs
+             , test34_let_as
+#if __GLASGOW_HASKELL__ >= 709
+             , test37_pred
+             , test38_pred2
+             , test39_eq
+#endif
+             ]

@@ -1,6 +1,16 @@
 `th-desugar` release notes
 ==========================
 
+Version 1.5.5
+-------------
+
+* Fix issue #34. This means that desugaring (twice) is idempotent over
+expressions, after the second time. That is, if you desugar an expression,
+sweeten it, desugar again, sweeten again, and then desugar a third time, you
+get the same result as when you desugared the second time. (The extra
+round-trip is necessary there to make the output smaller in certain common
+cases.)
+
 Version 1.5.4.1
 ---------------
 * Fix issue #32, concerning reification of classes with default methods.
