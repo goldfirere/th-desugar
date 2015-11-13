@@ -229,6 +229,8 @@ predToTH = go []
       = EqualP t1 t2
       | otherwise
       = ClassP n acc
+    go _ (DWildCardPr _)
+      = error "Wildcards supported only in GHC 8.0+"
 #else
 predToTH (DAppPr p t) = AppT (predToTH p) (typeToTH t)
 predToTH (DSigPr p k) = SigT (predToTH p) (kindToTH k)
