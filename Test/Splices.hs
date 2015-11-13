@@ -306,8 +306,13 @@ rec_sel_test_num_sels = 4 :: Int   -- exclude naughty one
 
 testRecSelTypes :: Int -> Q Exp
 testRecSelTypes n = do
+#if __GLASGOW_HASKELL__ > 710
+  VarI _ ty1 _ <- reify (mkName ("DsDec.recsel" ++ show n))
+  VarI _ ty2 _ <- reify (mkName ("Dec.recsel"   ++ show n))
+#else
   VarI _ ty1 _ _ <- reify (mkName ("DsDec.recsel" ++ show n))
   VarI _ ty2 _ _ <- reify (mkName ("Dec.recsel"   ++ show n))
+#endif
   let ty1' = return $ unqualify ty1
       ty2' = return $ unqualify ty2
   [| let x :: $ty1'

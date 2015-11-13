@@ -42,6 +42,7 @@ data DExp = DVarE Name
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
           | DStaticE DExp
+          | DUnboundVarE Name
           deriving (Show, Typeable, Data)
 
 
@@ -62,6 +63,7 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DConT Name
            | DArrowT
            | DLitT TyLit
+           | DWildCardT (Maybe Name)
            deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Kind@ type, which is a synonym for @Type@. 'DKind', though,
@@ -71,6 +73,7 @@ data DKind = DForallK [Name] DKind
            | DConK Name [DKind]
            | DArrowK DKind DKind
            | DStarK
+           | DWildCardK (Maybe Name)
            deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Cxt@
@@ -81,6 +84,7 @@ data DPred = DAppPr DPred DType
            | DSigPr DPred DKind
            | DVarPr Name
            | DConPr Name
+           | DWildCardPr (Maybe Name)
            deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @TyVarBndr@. Note that @PlainTV x@ and @KindedTV x StarT@ are
@@ -117,14 +121,30 @@ data DDec = DLetDec DLetDec
           | DInstanceD DCxt DType [DDec]
           | DForeignD DForeign
           | DPragmaD DPragma
+#if __GLASGOW_HASKELL__ > 710
+          | DOpenTypeFamilyD Name [DTyVarBndr] DFamilyResultSig (Maybe InjectivityAnn)
+          | DDataFamilyD Name [DTyVarBndr] (Maybe DKind)
+#else
           | DFamilyD FamFlavour Name [DTyVarBndr] (Maybe DKind)
+#endif
           | DDataInstD NewOrData DCxt Name [DType] [DCon] [Name]
           | DTySynInstD Name DTySynEqn
+#if __GLASGOW_HASKELL__ > 710
+          | DClosedTypeFamilyD Name [DTyVarBndr] DFamilyResultSig (Maybe InjectivityAnn) [DTySynEqn]
+#else
           | DClosedTypeFamilyD Name [DTyVarBndr] (Maybe DKind) [DTySynEqn]
+#endif
           | DRoleAnnotD Name [Role]
           | DStandaloneDerivD DCxt DType
           | DDefaultSigD Name DType
           deriving (Show, Typeable, Data)
+
+#if __GLASGOW_HASKELL__ > 710
+data DFamilyResultSig = DNoSig
+                      | DKindSig DKind
+                      | DTyVarSig DTyVarBndr
+                      deriving (Show, Typeable, Data)
+#endif
 
 -- | Corresponds to TH's @Con@ type.
 data DCon = DCon [DTyVarBndr] DCxt Name DConFields
@@ -179,7 +199,11 @@ data AnnTarget = ModuleAnnotation
 
 -- | Corresponds to TH's @Info@ type.
 data DInfo = DTyConI DDec (Maybe [DInstanceDec])
+#if __GLASGOW_HASKELL__ > 710
+           | DVarI Name DType (Maybe Name)
+#else
            | DVarI Name DType (Maybe Name) Fixity
+#endif
                -- ^ The @Maybe Name@ stores the name of the enclosing definition
                -- (datatype, for a data constructor; class, for a method),
                -- if any
@@ -267,7 +291,11 @@ dsExp (RecUpdE exp field_exps) = do
                   _ -> impossible "Record update with no fields listed."
   info <- reifyWithLocals first_name
   applied_type <- case info of
+#if __GLASGOW_HASKELL__ > 710
+                    VarI _name ty _m_dec -> extract_first_arg ty
+#else    
                     VarI _name ty _m_dec _fixity -> extract_first_arg ty
+#endif
                     _ -> impossible "Record update with an invalid field name."
   type_name <- extract_type_name applied_type
   (_, cons) <- getDataD "This seems to be an error in GHC." type_name
@@ -316,6 +344,9 @@ dsExp (RecUpdE exp field_exps) = do
     fst_of_3 (x, _, _) = x
 #if __GLASGOW_HASKELL__ >= 709
 dsExp (StaticE exp) = DStaticE <$> dsExp exp
+#endif
+#if __GLASGOW_HASKELL__ > 710
+dsExp (UnboundVarE n) = return (DUnboundVarE n)
 #endif
 
 -- | Desugar a lambda expression, where the body has already been desugared
@@ -565,8 +596,13 @@ dsInfo (ClassI dec instances) = do
   [ddec]     <- dsDec dec
   dinstances <- dsDecs instances
   return $ DTyConI ddec (Just dinstances)
+#if __GLASGOW_HASKELL__ > 710
+dsInfo (ClassOpI name ty parent) =
+  DVarI name <$> dsType ty <*> pure (Just parent)
+#else
 dsInfo (ClassOpI name ty parent fixity) =
   DVarI name <$> dsType ty <*> pure (Just parent) <*> pure fixity
+#endif
 dsInfo (TyConI dec) = do
   [ddec] <- dsDec dec
   return $ DTyConI ddec Nothing
@@ -578,12 +614,21 @@ dsInfo (FamilyI dec instances) = do
   return $ DTyConI ddec' (Just dinstances')
 dsInfo (PrimTyConI name arity unlifted) =
   return $ DPrimTyConI name arity unlifted
+#if __GLASGOW_HASKELL__ > 710
+dsInfo (DataConI name ty parent) =
+  DVarI name <$> dsType ty <*> pure (Just parent)
+dsInfo (VarI name ty Nothing) =
+  DVarI name <$> dsType ty <*> pure Nothing
+dsInfo (VarI name _ (Just _)) =
+  impossible $ "Declaration supplied with variable: " ++ show name
+#else
 dsInfo (DataConI name ty parent fixity) =
   DVarI name <$> dsType ty <*> pure (Just parent) <*> pure fixity
 dsInfo (VarI name ty Nothing fixity) =
   DVarI name <$> dsType ty <*> pure Nothing <*> pure fixity
 dsInfo (VarI name _ (Just _) _) =
   impossible $ "Declaration supplied with variable: " ++ show name
+#endif
 dsInfo (TyVarI name ty) = DTyVarI name <$> dsKind ty
 
 fixBug8884ForFamilies :: DsMonad q => DDec -> q (DDec, Int)
@@ -651,8 +696,15 @@ dsDec d@(SigD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
 dsDec d@(InfixD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec (PragmaD prag) = (:[]) <$> (DPragmaD <$> dsPragma prag)
+#if __GLASGOW_HASKELL__ > 710
+dsDec (OpenTypeFamilyD n tvbs frs ann) =
+  (:[]) <$> (DOpenTypeFamilyD n <$> mapM dsTvb tvbs <*> dsFRS frs <*> pure ann)
+dsDec (DataFamilyD n tvbs m_k) =
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsKind m_k)
+#else
 dsDec (FamilyD flav n tvbs m_k) =
   (:[]) <$> (DFamilyD flav n <$> mapM dsTvb tvbs <*> mapM dsKind m_k)
+#endif
 dsDec (DataInstD cxt n tys cons derivings) =
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
                              <*> mapM dsCon cons <*> pure derivings)
@@ -665,9 +717,15 @@ dsDec (TySynInstD n lhs rhs) = (:[]) <$> (DTySynInstD n <$>
                                                      <*> dsType rhs))
 #else
 dsDec (TySynInstD n eqn) = (:[]) <$> (DTySynInstD n <$> dsTySynEqn eqn)
+#if __GLASGOW_HASKELL__ > 710
+dsDec (ClosedTypeFamilyD n tvbs frs ann eqns) =
+  (:[]) <$> (DClosedTypeFamilyD n <$> mapM dsTvb tvbs <*> dsFRS frs <*> pure ann
+                                  <*> mapM dsTySynEqn eqns)
+#else
 dsDec (ClosedTypeFamilyD n tvbs m_k eqns) =
   (:[]) <$> (DClosedTypeFamilyD n <$> mapM dsTvb tvbs <*> mapM dsKind m_k
                                   <*> mapM dsTySynEqn eqns)
+#endif
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #endif
 #if __GLASGOW_HASKELL__ >= 709
@@ -676,6 +734,13 @@ dsDec (StandaloneDerivD cxt ty) = (:[]) <$> (DStandaloneDerivD <$> dsCxt cxt
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
 
+#if __GLASGOW_HASKELL__ > 710
+-- | Desuger a @FamilyResultSig@
+dsFRS :: DsMonad q => FamilyResultSig -> q DFamilyResultSig
+dsFRS NoSig = return DNoSig
+dsFRS (KindSig k) = DKindSig <$> dsKind k
+dsFRS (TyVarSig tvb) = DTyVarSig <$> dsTvb tvb
+#endif
 
 -- | Desugar @Dec@s that can appear in a let expression
 dsLetDecs :: DsMonad q => [Dec] -> q [DLetDec]
@@ -806,6 +871,12 @@ dsType (LitT lit) = return $ DLitT lit
 #if __GLASGOW_HASKELL__ >= 709
 dsType EqualityT = return $ DConT ''(~)
 #endif
+#if __GLASGOW_HASKELL__ > 710
+dsType (InfixT t1 n t2) = DAppT <$> (DAppT (DConT n) <$> dsType t1) <*> dsType t2
+dsType (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
+dsType (ParensT t) = dsType t
+dsType (WildCardT m_n) = return (DWildCardT m_n)
+#endif
 
 -- | Desugar a @TyVarBndr@
 dsTvb :: DsMonad q => TyVarBndr -> q DTyVarBndr
@@ -860,6 +931,12 @@ dsPred t@(LitT _) =
   impossible $ "Type literal seen as head of constraint: " ++ show t
 dsPred EqualityT = return [DConPr ''(~)]
 #endif
+#if __GLASGOW_HASKELL__ > 710
+dsPred (InfixT t1 n t2) = (:[]) <$> (DAppPr <$> (DAppPr (DConPr n) <$> dsType t1) <*> dsType t2)
+dsPred (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
+dsPred (ParensT t) = dsPred t
+dsPred (WildCardT m_n) = return [DWildCardPr m_n]
+#endif
 
 -- | Desugar a kind
 dsKind :: DsMonad q => Kind -> q DKind
@@ -894,6 +971,15 @@ dsKind ConstraintT = return $ DConK ''Constraint []
 dsKind (LitT _) = impossible "Literal used in a kind."
 #if __GLASGOW_HASKELL__ >= 709
 dsKind EqualityT = impossible "(~) used in a kind."
+#endif
+#if __GLASGOW_HASKELL__ > 710
+dsKind (InfixT k1 n k2) = do
+  k1' <- dsKind k1
+  k2' <- dsKind k2
+  return (DConK n [k1',k2'])
+dsKind (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
+dsKind (ParensT t) = dsKind t
+dsKind (WildCardT m_n) = return (DWildCardK m_n)
 #endif
 
 -- | Like 'reify', but safer and desugared. Uses local declarations where

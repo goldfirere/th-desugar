@@ -110,7 +110,11 @@ expand_con ign n args = do
         ty' <- expand_type ign ty
         return $ foldl DAppT ty' rest_args
 
+#if __GLASGOW_HASKELL__ > 710
+    DTyConI (DOpenTypeFamilyD _n tvbs _frs _ann) _
+#else
     DTyConI (DFamilyD TypeFam _n tvbs _mkind) _
+#endif
       |  length args >= length tvbs   -- this should always be true!
       ,  args_ok
       -> do
@@ -128,7 +132,11 @@ expand_con ign n args = do
             return $ foldl DAppT ty' rest_args
           _ -> return $ foldl DAppT (DConT n) args
 
+#if __GLASGOW_HASKELL__ > 710
+    DTyConI (DClosedTypeFamilyD _n tvbs _frs _ann eqns) _
+#else
     DTyConI (DClosedTypeFamilyD _n tvbs _resk eqns) _
+#endif
       |  length args >= length tvbs
       ,  args_ok
       -> do
@@ -159,7 +167,12 @@ expand_con ign n args = do
       m_info <- dsReify con_name
       return $ case m_info of
         Nothing -> False   -- we don't know anything. False is safe.
+#if __GLASGOW_HASKELL__ > 710
+        Just (DTyConI (DOpenTypeFamilyD {}) _)   -> False
+        Just (DTyConI (DDataFamilyD {}) _)       -> False
+#else        
         Just (DTyConI (DFamilyD {}) _)           -> False
+#endif
         Just (DTyConI (DClosedTypeFamilyD {}) _) -> False
         _                                        -> True
     no_tyvar_tyfam t = gmapQl (liftM2 (&&)) (return True) no_tyvars_tyfams t
@@ -258,6 +271,7 @@ dTypeToDPred (DVarT n)       = return $ DVarPr n
 dTypeToDPred (DConT n)       = return $ DConPr n
 dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
 dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
+dTypeToDPred (DWildCardT n)  = return (DWildCardPr n)
 
 -- | Expand all type synonyms and type families in the desugared abstract
 -- syntax tree provided, where type family simplification is on a "best effort"

@@ -30,4 +30,7 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DKind, ''DPred, ''DTyVarBndr
 #if __GLASGOW_HASKELL__ < 707
                  , ''AnnTarget, ''Role
 #endif
+#if __GLASGOW_HASKELL__ > 710
+                 , ''DFamilyResultSig
+#endif
                  ])

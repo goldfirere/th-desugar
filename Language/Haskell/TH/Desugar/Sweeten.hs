@@ -53,6 +53,11 @@ expToTH (DStaticE _)         = error "Static expressions supported only in GHC 7
 #else
 expToTH (DStaticE exp)       = StaticE (expToTH exp)
 #endif
+#if __GLASGOW_HASKELL__ > 710
+expToTH (DUnboundVarE n) = UnboundVarE n
+#else
+expToTH (DUnboundVarE _) = error "Wildcards supported only in GHC 8.0+"
+#endif
 
 matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
@@ -83,8 +88,15 @@ decToTH (DInstanceD cxt ty decs) =
   [InstanceD (cxtToTH cxt) (typeToTH ty) (decsToTH decs)]
 decToTH (DForeignD f) = [ForeignD (foreignToTH f)]
 decToTH (DPragmaD prag) = maybeToList $ fmap PragmaD (pragmaToTH prag)
+#if __GLASGOW_HASKELL__ > 710
+decToTH (DOpenTypeFamilyD n tvbs frs ann) =
+  [OpenTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) ann]
+decToTH (DDataFamilyD n tvbs m_k) =
+  [DataFamilyD n (map tvbToTH tvbs) (fmap kindToTH m_k)]
+#else
 decToTH (DFamilyD flav n tvbs m_k) =
   [FamilyD flav n (map tvbToTH tvbs) (fmap kindToTH m_k)]
+#endif
 decToTH (DDataInstD Data cxt n tys cons derivings) =
   [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons) derivings]
 decToTH (DDataInstD Newtype cxt n tys [con] derivings) =
@@ -97,9 +109,15 @@ decToTH (DClosedTypeFamilyD n tvbs m_k eqns) =
 decToTH (DRoleAnnotD {}) = []
 #else
 decToTH (DTySynInstD n eqn) = [TySynInstD n (tySynEqnToTH eqn)]
+#if __GLASGOW_HASKELL__ > 710
+decToTH (DClosedTypeFamilyD n tvbs frs ann eqns) =
+  [ClosedTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) ann
+                       (map tySynEqnToTH eqns)]
+#else
 decToTH (DClosedTypeFamilyD n tvbs m_k eqns) =
   [ClosedTypeFamilyD n (map tvbToTH tvbs) (fmap kindToTH m_k)
                        (map tySynEqnToTH eqns)]
+#endif
 decToTH (DRoleAnnotD n roles) = [RoleAnnotD n roles]
 #endif
 #if __GLASGOW_HASKELL__ < 709
@@ -113,6 +131,13 @@ decToTH (DStandaloneDerivD cxt ty) =
 decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
 #endif
 decToTH _ = error "Newtype declaration without exactly 1 constructor."
+
+#if __GLASGOW_HASKELL__ > 710
+frsToTH :: DFamilyResultSig -> FamilyResultSig
+frsToTH DNoSig = NoSig
+frsToTH (DKindSig k) = KindSig (kindToTH k)
+frsToTH (DTyVarSig tvb) = TyVarSig (tvbToTH tvb)
+#endif
 
 letDecToTH :: DLetDec -> Dec
 letDecToTH (DFunD name clauses) = FunD name (map clauseToTH clauses)
@@ -177,6 +202,11 @@ typeToTH (DVarT n)              = VarT n
 typeToTH (DConT n)              = tyconToTH n
 typeToTH DArrowT                = ArrowT
 typeToTH (DLitT lit)            = LitT lit
+#if __GLASGOW_HASKELL__ > 710
+typeToTH (DWildCardT n) = WildCardT n
+#else
+typeToTH (DWildCardT _) = error "Wildcards supported only in GHC 8.0+"
+#endif
 
 tvbToTH :: DTyVarBndr -> TyVarBndr
 tvbToTH (DPlainTV n)           = PlainTV n
@@ -205,6 +235,11 @@ predToTH (DSigPr p k) = SigT (predToTH p) (kindToTH k)
 predToTH (DVarPr n)   = VarT n
 predToTH (DConPr n)   = typeToTH (DConT n)
 #endif
+#if __GLASGOW_HASKELL__ > 710
+predToTH (DWildCardPr n) = WildCardT n
+#else
+predToTH (DWildCardPr _) = error "Wildcards supported only in GHC 8.0+"
+#endif
 
 kindToTH :: DKind -> Kind
 kindToTH (DForallK names ki) = ForallT (map PlainTV names) [] (kindToTH ki)
@@ -212,6 +247,11 @@ kindToTH (DVarK n)           = VarT n
 kindToTH (DConK n kis)       = foldl AppT (tyconToTH n) (map kindToTH kis)
 kindToTH (DArrowK k1 k2)     = AppT (AppT ArrowT (kindToTH k1)) (kindToTH k2)
 kindToTH DStarK              = StarT
+#if __GLASGOW_HASKELL__ > 710
+kindToTH (DWildCardK n) = WildCardT n
+#else
+kindToTH (DWildCardK _) = error "Wildcards supported only in GHC 8.0+"
+#endif
 
 tyconToTH :: Name -> Type
 tyconToTH n
