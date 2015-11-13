@@ -234,11 +234,11 @@ predToTH (DAppPr p t) = AppT (predToTH p) (typeToTH t)
 predToTH (DSigPr p k) = SigT (predToTH p) (kindToTH k)
 predToTH (DVarPr n)   = VarT n
 predToTH (DConPr n)   = typeToTH (DConT n)
-#endif
 #if __GLASGOW_HASKELL__ > 710
 predToTH (DWildCardPr n) = WildCardT n
 #else
 predToTH (DWildCardPr _) = error "Wildcards supported only in GHC 8.0+"
+#endif
 #endif
 
 kindToTH :: DKind -> Kind

@@ -930,12 +930,12 @@ dsPred ConstraintT =
 dsPred t@(LitT _) =
   impossible $ "Type literal seen as head of constraint: " ++ show t
 dsPred EqualityT = return [DConPr ''(~)]
-#endif
 #if __GLASGOW_HASKELL__ > 710
 dsPred (InfixT t1 n t2) = (:[]) <$> (DAppPr <$> (DAppPr (DConPr n) <$> dsType t1) <*> dsType t2)
 dsPred (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
 dsPred (ParensT t) = dsPred t
 dsPred (WildCardT m_n) = return [DWildCardPr m_n]
+#endif
 #endif
 
 -- | Desugar a kind
