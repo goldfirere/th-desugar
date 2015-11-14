@@ -98,7 +98,11 @@ dataConNameToDataName :: Quasi q => Name -> q Name
 dataConNameToDataName con_name = do
   info <- reifyWithWarning con_name
   case info of
+#if __GLASGOW_HASKELL__ > 710
+    DataConI _name _type parent_name -> return parent_name
+#else    
     DataConI _name _type parent_name _fixity -> return parent_name
+#endif
     _ -> fail $ "The name " ++ show con_name ++ " does not appear to be " ++
                 "a data constructor."
 
@@ -183,11 +187,20 @@ reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `nameMatches` n'
   = Just $ mkVarITy n decs ty
 reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `nameMatches` n'
   = Just $ mkVarITy n decs ty
+#if __GLASGOW_HASKELL__ > 710
+reifyInDec n decs dec@(OpenTypeFamilyD n' _ _ _) | n `nameMatches` n'
+  = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
+reifyInDec n decs dec@(DataFamilyD n' _ _) | n `nameMatches` n'
+  = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
+reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _ _) | n `nameMatches` n'
+  = Just $ FamilyI dec []
+#else
 reifyInDec n decs dec@(FamilyD _ n' _ _) | n `nameMatches` n'
   = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
 #if __GLASGOW_HASKELL__ >= 707
 reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `nameMatches` n'
   = Just $ FamilyI dec []
+#endif
 #endif
 
 reifyInDec n decs (DataD _ ty_name tvbs cons _)
@@ -196,10 +209,16 @@ reifyInDec n decs (DataD _ ty_name tvbs cons _)
 reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
   | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) [con]
   = Just info
+#if __GLASGOW_HASKELL__ > 710  
+reifyInDec n _decs (ClassD _ ty_name tvbs _ sub_decs)
+  | Just ty <- findType n sub_decs
+  = Just $ ClassOpI n (addClassCxt ty_name tvbs ty) ty_name
+#else
 reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
   | Just ty <- findType n sub_decs
   = Just $ ClassOpI n (addClassCxt ty_name tvbs ty)
                     ty_name (findFixity n $ sub_decs ++ decs)
+#endif
 reifyInDec n decs (ClassD _ _ _ _ sub_decs)
   | Just info <- firstMatch (reifyInDec n (sub_decs ++ decs)) sub_decs
   = Just info
@@ -220,14 +239,24 @@ reifyInDec n decs (NewtypeInstD _ ty_name tys con _)
 reifyInDec _ _ _ = Nothing
 
 maybeReifyCon :: Name -> [Dec] -> Name -> [Type] -> [Con] -> Maybe Info
+#if __GLASGOW_HASKELL__ > 710
+maybeReifyCon n _decs ty_name ty_args cons
+  | Just con <- findCon n cons
+  = Just $ DataConI n (maybeForallT tvbs [] $ con_to_type con) ty_name
+#else
 maybeReifyCon n decs ty_name ty_args cons
   | Just con <- findCon n cons
   = Just $ DataConI n (maybeForallT tvbs [] $ con_to_type con)
                     ty_name fixity
+#endif
 
   | Just ty <- findRecSelector n cons
       -- we don't try to ferret out naughty record selectors.
+#if __GLASGOW_HASKELL__ > 710
+  = Just $ VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing
+#else
   = Just $ VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing fixity
+#endif
   where
     result_ty = foldl AppT (ConT ty_name) ty_args
 
@@ -235,8 +264,9 @@ maybeReifyCon n decs ty_name ty_args cons
     con_to_type (RecC _ vstys)   = mkArrows (map thdOf3 vstys) result_ty
     con_to_type (InfixC t1 _ t2) = mkArrows (map snd [t1, t2]) result_ty
     con_to_type (ForallC bndrs cxt c) = ForallT bndrs cxt (con_to_type c)
-
+#if __GLASGOW_HASKELL__ < 711
     fixity = findFixity n decs
+#endif
     tvbs = map PlainTV $ S.elems $ freeNamesOfTypes ty_args
 maybeReifyCon _ _ _ _ _ = Nothing
 
@@ -247,13 +277,19 @@ mkVarI n decs = mkVarITy n decs (fromMaybe no_type $ findType n decs)
                       ++ show n
 
 mkVarITy :: Name -> [Dec] -> Type -> Info
+#if __GLASGOW_HASKELL__ > 710
+mkVarITy n _decs ty = VarI n ty Nothing
+#else
 mkVarITy n decs ty = VarI n ty Nothing (findFixity n decs)
+#endif
 
+#if __GLASGOW_HASKELL__ < 711
 findFixity :: Name -> [Dec] -> Fixity
 findFixity n = fromMaybe defaultFixity . firstMatch match_fixity
   where
     match_fixity (InfixD fixity n') | n `nameMatches` n' = Just fixity
     match_fixity _                                   = Nothing
+#endif
 
 findType :: Name -> [Dec] -> Maybe Type
 findType n = firstMatch match_type
@@ -287,6 +323,10 @@ stripClassDec (ClassD cxt name tvbs fds sub_decs)
   where
     sub_decs' = mapMaybe go sub_decs
     go (SigD n ty) = Just $ SigD n $ addClassCxt name tvbs ty
+#if __GLASGOW_HASKELL__ > 710
+    go d@(OpenTypeFamilyD {}) = Just d
+    go d@(DataFamilyD {})     = Just d
+#endif
     go _           = Nothing
 stripClassDec dec = dec
 
@@ -330,7 +370,6 @@ findRecSelector n = firstMatch match_con
 
     match_rec_sel (n', _, ty) | n `nameMatches` n' = Just ty
     match_rec_sel _                     = Nothing
-
 
 handleBug8884 :: Dec -> Dec
 #if __GLASGOW_HASKELL__ >= 707

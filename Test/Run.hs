@@ -159,8 +159,13 @@ test_mkName = and [ hasSameType (Proxy :: Proxy FuzzSyn) (Proxy :: Proxy Fuzz)
 
 test_bug8884 :: Bool
 test_bug8884 = $(do info <- reify ''Poly
+#if __GLASGOW_HASKELL__ > 710
+                    dinfo@(DTyConI (DOpenTypeFamilyD _name _tvbs (DKindSig resK) _ann)
+                                   (Just [DTySynInstD _name2 (DTySynEqn lhs _rhs)]))
+#else
                     dinfo@(DTyConI (DFamilyD TypeFam _name _tvbs (Just resK))
                                    (Just [DTySynInstD _name2 (DTySynEqn lhs _rhs)]))
+#endif
                       <- dsInfo info
                     case (resK, lhs) of
 #if __GLASGOW_HASKELL__ < 709

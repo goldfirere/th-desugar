@@ -28,6 +28,9 @@ module Language.Haskell.TH.Desugar (
   DCon(..), DConFields(..), DStrictType, DVarStrictType, DForeign(..),
   DPragma(..), DRuleBndr(..), DTySynEqn(..), DInfo(..), DInstanceDec,
   Role(..), AnnTarget(..),
+#if __GLASGOW_HASKELL__ > 710
+  DFamilyResultSig (..),
+#endif
 
   -- * The 'Desugar' class
   Desugar(..),
@@ -177,6 +180,7 @@ fvDType = go
     go (DConT _)               = S.empty
     go DArrowT                 = S.empty
     go (DLitT {})              = S.empty
+    go (DWildCardT _)          = S.empty -- FIXME: Wildcards cannot be bound, but are they free?
 
 dtvbName :: DTyVarBndr -> S.Set Name
 dtvbName (DPlainTV n)    = S.singleton n
@@ -190,6 +194,7 @@ fvDKind = go
     go (DConK _ kis)       = foldMap fvDKind kis
     go (DArrowK k1 k2)     = go k1 `S.union` go k2
     go DStarK              = S.empty
+    go (DWildCardK _)      = S.empty -- FIXME: Wildcards cannot be bound, but are they free? 
 
 -- | Produces 'DLetDec's representing the record selector functions from
 -- the provided 'DCon'.
