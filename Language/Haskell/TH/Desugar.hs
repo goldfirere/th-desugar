@@ -180,7 +180,7 @@ fvDType = go
     go (DConT _)               = S.empty
     go DArrowT                 = S.empty
     go (DLitT {})              = S.empty
-    go (DWildCardT _)          = S.empty -- FIXME: Wildcards cannot be bound, but are they free?
+    go (DWildCardT n_m)        = maybe S.empty S.singleton n_m
 
 dtvbName :: DTyVarBndr -> S.Set Name
 dtvbName (DPlainTV n)    = S.singleton n
@@ -194,7 +194,7 @@ fvDKind = go
     go (DConK _ kis)       = foldMap fvDKind kis
     go (DArrowK k1 k2)     = go k1 `S.union` go k2
     go DStarK              = S.empty
-    go (DWildCardK _)      = S.empty -- FIXME: Wildcards cannot be bound, but are they free? 
+    go (DWildCardK n_m)    = maybe S.empty S.singleton n_m
 
 -- | Produces 'DLetDec's representing the record selector functions from
 -- the provided 'DCon'.
