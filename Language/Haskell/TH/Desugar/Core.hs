@@ -697,7 +697,7 @@ dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
 dsDec d@(InfixD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec (PragmaD prag) = (:[]) <$> (DPragmaD <$> dsPragma prag)
 #if __GLASGOW_HASKELL__ > 710
-dsDec (OpenTypeFamilyD n tvbs frs ann) =
+dsDec (OpenTypeFamilyD (TypeFamilyHead n tvbs frs ann)) =
   (:[]) <$> (DOpenTypeFamilyD n <$> mapM dsTvb tvbs <*> dsFRS frs <*> pure ann)
 dsDec (DataFamilyD n tvbs m_k) =
   (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsKind m_k)
@@ -718,7 +718,7 @@ dsDec (TySynInstD n lhs rhs) = (:[]) <$> (DTySynInstD n <$>
 #else
 dsDec (TySynInstD n eqn) = (:[]) <$> (DTySynInstD n <$> dsTySynEqn eqn)
 #if __GLASGOW_HASKELL__ > 710
-dsDec (ClosedTypeFamilyD n tvbs frs ann eqns) =
+dsDec (ClosedTypeFamilyD (TypeFamilyHead n tvbs frs ann) eqns) =
   (:[]) <$> (DClosedTypeFamilyD n <$> mapM dsTvb tvbs <*> dsFRS frs <*> pure ann
                                   <*> mapM dsTySynEqn eqns)
 #else

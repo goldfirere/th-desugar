@@ -188,11 +188,11 @@ reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `nameMatches` n'
 reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `nameMatches` n'
   = Just $ mkVarITy n decs ty
 #if __GLASGOW_HASKELL__ > 710
-reifyInDec n decs dec@(OpenTypeFamilyD n' _ _ _) | n `nameMatches` n'
+reifyInDec n decs dec@(OpenTypeFamilyD (TypeFamilyHead n' _ _ _)) | n `nameMatches` n'
   = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
 reifyInDec n decs dec@(DataFamilyD n' _ _) | n `nameMatches` n'
   = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
-reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _ _) | n `nameMatches` n'
+reifyInDec n _    dec@(ClosedTypeFamilyD (TypeFamilyHead n' _ _ _) _) | n `nameMatches` n'
   = Just $ FamilyI dec []
 #else
 reifyInDec n decs dec@(FamilyD _ n' _ _) | n `nameMatches` n'
