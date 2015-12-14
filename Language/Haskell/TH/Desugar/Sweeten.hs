@@ -90,7 +90,7 @@ decToTH (DForeignD f) = [ForeignD (foreignToTH f)]
 decToTH (DPragmaD prag) = maybeToList $ fmap PragmaD (pragmaToTH prag)
 #if __GLASGOW_HASKELL__ > 710
 decToTH (DOpenTypeFamilyD n tvbs frs ann) =
-  [OpenTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) ann]
+  [OpenTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)]
 decToTH (DDataFamilyD n tvbs m_k) =
   [DataFamilyD n (map tvbToTH tvbs) (fmap kindToTH m_k)]
 #else
@@ -111,7 +111,7 @@ decToTH (DRoleAnnotD {}) = []
 decToTH (DTySynInstD n eqn) = [TySynInstD n (tySynEqnToTH eqn)]
 #if __GLASGOW_HASKELL__ > 710
 decToTH (DClosedTypeFamilyD n tvbs frs ann eqns) =
-  [ClosedTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) ann
+  [ClosedTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)
                        (map tySynEqnToTH eqns)]
 #else
 decToTH (DClosedTypeFamilyD n tvbs m_k eqns) =
