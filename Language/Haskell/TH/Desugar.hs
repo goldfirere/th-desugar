@@ -123,9 +123,35 @@ instance Desugar [Dec] [DDec] where
   desugar = dsDecs
   sweeten = decsToTH
 
-instance Desugar Con DCon where
+instance Desugar Con [DCon] where
   desugar = dsCon
-  sweeten = conToTH
+  sweeten dcons = go [] cons
+    where
+      cons = map conToTH dcons
+#if MIN_VERSION_template_haskell(2,11,0)
+      go nms [GadtC n stys rty]
+        = GadtC (reverse (n ++ nms)) stys rty
+      go nms [RecGadtC n vstys rty]
+        = RecGadtC (reverse (n ++ nms)) vstys rty
+#endif
+      go _   [c]
+        = c
+#if MIN_VERSION_template_haskell(2,11,0)
+      go nms (GadtC n1 stys1 rty1:GadtC n2 stys2 rty2:cons')
+        | stys1 == stys2
+        , rty1  == rty2
+        = go (n1 ++ nms) (GadtC n2 stys2 rty2:cons')
+        | otherwise
+        = error "Combining GADT constructors with different field/return types"
+      go nms (RecGadtC n1 vstys1 rty1:RecGadtC n2 vstys2 rty2:cons')
+        | vstys1 == vstys2
+        , rty1   == rty2
+        = go (n1 ++ nms) (RecGadtC n2 vstys2 rty2:cons')
+        | otherwise
+        = error "Combining GADT constructors with different field/return types"
+#endif
+      go _ _
+        = error "Combining different types of data constructors"
 
 -- | If the declaration passed in is a 'DValD', creates new, equivalent
 -- declarations such that the 'DPat' in all 'DValD's is just a plain
@@ -180,7 +206,7 @@ fvDType = go
     go (DConT _)               = S.empty
     go DArrowT                 = S.empty
     go (DLitT {})              = S.empty
-    go (DWildCardT n_m)        = maybe S.empty S.singleton n_m
+    go DWildCardT              = S.empty
 
 dtvbName :: DTyVarBndr -> S.Set Name
 dtvbName (DPlainTV n)    = S.singleton n
@@ -194,7 +220,7 @@ fvDKind = go
     go (DConK _ kis)       = foldMap fvDKind kis
     go (DArrowK k1 k2)     = go k1 `S.union` go k2
     go DStarK              = S.empty
-    go (DWildCardK n_m)    = maybe S.empty S.singleton n_m
+    go DWildCardK          = S.empty
 
 -- | Produces 'DLetDec's representing the record selector functions from
 -- the provided 'DCon'.
@@ -202,23 +228,28 @@ getRecordSelectors :: Quasi q
                    => DType        -- ^ the type of the argument
                    -> DCon
                    -> q [DLetDec]
-getRecordSelectors _      (DCon _ _ _ (DNormalC {})) = return []
-getRecordSelectors arg_ty (DCon _ _ con_name (DRecC fields)) = do
-  varName <- qNewName "field"
-  let tvbs = fvDType arg_ty
-      maybe_forall
-        | S.null tvbs = id
-        | otherwise   = DForallT (map DPlainTV $ S.toList tvbs) []
-      num_pats = length fields
-  return $ concat
-    [ [ DSigD name (maybe_forall $ DArrowT `DAppT` arg_ty `DAppT` res_ty)
-      , DFunD name [DClause [DConPa con_name (mk_field_pats n num_pats varName)]
-                            (DVarE varName)] ]
-    | ((name, _strict, res_ty), n) <- zip fields [0..]
-    , fvDType res_ty `S.isSubsetOf` tvbs   -- exclude "naughty" selectors
-    ] 
-
+getRecordSelectors arg_ty (DCon _ _ con_name con) = case con of
+    DRecC fields -> go fields
+#if MIN_VERSION_template_haskell(2,11,0)
+    DRecGadtC fields _ -> go fields
+#endif
+    _ -> return []
   where
+    go fields = do
+      varName <- qNewName "field"
+      let tvbs = fvDType arg_ty
+          maybe_forall
+            | S.null tvbs = id
+            | otherwise   = DForallT (map DPlainTV $ S.toList tvbs) []
+          num_pats = length fields
+      return $ concat
+        [ [ DSigD name (maybe_forall $ DArrowT `DAppT` arg_ty `DAppT` res_ty)
+          , DFunD name [DClause [DConPa con_name (mk_field_pats n num_pats varName)]
+                                (DVarE varName)] ]
+        | ((name, _strict, res_ty), n) <- zip fields [0..]
+        , fvDType res_ty `S.isSubsetOf` tvbs   -- exclude "naughty" selectors
+        ]
+
     mk_field_pats :: Int -> Int -> Name -> [DPat]
     mk_field_pats 0 total name = DVarPa name : (replicate (total-1) DWildPa)
     mk_field_pats n total name = DWildPa : mk_field_pats (n-1) (total-1) name

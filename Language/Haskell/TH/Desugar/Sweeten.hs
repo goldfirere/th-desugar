@@ -77,10 +77,17 @@ decsToTH = concatMap decToTH
 -- a one-to-one mapping between 'DDec' and @Dec@.
 decToTH :: DDec -> [Dec]
 decToTH (DLetDec d) = [letDecToTH d]
+#if MIN_VERSION_template_haskell(2,11,0)
+decToTH (DDataD Data cxt n tvbs mk cons derivings) =
+  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap kindToTH mk) (map conToTH cons) (cxtToTH derivings)]
+decToTH (DDataD Newtype cxt n tvbs mk [con] derivings) =
+  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap kindToTH mk) (conToTH con) (cxtToTH derivings)]
+#else
 decToTH (DDataD Data cxt n tvbs cons derivings) =
   [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons) derivings]
 decToTH (DDataD Newtype cxt n tvbs [con] derivings) =
   [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con) derivings]
+#endif
 decToTH (DTySynD n tvbs ty) = [TySynD n (map tvbToTH tvbs) (typeToTH ty)]
 decToTH (DClassD cxt n tvbs fds decs) =
   [ClassD (cxtToTH cxt) n (map tvbToTH tvbs) fds (decsToTH decs)]
@@ -97,10 +104,17 @@ decToTH (DDataFamilyD n tvbs m_k) =
 decToTH (DFamilyD flav n tvbs m_k) =
   [FamilyD flav n (map tvbToTH tvbs) (fmap kindToTH m_k)]
 #endif
+#if MIN_VERSION_template_haskell(2,11,0)
+decToTH (DDataInstD Data cxt n tys mk cons derivings) =
+  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (fmap kindToTH mk) (map conToTH cons) (cxtToTH derivings)]
+decToTH (DDataInstD Newtype cxt n tys mk [con] derivings) =
+  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (fmap kindToTH mk) (conToTH con) (cxtToTH derivings)]
+#else
 decToTH (DDataInstD Data cxt n tys cons derivings) =
   [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons) derivings]
 decToTH (DDataInstD Newtype cxt n tys [con] derivings) =
   [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con) derivings]
+#endif
 #if __GLASGOW_HASKELL__ < 707
 decToTH (DTySynInstD n eqn) = [tySynEqnToTHDec n eqn]
 decToTH (DClosedTypeFamilyD n tvbs m_k eqns) =
@@ -150,6 +164,12 @@ conToTH (DCon [] [] n (DNormalC stys)) =
   NormalC n (map (liftSnd typeToTH) stys)
 conToTH (DCon [] [] n (DRecC vstys)) =
   RecC n (map (liftThdOf3 typeToTH) vstys)
+#if MIN_VERSION_template_haskell(2,11,0)
+conToTH (DCon [] [] n (DGadtC stys rty)) =
+  GadtC [n] (map (liftSnd typeToTH) stys) (typeToTH rty)
+conToTH (DCon [] [] n (DRecGadtC vstys rty)) =
+  RecGadtC [n] (map (liftThdOf3 typeToTH) vstys) (typeToTH rty)
+#endif
 conToTH (DCon tvbs cxt n fields) =
   ForallC (map tvbToTH tvbs) (cxtToTH cxt) (conToTH $ DCon [] [] n fields)
 
@@ -203,9 +223,9 @@ typeToTH (DConT n)              = tyconToTH n
 typeToTH DArrowT                = ArrowT
 typeToTH (DLitT lit)            = LitT lit
 #if __GLASGOW_HASKELL__ > 710
-typeToTH (DWildCardT n) = WildCardT n
+typeToTH DWildCardT = WildCardT
 #else
-typeToTH (DWildCardT _) = error "Wildcards supported only in GHC 8.0+"
+typeToTH DWildCardT = error "Wildcards supported only in GHC 8.0+"
 #endif
 
 tvbToTH :: DTyVarBndr -> TyVarBndr
@@ -229,7 +249,7 @@ predToTH = go []
       = EqualP t1 t2
       | otherwise
       = ClassP n acc
-    go _ (DWildCardPr _)
+    go _ DWildCardPr
       = error "Wildcards supported only in GHC 8.0+"
 #else
 predToTH (DAppPr p t) = AppT (predToTH p) (typeToTH t)
@@ -237,9 +257,9 @@ predToTH (DSigPr p k) = SigT (predToTH p) (kindToTH k)
 predToTH (DVarPr n)   = VarT n
 predToTH (DConPr n)   = typeToTH (DConT n)
 #if __GLASGOW_HASKELL__ > 710
-predToTH (DWildCardPr n) = WildCardT n
+predToTH DWildCardPr  = WildCardT
 #else
-predToTH (DWildCardPr _) = error "Wildcards supported only in GHC 8.0+"
+predToTH DWildCardPr  = error "Wildcards supported only in GHC 8.0+"
 #endif
 #endif
 
@@ -250,9 +270,9 @@ kindToTH (DConK n kis)       = foldl AppT (tyconToTH n) (map kindToTH kis)
 kindToTH (DArrowK k1 k2)     = AppT (AppT ArrowT (kindToTH k1)) (kindToTH k2)
 kindToTH DStarK              = StarT
 #if __GLASGOW_HASKELL__ > 710
-kindToTH (DWildCardK n) = WildCardT n
+kindToTH DWildCardK          = WildCardT
 #else
-kindToTH (DWildCardK _) = error "Wildcards supported only in GHC 8.0+"
+kindToTH DWildCardK          = error "Wildcards supported only in GHC 8.0+"
 #endif
 
 tyconToTH :: Name -> Type

@@ -85,8 +85,13 @@ getDataD err name = do
            TyConI dec -> return dec
            _ -> badDeclaration
   case dec of
+#if MIN_VERSION_template_haskell(2,11,0)
+    DataD _cxt _name tvbs _mk cons _derivings -> return (tvbs, cons)
+    NewtypeD _cxt _name tvbs _mk con _derivings -> return (tvbs, [con])
+#else
     DataD _cxt _name tvbs cons _derivings -> return (tvbs, cons)
     NewtypeD _cxt _name tvbs con _derivings -> return (tvbs, [con])
+#endif
     _ -> badDeclaration
   where badDeclaration =
           fail $ "The name (" ++ (show name) ++ ") refers to something " ++
@@ -113,16 +118,20 @@ dataConNameToCon con_name = do
   -- the constructor to get the tycon, and then reify the tycon to get the `Con`s
   type_name <- dataConNameToDataName con_name
   (_, cons) <- getDataD "This seems to be an error in GHC." type_name
-  let m_con = find ((con_name ==) . get_con_name) cons
+  let m_con = find (any (con_name ==) . get_con_name) cons
   case m_con of
     Just con -> return con
     Nothing -> impossible "Datatype does not contain one of its own constructors."
 
   where
-    get_con_name (NormalC name _)  = name
-    get_con_name (RecC name _)     = name
-    get_con_name (InfixC _ name _) = name
-    get_con_name (ForallC _ _ con) = get_con_name con
+    get_con_name (NormalC name _)     = [name]
+    get_con_name (RecC name _)        = [name]
+    get_con_name (InfixC _ name _)    = [name]
+    get_con_name (ForallC _ _ con)    = get_con_name con
+#if MIN_VERSION_template_haskell(2,11,0)
+    get_con_name (GadtC names _ _)    = names
+    get_con_name (RecGadtC names _ _) = names
+#endif
 
 --------------------------------------------------
 -- DsMonad
@@ -178,8 +187,13 @@ reifyInDec :: Name -> [Dec] -> Dec -> Maybe Info
 reifyInDec n decs (FunD n' _) | n `nameMatches` n' = Just $ mkVarI n decs
 reifyInDec n decs (ValD pat _ _)
   | any (nameMatches n) (S.elems (extractBoundNamesPat pat)) = Just $ mkVarI n decs
+#if MIN_VERSION_template_haskell(2,11,0)
+reifyInDec n _    dec@(DataD    _ n' _ _ _ _) | n `nameMatches` n' = Just $ TyConI dec
+reifyInDec n _    dec@(NewtypeD _ n' _ _ _ _) | n `nameMatches` n' = Just $ TyConI dec
+#else
 reifyInDec n _    dec@(DataD    _ n' _ _ _) | n `nameMatches` n' = Just $ TyConI dec
 reifyInDec n _    dec@(NewtypeD _ n' _ _ _) | n `nameMatches` n' = Just $ TyConI dec
+#endif
 reifyInDec n _    dec@(TySynD n' _ _)       | n `nameMatches` n' = Just $ TyConI dec
 reifyInDec n decs dec@(ClassD _ n' _ _ _)   | n `nameMatches` n'
   = Just $ ClassI (stripClassDec dec) (findInstances n decs)
@@ -203,13 +217,22 @@ reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `nameMatches` n'
 #endif
 #endif
 
+#if MIN_VERSION_template_haskell(2,11,0)
+reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) cons
+  = Just info
+reifyInDec n decs (NewtypeD _ ty_name tvbs _mk con _)
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) [con]
+  = Just info
+#else
 reifyInDec n decs (DataD _ ty_name tvbs cons _)
   | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) cons
   = Just info
 reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
   | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) [con]
   = Just info
-#if __GLASGOW_HASKELL__ > 710  
+#endif
+#if __GLASGOW_HASKELL__ > 710
 reifyInDec n _decs (ClassD _ ty_name tvbs _ sub_decs)
   | Just ty <- findType n sub_decs
   = Just $ ClassOpI n (addClassCxt ty_name tvbs ty) ty_name
@@ -229,12 +252,21 @@ reifyInDec n decs (InstanceD _ _ sub_decs)
     reify_in_instance dec@(DataInstD {})    = reifyInDec n (sub_decs ++ decs) dec
     reify_in_instance dec@(NewtypeInstD {}) = reifyInDec n (sub_decs ++ decs) dec
     reify_in_instance _                     = Nothing
+#if MIN_VERSION_template_haskell(2,11,0)
+reifyInDec n decs (DataInstD _ ty_name tys _ cons _)
+  | Just info <- maybeReifyCon n decs ty_name tys cons
+  = Just info
+reifyInDec n decs (NewtypeInstD _ ty_name tys _ con _)
+  | Just info <- maybeReifyCon n decs ty_name tys [con]
+  = Just info
+#else
 reifyInDec n decs (DataInstD _ ty_name tys cons _)
   | Just info <- maybeReifyCon n decs ty_name tys cons
   = Just info
 reifyInDec n decs (NewtypeInstD _ ty_name tys con _)
   | Just info <- maybeReifyCon n decs ty_name tys [con]
   = Just info
+#endif
 
 reifyInDec _ _ _ = Nothing
 
@@ -264,6 +296,10 @@ maybeReifyCon n decs ty_name ty_args cons
     con_to_type (RecC _ vstys)   = mkArrows (map thdOf3 vstys) result_ty
     con_to_type (InfixC t1 _ t2) = mkArrows (map snd [t1, t2]) result_ty
     con_to_type (ForallC bndrs cxt c) = ForallT bndrs cxt (con_to_type c)
+#if MIN_VERSION_template_haskell(2,11,0)
+    con_to_type (GadtC _ stys rty)     = mkArrows (map snd    stys)  rty
+    con_to_type (RecGadtC _ vstys rty) = mkArrows (map thdOf3 vstys) rty
+#endif
 #if __GLASGOW_HASKELL__ < 711
     fixity = findFixity n decs
 #endif
@@ -302,8 +338,13 @@ findInstances n = map stripInstanceDec . concatMap match_instance
   where
     match_instance d@(InstanceD _ ty _)        | ConT n' <- ty_head ty
                                                , n `nameMatches` n' = [d]
+#if MIN_VERSION_template_haskell(2,11,0)
+    match_instance d@(DataInstD _ n' _ _ _ _)    | n `nameMatches` n' = [d]
+    match_instance d@(NewtypeInstD _ n' _ _ _ _) | n `nameMatches` n' = [d]
+#else
     match_instance d@(DataInstD _ n' _ _ _)    | n `nameMatches` n' = [d]
     match_instance d@(NewtypeInstD _ n' _ _ _) | n `nameMatches` n' = [d]
+#endif
 #if __GLASGOW_HASKELL__ >= 707
     match_instance d@(TySynInstD n' _)         | n `nameMatches` n' = [d]
 #else
@@ -360,6 +401,10 @@ findCon n = find match_con
     match_con (RecC n' _)     = n `nameMatches` n'
     match_con (InfixC _ n' _) = n `nameMatches` n'
     match_con (ForallC _ _ c) = match_con c
+#if MIN_VERSION_template_haskell(2,11,0)
+    match_con (GadtC nms _ _)    = any (n `nameMatches`) nms
+    match_con (RecGadtC nms _ _) = any (n `nameMatches`) nms
+#endif
 
 findRecSelector :: Name -> [Con] -> Maybe Type
 findRecSelector n = firstMatch match_con

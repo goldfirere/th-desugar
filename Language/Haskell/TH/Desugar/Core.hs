@@ -63,7 +63,7 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DConT Name
            | DArrowT
            | DLitT TyLit
-           | DWildCardT (Maybe Name)
+           | DWildCardT
            deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Kind@ type, which is a synonym for @Type@. 'DKind', though,
@@ -73,7 +73,7 @@ data DKind = DForallK [Name] DKind
            | DConK Name [DKind]
            | DArrowK DKind DKind
            | DStarK
-           | DWildCardK (Maybe Name)
+           | DWildCardK
            deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @Cxt@
@@ -84,7 +84,7 @@ data DPred = DAppPr DPred DType
            | DSigPr DPred DKind
            | DVarPr Name
            | DConPr Name
-           | DWildCardPr (Maybe Name)
+           | DWildCardPr
            deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @TyVarBndr@. Note that @PlainTV x@ and @KindedTV x StarT@ are
@@ -115,7 +115,11 @@ data NewOrData = Newtype
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
+#if MIN_VERSION_template_haskell(2,11,0)
+          | DDataD NewOrData DCxt Name [DTyVarBndr] (Maybe DKind) [DCon] DCxt
+#else
           | DDataD NewOrData DCxt Name [DTyVarBndr] [DCon] [Name]
+#endif
           | DTySynD Name [DTyVarBndr] DType
           | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
           | DInstanceD DCxt DType [DDec]
@@ -127,7 +131,12 @@ data DDec = DLetDec DLetDec
 #else
           | DFamilyD FamFlavour Name [DTyVarBndr] (Maybe DKind)
 #endif
+#if MIN_VERSION_template_haskell(2,11,0)
+          | DDataInstD NewOrData DCxt Name [DType] (Maybe DKind) [DCon] DCxt
+#else
           | DDataInstD NewOrData DCxt Name [DType] [DCon] [Name]
+
+#endif
           | DTySynInstD Name DTySynEqn
 #if __GLASGOW_HASKELL__ > 710
           | DClosedTypeFamilyD Name [DTyVarBndr] DFamilyResultSig (Maybe InjectivityAnn) [DTySynEqn]
@@ -154,6 +163,10 @@ data DCon = DCon [DTyVarBndr] DCxt Name DConFields
 -- data constructor.
 data DConFields = DNormalC [DStrictType]
                 | DRecC [DVarStrictType]
+#if MIN_VERSION_template_haskell(2,11,0)
+                | DGadtC [DStrictType] DType
+                | DRecGadtC [DVarStrictType] DType
+#endif
                 deriving (Show, Typeable, Data)
 
 -- | Corresponds to TH's @StrictType@ type.
@@ -677,14 +690,26 @@ dsDecs = concatMapM dsDec
 dsDec :: DsMonad q => Dec -> q [DDec]
 dsDec d@(FunD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec d@(ValD {}) = (fmap . map) DLetDec $ dsLetDec d
+#if MIN_VERSION_template_haskell(2,11,0)
+dsDec (DataD cxt n tvbs mk cons derivings) =
+  (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
+                         <*> mapM dsTvb tvbs <*> mapM dsKind mk
+                         <*> (concat <$> mapM dsCon cons)
+                         <*> dsCxt derivings)
+dsDec (NewtypeD cxt n tvbs mk con derivings) =
+  (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
+                            <*> mapM dsTvb tvbs <*> mapM dsKind mk
+                            <*> dsCon con <*> dsCxt derivings)
+#else
 dsDec (DataD cxt n tvbs cons derivings) =
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> mapM dsTvb tvbs <*> mapM dsCon cons
+                         <*> mapM dsTvb tvbs <*> (concat <$> mapM dsCon cons)
                          <*> pure derivings)
 dsDec (NewtypeD cxt n tvbs con derivings) =
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> mapM dsTvb tvbs <*> ((:[]) <$> dsCon con)
+                            <*> mapM dsTvb tvbs <*> dsCon con
                             <*> pure derivings)
+#endif
 dsDec (TySynD n tvbs ty) =
   (:[]) <$> (DTySynD n <$> mapM dsTvb tvbs <*> dsType ty)
 dsDec (ClassD cxt n tvbs fds decs) =
@@ -705,12 +730,23 @@ dsDec (DataFamilyD n tvbs m_k) =
 dsDec (FamilyD flav n tvbs m_k) =
   (:[]) <$> (DFamilyD flav n <$> mapM dsTvb tvbs <*> mapM dsKind m_k)
 #endif
+#if MIN_VERSION_template_haskell(2,11,0)
+dsDec (DataInstD cxt n tys mk cons derivings) =
+  (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
+                             <*> mapM dsKind mk <*> (concat <$> mapM dsCon cons)
+                             <*> dsCxt derivings)
+dsDec (NewtypeInstD cxt n tys mk con derivings) =
+  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
+                                <*> mapM dsKind mk <*> dsCon con
+                                <*> dsCxt derivings)
+#else
 dsDec (DataInstD cxt n tys cons derivings) =
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                             <*> mapM dsCon cons <*> pure derivings)
+                             <*> (concat <$> mapM dsCon cons) <*> pure derivings)
 dsDec (NewtypeInstD cxt n tys con derivings) =
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                                <*> ((:[]) <$> dsCon con) <*> pure derivings)
+                                <*> dsCon con <*> pure derivings)
+#endif
 #if __GLASGOW_HASKELL__ < 707
 dsDec (TySynInstD n lhs rhs) = (:[]) <$> (DTySynInstD n <$>
                                           (DTySynEqn <$> mapM dsType lhs
@@ -766,18 +802,28 @@ dsLetDec (InfixD fixity name) = return [DInfixD fixity name]
 dsLetDec _dec = impossible "Illegal declaration in let expression."
 
 -- | Desugar a single @Con@.
-dsCon :: DsMonad q => Con -> q DCon
-dsCon (NormalC n stys) = DCon [] [] n <$> (DNormalC <$> mapM (liftSndM dsType) stys)
-dsCon (RecC n vstys) = DCon [] [] n <$> (DRecC <$> mapM (liftThdOf3M dsType) vstys)
+dsCon :: DsMonad q => Con -> q [DCon]
+dsCon (NormalC n stys) = (:[]) <$> DCon [] [] n <$> (DNormalC <$> mapM (liftSndM dsType) stys)
+dsCon (RecC n vstys) = (:[]) <$> DCon [] [] n <$> (DRecC <$> mapM (liftThdOf3M dsType) vstys)
 dsCon (InfixC (s1, ty1) n (s2, ty2)) = do
   dty1 <- dsType ty1
   dty2 <- dsType ty2
-  return $ DCon [] [] n (DNormalC [(s1, dty1), (s2, dty2)])
+  return $ [DCon [] [] n (DNormalC [(s1, dty1), (s2, dty2)])]
 dsCon (ForallC tvbs cxt con) = do
   dtvbs <- mapM dsTvb tvbs
   dcxt <- dsCxt cxt
-  DCon dtvbs' dcxt' n fields <- dsCon con
-  return $ DCon (dtvbs ++ dtvbs') (dcxt ++ dcxt') n fields
+  dcons <- dsCon con
+  mapM (\(DCon dtvbs' dcxt' n fields) ->
+       return $ DCon (dtvbs ++ dtvbs') (dcxt ++ dcxt') n fields
+       ) dcons
+#if MIN_VERSION_template_haskell(2,11,0)
+dsCon (GadtC nms stys rty) = mapM (\n ->
+  DCon [] [] n <$> (DGadtC <$> mapM (liftSndM dsType) stys <*> dsType rty)
+  ) nms
+dsCon (RecGadtC nms vstys rty) = mapM (\n ->
+  DCon [] [] n <$> (DRecGadtC <$> mapM (liftThdOf3M dsType) vstys <*> dsType rty)
+  ) nms
+#endif
 
 -- | Desugar a @Foreign@.
 dsForeign :: DsMonad q => Foreign -> q DForeign
@@ -875,7 +921,7 @@ dsType EqualityT = return $ DConT ''(~)
 dsType (InfixT t1 n t2) = DAppT <$> (DAppT (DConT n) <$> dsType t1) <*> dsType t2
 dsType (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
 dsType (ParensT t) = dsType t
-dsType (WildCardT m_n) = return (DWildCardT m_n)
+dsType WildCardT = return DWildCardT
 #endif
 
 -- | Desugar a @TyVarBndr@
@@ -934,7 +980,7 @@ dsPred EqualityT = return [DConPr ''(~)]
 dsPred (InfixT t1 n t2) = (:[]) <$> (DAppPr <$> (DAppPr (DConPr n) <$> dsType t1) <*> dsType t2)
 dsPred (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
 dsPred (ParensT t) = dsPred t
-dsPred (WildCardT m_n) = return [DWildCardPr m_n]
+dsPred WildCardT = return [DWildCardPr]
 #endif
 #endif
 
@@ -979,7 +1025,7 @@ dsKind (InfixT k1 n k2) = do
   return (DConK n [k1',k2'])
 dsKind (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
 dsKind (ParensT t) = dsKind t
-dsKind (WildCardT m_n) = return (DWildCardK m_n)
+dsKind WildCardT = return DWildCardK
 #endif
 
 -- | Like 'reify', but safer and desugared. Uses local declarations where

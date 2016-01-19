@@ -271,7 +271,7 @@ dTypeToDPred (DVarT n)       = return $ DVarPr n
 dTypeToDPred (DConT n)       = return $ DConPr n
 dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
 dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
-dTypeToDPred (DWildCardT n)  = return (DWildCardPr n)
+dTypeToDPred DWildCardT      = return DWildCardPr
 
 -- | Expand all type synonyms and type families in the desugared abstract
 -- syntax tree provided, where type family simplification is on a "best effort"
