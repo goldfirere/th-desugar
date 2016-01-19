@@ -694,7 +694,7 @@ dsDec d@(ValD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec (DataD cxt n tvbs mk cons derivings) =
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
                          <*> mapM dsTvb tvbs <*> mapM dsKind mk
-                         <*> (concat <$> mapM dsCon cons)
+                         <*> concatMapM dsCon cons
                          <*> dsCxt derivings)
 dsDec (NewtypeD cxt n tvbs mk con derivings) =
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
@@ -703,7 +703,7 @@ dsDec (NewtypeD cxt n tvbs mk con derivings) =
 #else
 dsDec (DataD cxt n tvbs cons derivings) =
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> mapM dsTvb tvbs <*> (concat <$> mapM dsCon cons)
+                         <*> mapM dsTvb tvbs <*> concatMapM dsCon cons
                          <*> pure derivings)
 dsDec (NewtypeD cxt n tvbs con derivings) =
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
@@ -733,7 +733,7 @@ dsDec (FamilyD flav n tvbs m_k) =
 #if MIN_VERSION_template_haskell(2,11,0)
 dsDec (DataInstD cxt n tys mk cons derivings) =
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                             <*> mapM dsKind mk <*> (concat <$> mapM dsCon cons)
+                             <*> mapM dsKind mk <*> concatMapM dsCon cons
                              <*> dsCxt derivings)
 dsDec (NewtypeInstD cxt n tys mk con derivings) =
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
@@ -742,7 +742,7 @@ dsDec (NewtypeInstD cxt n tys mk con derivings) =
 #else
 dsDec (DataInstD cxt n tys cons derivings) =
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                             <*> (concat <$> mapM dsCon cons) <*> pure derivings)
+                             <*> concatMapM dsCon cons <*> pure derivings)
 dsDec (NewtypeInstD cxt n tys con derivings) =
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
                                 <*> dsCon con <*> pure derivings)
