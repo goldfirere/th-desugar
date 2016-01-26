@@ -25,29 +25,33 @@ module Language.Haskell.TH.Desugar (
   -- * Desugared data types
   DExp(..), DLetDec(..), DPat(..), DType(..), DKind(..), DCxt, DPred(..),
   DTyVarBndr(..), DMatch(..), DClause(..), DDec(..), NewOrData(..),
-  DCon(..), DConFields(..), DStrictType, DVarStrictType, DForeign(..),
+  DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
+  DCon(..), DConFields(..), DBangType, DVarBangType,
+  Bang(..), SourceUnpackedness(..), SourceStrictness(..),
+  DForeign(..),
   DPragma(..), DRuleBndr(..), DTySynEqn(..), DInfo(..), DInstanceDec,
   Role(..), AnnTarget(..),
-#if __GLASGOW_HASKELL__ > 710
-  DFamilyResultSig (..),
-#endif
 
   -- * The 'Desugar' class
   Desugar(..),
 
   -- * Main desugaring functions
-  dsExp, dsDecs, dsType, dsKind, dsInfo,
+  dsExp, dsDecs, dsType, dsInfo,
   dsPatOverExp, dsPatsOverExp, dsPatX,
   dsLetDecs, dsTvb, dsCxt,
   dsCon, dsForeign, dsPragma, dsRuleBndr,
 
   -- ** Secondary desugaring functions
   PatM, dsPred, dsPat, dsDec, dsLetDec,
-  dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses, 
+  dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses,
+  dsBangType, dsVarBangType,
+#if __GLASGOW_HASKELL__ > 710
+  dsTypeFamilyHead, dsFamilyResultSig,
+#endif
 
   -- * Converting desugared AST back to TH AST
   module Language.Haskell.TH.Desugar.Sweeten,
-  
+
   -- * Expanding type synonyms
   expand, expandType,
 
@@ -72,7 +76,10 @@ module Language.Haskell.TH.Desugar (
   substTy,
   tupleDegree_maybe, tupleNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
-  
+#if __GLASGOW_HASKELL__ <= 710
+  strictToBang,
+#endif
+
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
   ) where
@@ -185,7 +192,7 @@ flattenDValD (DValD pat exp) = do
         DTildePa pa -> DTildePa (wildify name y pa)
         DBangPa pa -> DBangPa (wildify name y pa)
         DWildPa -> DWildPa
-                
+
 flattenDValD other_dec = return [other_dec]
 
 extractBoundNamesDPat :: DPat -> S.Set Name

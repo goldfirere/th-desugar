@@ -1,6 +1,14 @@
 `th-desugar` release notes
 ==========================
 
+Version 1.6
+-----------
+* Work with GHC 8, with thanks to @christiaanb for getting this change going.
+
+* `DKind` is merged with `DType`.
+
+* `Generic` instances for everything.
+
 Version 1.5.5
 -------------
 

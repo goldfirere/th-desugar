@@ -7,7 +7,8 @@ Desugars full Template Haskell syntax into a smaller core syntax for further
 processing. The desugared types and constructors are prefixed with a D.
 -}
 
-{-# LANGUAGE TemplateHaskell, LambdaCase, CPP, DeriveDataTypeable #-}
+{-# LANGUAGE TemplateHaskell, LambdaCase, CPP, DeriveDataTypeable,
+             DeriveGeneric #-}
 
 module Language.Haskell.TH.Desugar.Core where
 
@@ -15,6 +16,7 @@ import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
 import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (lift)
+import Language.Haskell.TH.ExpandSyns ( expandSyns )
 
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
@@ -25,6 +27,7 @@ import Control.Monad.Writer hiding (mapM)
 import Data.Foldable
 import Data.Traversable
 import Data.Data hiding (Fixity)
+import GHC.Generics hiding (Fixity)
 
 import qualified Data.Set as S
 import GHC.Exts
@@ -43,7 +46,7 @@ data DExp = DVarE Name
           | DSigE DExp DType
           | DStaticE DExp
           | DUnboundVarE Name
-          deriving (Show, Typeable, Data)
+          deriving (Show, Typeable, Data, Generic)
 
 
 -- | Corresponds to TH's @Pat@ type.
@@ -53,9 +56,10 @@ data DPat = DLitPa Lit
           | DTildePa DPat
           | DBangPa DPat
           | DWildPa
-          deriving (Show, Typeable, Data)
+          deriving (Show, Typeable, Data, Generic)
 
--- | Corresponds to TH's @Type@ type.
+-- | Corresponds to TH's @Type@ type, used to represent
+-- types and kinds.
 data DType = DForallT [DTyVarBndr] DCxt DType
            | DAppT DType DType
            | DSigT DType DKind
@@ -64,17 +68,10 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DArrowT
            | DLitT TyLit
            | DWildCardT
-           deriving (Show, Typeable, Data)
+           deriving (Show, Typeable, Data, Generic)
 
--- | Corresponds to TH's @Kind@ type, which is a synonym for @Type@. 'DKind', though,
---   only contains constructors that make sense for kinds.
-data DKind = DForallK [Name] DKind
-           | DVarK Name
-           | DConK Name [DKind]
-           | DArrowK DKind DKind
-           | DStarK
-           | DWildCardK
-           deriving (Show, Typeable, Data)
+-- | Kinds are types.
+type DKind = DType
 
 -- | Corresponds to TH's @Cxt@
 type DCxt = [DPred]
@@ -85,100 +82,105 @@ data DPred = DAppPr DPred DType
            | DVarPr Name
            | DConPr Name
            | DWildCardPr
-           deriving (Show, Typeable, Data)
+           deriving (Show, Typeable, Data, Generic)
 
--- | Corresponds to TH's @TyVarBndr@. Note that @PlainTV x@ and @KindedTV x StarT@ are
---   distinct, so we retain that distinction here.
+-- | Corresponds to TH's @TyVarBndr@
 data DTyVarBndr = DPlainTV Name
                 | DKindedTV Name DKind
-                deriving (Show, Typeable, Data)
+                deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Match@ type.
 data DMatch = DMatch DPat DExp
-  deriving (Show, Typeable, Data)
+  deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Clause@ type.
 data DClause = DClause [DPat] DExp
-  deriving (Show, Typeable, Data)
+  deriving (Show, Typeable, Data, Generic)
 
 -- | Declarations as used in a @let@ statement.
 data DLetDec = DFunD Name [DClause]
              | DValD DPat DExp
              | DSigD Name DType
              | DInfixD Fixity Name
-             deriving (Show, Typeable, Data)
+             deriving (Show, Typeable, Data, Generic)
 
 -- | Is it a @newtype@ or a @data@ type?
 data NewOrData = Newtype
                | Data
-               deriving (Eq, Show, Typeable, Data)
+               deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
-#if MIN_VERSION_template_haskell(2,11,0)
-          | DDataD NewOrData DCxt Name [DTyVarBndr] (Maybe DKind) [DCon] DCxt
-#else
-          | DDataD NewOrData DCxt Name [DTyVarBndr] [DCon] [Name]
-#endif
+          | DDataD NewOrData DCxt Name [DTyVarBndr] [DCon] [DPred]
           | DTySynD Name [DTyVarBndr] DType
           | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
           | DInstanceD DCxt DType [DDec]
           | DForeignD DForeign
           | DPragmaD DPragma
-#if __GLASGOW_HASKELL__ > 710
-          | DOpenTypeFamilyD Name [DTyVarBndr] DFamilyResultSig (Maybe InjectivityAnn)
-          | DDataFamilyD Name [DTyVarBndr] (Maybe DKind)
-#else
-          | DFamilyD FamFlavour Name [DTyVarBndr] (Maybe DKind)
-#endif
-#if MIN_VERSION_template_haskell(2,11,0)
-          | DDataInstD NewOrData DCxt Name [DType] (Maybe DKind) [DCon] DCxt
-#else
-          | DDataInstD NewOrData DCxt Name [DType] [DCon] [Name]
-
-#endif
+          | DOpenTypeFamilyD DTypeFamilyHead
+          | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
+          | DDataFamilyD Name [DTyVarBndr]
+          | DDataInstD NewOrData DCxt Name [DType] [DCon] [DPred]
           | DTySynInstD Name DTySynEqn
-#if __GLASGOW_HASKELL__ > 710
-          | DClosedTypeFamilyD Name [DTyVarBndr] DFamilyResultSig (Maybe InjectivityAnn) [DTySynEqn]
-#else
-          | DClosedTypeFamilyD Name [DTyVarBndr] (Maybe DKind) [DTySynEqn]
-#endif
           | DRoleAnnotD Name [Role]
           | DStandaloneDerivD DCxt DType
           | DDefaultSigD Name DType
-          deriving (Show, Typeable, Data)
+          deriving (Show, Typeable, Data, Generic)
 
-#if __GLASGOW_HASKELL__ > 710
+-- | Corresponds to TH's 'TypeFamilyHead' type
+data DTypeFamilyHead = DTypeFamilyHead Name [DTyVarBndr] DFamilyResultSig
+                                       (Maybe InjectivityAnn)
+                     deriving (Show, Typeable, Data, Generic)
+
+-- | Corresponds to TH's 'FamilyResultSig' type
 data DFamilyResultSig = DNoSig
                       | DKindSig DKind
                       | DTyVarSig DTyVarBndr
-                      deriving (Show, Typeable, Data)
+                      deriving (Show, Typeable, Data, Generic)
+
+#if __GLASGOW_HASKELL__ <= 710
+data InjectivityAnn = InjectivityAnn Name [Name]
+  deriving (Eq, Ord, Show, Typeable, Data, Generic)
 #endif
 
 -- | Corresponds to TH's @Con@ type.
 data DCon = DCon [DTyVarBndr] DCxt Name DConFields
-          deriving (Show, Typeable, Data)
+          deriving (Show, Typeable, Data, Generic)
 
 -- | A list of fields either for a standard data constructor or a record
 -- data constructor.
-data DConFields = DNormalC [DStrictType]
-                | DRecC [DVarStrictType]
-#if MIN_VERSION_template_haskell(2,11,0)
-                | DGadtC [DStrictType] DType
-                | DRecGadtC [DVarStrictType] DType
+data DConFields = DNormalC [DBangType]
+                | DRecC [DVarBangType]
+                deriving (Show, Typeable, Data, Generic)
+
+-- | Corresponds to TH's @BangType@ type.
+type DBangType = (Bang, DType)
+
+-- | Corresponds to TH's @VarBangType@ type.
+type DVarBangType = (Name, Bang, DType)
+
+#if __GLASGOW_HASKELL__ <= 710
+-- | Corresponds to TH's definition
+data SourceUnpackedness = NoSourceUnpakcedness
+                        | SourceNoUnpack
+                        | SouceUnpack
+  deriving (Eq, Ord, Show, Typeable, Data, Generic)
+
+-- | Corresponds to TH's definition
+data SourceStrictness = NoSourceStrictness
+                      | SourceLazy
+                      | SourceStrict
+  deriving (Eq, Ord, Show, Typeable, Data, Generic)
+
+-- | Corresponds to TH's definition
+data Bang = Bang SourceUnpackedness SourceStrictness
+  deriving (Eq, Ord, Show, Typeable, Data, Generic)
 #endif
-                deriving (Show, Typeable, Data)
-
--- | Corresponds to TH's @StrictType@ type.
-type DStrictType = (Strict, DType)
-
--- | Corresponds to TH's @VarStrictType@ type.
-type DVarStrictType = (Name, Strict, DType)
 
 -- | Corresponds to TH's @Foreign@ type.
 data DForeign = DImportF Callconv Safety String Name DType
               | DExportF Callconv String Name DType
-              deriving (Show, Typeable, Data)
+              deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Pragma@ type.
 data DPragma = DInlineP Name Inline RuleMatch Phases
@@ -187,27 +189,27 @@ data DPragma = DInlineP Name Inline RuleMatch Phases
              | DRuleP String [DRuleBndr] DExp DExp Phases
              | DAnnP AnnTarget DExp
              | DLineP Int String
-             deriving (Show, Typeable, Data)
+             deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @RuleBndr@ type.
 data DRuleBndr = DRuleVar Name
                | DTypedRuleVar Name DType
-               deriving (Show, Typeable, Data)
+               deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @TySynEqn@ type (to store type family equations).
 data DTySynEqn = DTySynEqn [DType] DType
-               deriving (Show, Typeable, Data)
+               deriving (Show, Typeable, Data, Generic)
 
 #if __GLASGOW_HASKELL__ < 707
 -- | Same as @Role@ from TH; defined here for GHC 7.6.3 compatibility.
 data Role = NominalR | RepresentationalR | PhantomR | InferR
-          deriving (Show, Typeable, Data)
+          deriving (Show, Typeable, Data, Generic)
 
 -- | Same as @AnnTarget@ from TH; defined here for GHC 7.6.3 compatibility.
 data AnnTarget = ModuleAnnotation
                | TypeAnnotation Name
                | ValueAnnotation Name
-               deriving (Show, Typeable, Data)
+               deriving (Show, Typeable, Data, Generic)
 #endif
 
 -- | Corresponds to TH's @Info@ type.
@@ -224,7 +226,7 @@ data DInfo = DTyConI DDec (Maybe [DInstanceDec])
            | DPrimTyConI Name Int Bool
                -- ^ The @Int@ is the arity; the @Bool@ is whether this tycon
                -- is unlifted.
-           deriving (Show, Typeable, Data)
+           deriving (Show, Typeable, Data, Generic)
 
 type DInstanceDec = DDec -- ^ Guaranteed to be an instance declaration
 
@@ -306,7 +308,7 @@ dsExp (RecUpdE exp field_exps) = do
   applied_type <- case info of
 #if __GLASGOW_HASKELL__ > 710
                     VarI _name ty _m_dec -> extract_first_arg ty
-#else    
+#else
                     VarI _name ty _m_dec _fixity -> extract_first_arg ty
 #endif
                     _ -> impossible "Record update with an invalid field name."
@@ -642,7 +644,7 @@ dsInfo (VarI name ty Nothing fixity) =
 dsInfo (VarI name _ (Just _) _) =
   impossible $ "Declaration supplied with variable: " ++ show name
 #endif
-dsInfo (TyVarI name ty) = DTyVarI name <$> dsKind ty
+dsInfo (TyVarI name ty) = DTyVarI name <$> dsType ty
 
 fixBug8884ForFamilies :: DsMonad q => DDec -> q (DDec, Int)
 #if __GLASGOW_HASKELL__ < 708
@@ -690,15 +692,17 @@ dsDecs = concatMapM dsDec
 dsDec :: DsMonad q => Dec -> q [DDec]
 dsDec d@(FunD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec d@(ValD {}) = (fmap . map) DLetDec $ dsLetDec d
-#if MIN_VERSION_template_haskell(2,11,0)
-dsDec (DataD cxt n tvbs mk cons derivings) =
+#if __GLASGOW_HASKELL__ > 710
+dsDec (DataD cxt n tvbs mk cons derivings) = do
+  extra_tvbs <- mkExtraTvbs mk
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> mapM dsTvb tvbs <*> mapM dsKind mk
+                         <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
                          <*> concatMapM dsCon cons
                          <*> dsCxt derivings)
-dsDec (NewtypeD cxt n tvbs mk con derivings) =
+dsDec (NewtypeD cxt n tvbs mk con derivings) = do
+  extra_tvbs <- mkExtraTvbs mk
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> mapM dsTvb tvbs <*> mapM dsKind mk
+                            <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
                             <*> dsCon con <*> dsCxt derivings)
 #else
 dsDec (DataD cxt n tvbs cons derivings) =
@@ -722,30 +726,45 @@ dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
 dsDec d@(InfixD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec (PragmaD prag) = (:[]) <$> (DPragmaD <$> dsPragma prag)
 #if __GLASGOW_HASKELL__ > 710
-dsDec (OpenTypeFamilyD (TypeFamilyHead n tvbs frs ann)) =
-  (:[]) <$> (DOpenTypeFamilyD n <$> mapM dsTvb tvbs <*> dsFRS frs <*> pure ann)
-dsDec (DataFamilyD n tvbs m_k) =
-  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsKind m_k)
+dsDec (OpenTypeFamilyD head) =
+  (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead head)
+dsDec (DataFamilyD n tvbs m_k) = do
+  extra_tvbs <- mkExtraTvbs m_k
+  (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs))
 #else
-dsDec (FamilyD flav n tvbs m_k) =
-  (:[]) <$> (DFamilyD flav n <$> mapM dsTvb tvbs <*> mapM dsKind m_k)
+dsDec (FamilyD TypeFam n tvbs m_k) = do
+  result_sig <- case m_k of
+    Nothing -> return DNoSig
+    Just k  -> DKindSig <$> dsType k
+  (:[]) <$> (DOpenTypeFamilyD <$>
+                (DTypeFamilyHead n <$> mapM dsTvb tvbs
+                                   <*> pure result_sig
+                                   <*> pure Nothing))
+dsDec (FamilyD DataFam n tvbs m_k) = do
+  extra_tvbs <- mkExtraTvbs m_k
+  (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
 #endif
-#if MIN_VERSION_template_haskell(2,11,0)
-dsDec (DataInstD cxt n tys mk cons derivings) =
-  (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                             <*> mapM dsKind mk <*> concatMapM dsCon cons
+#if __GLASGOW_HASKELL__ > 710
+dsDec (DataInstD cxt n tys mk cons derivings) = do
+  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs mk
+  (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n
+                             <*> ((++ extra_tvbs) <$> mapM dsType tys)
+                             <*> concatMapM dsCon cons
                              <*> dsCxt derivings)
-dsDec (NewtypeInstD cxt n tys mk con derivings) =
-  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                                <*> mapM dsKind mk <*> dsCon con
+dsDec (NewtypeInstD cxt n tys mk con derivings) = do
+  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs mk
+  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n
+                                <*> ((++ extra_tvbs) <$> mapM dsType tys)
+                                <*> dsCon con
                                 <*> dsCxt derivings)
 #else
 dsDec (DataInstD cxt n tys cons derivings) =
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                             <*> concatMapM dsCon cons <*> pure derivings)
+                             <*> concatMapM dsCon cons
+                             <*> pure (map DConPr derivings))
 dsDec (NewtypeInstD cxt n tys con derivings) =
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                                <*> dsCon con <*> pure derivings)
+                                <*> dsCon con <*> pure (map DConPr derivings))
 #endif
 #if __GLASGOW_HASKELL__ < 707
 dsDec (TySynInstD n lhs rhs) = (:[]) <$> (DTySynInstD n <$>
@@ -754,13 +773,18 @@ dsDec (TySynInstD n lhs rhs) = (:[]) <$> (DTySynInstD n <$>
 #else
 dsDec (TySynInstD n eqn) = (:[]) <$> (DTySynInstD n <$> dsTySynEqn eqn)
 #if __GLASGOW_HASKELL__ > 710
-dsDec (ClosedTypeFamilyD (TypeFamilyHead n tvbs frs ann) eqns) =
-  (:[]) <$> (DClosedTypeFamilyD n <$> mapM dsTvb tvbs <*> dsFRS frs <*> pure ann
-                                  <*> mapM dsTySynEqn eqns)
+dsDec (ClosedTypeFamilyD head eqns) =
+  (:[]) <$> (DClosedTypeFamilyD <$> dsTypeFamilyHead head
+                                <*> mapM dsTySynEqn eqns)
 #else
-dsDec (ClosedTypeFamilyD n tvbs m_k eqns) =
-  (:[]) <$> (DClosedTypeFamilyD n <$> mapM dsTvb tvbs <*> mapM dsKind m_k
-                                  <*> mapM dsTySynEqn eqns)
+dsDec (ClosedTypeFamilyD n tvbs m_k eqns) = do
+  result_sig <- case m_k of
+    Nothing -> return DNoSig
+    Just k  -> DKindSig <$> dsType k
+  (:[]) <$> (DClosedTypeFamilyD <$>
+               (DTypeFamilyHead n <$> mapM dsTvb tvbs
+                                  <*> pure result_sig
+                                  <*> pure Nothing))
 #endif
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #endif
@@ -770,12 +794,31 @@ dsDec (StandaloneDerivD cxt ty) = (:[]) <$> (DStandaloneDerivD <$> dsCxt cxt
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
 
+mkExtraTvbs :: DsMonad q => Maybe Kind -> q [DTyVarBndr]
+mkExtraTvbs Nothing = return []
+mkExtraTvbs (Just k) = do
+  k' <- runQ (expandSyns k)  -- just in case
+  dk <- dsType k'
+  let args = get_funs [] dk
+  names <- mapM (const (qNewName "a")) args
+  return (zipWith DKindedTV names args)
+  where
+    split_funs args (DAppT (DAppT DArrowT arg) res) = split_funs (arg:args) res
+    split_funs args _other                          = reverse args
+
 #if __GLASGOW_HASKELL__ > 710
--- | Desuger a @FamilyResultSig@
-dsFRS :: DsMonad q => FamilyResultSig -> q DFamilyResultSig
-dsFRS NoSig = return DNoSig
-dsFRS (KindSig k) = DKindSig <$> dsKind k
-dsFRS (TyVarSig tvb) = DTyVarSig <$> dsTvb tvb
+-- | Desugar a @FamilyResultSig@
+dsFamilyResultSig :: DsMonad q => FamilyResultSig -> q DFamilyResultSig
+dsFamilyResultSig NoSig          = return DNoSig
+dsFamilyResultSig (KindSig k)    = DKindSig <$> dsType k
+dsFamilyResultSig (TyVarSig tvb) = DTyVarSig <$> dsTvb tvb
+
+-- | Desugar a @TypeFamilyHead@
+dsTypeFamilyHead :: DsMonad q => TypeFamilyHead -> q DTypeFamilyHead
+dsTypeFamilyHead (TypeFamilyHead n tvbs result inj)
+  = DTypeFamilyHead n <$> mapM dsTvb tvbs
+                      <*> dsFamilyResultSig result
+                      <*> pure inj
 #endif
 
 -- | Desugar @Dec@s that can appear in a let expression
@@ -802,13 +845,14 @@ dsLetDec (InfixD fixity name) = return [DInfixD fixity name]
 dsLetDec _dec = impossible "Illegal declaration in let expression."
 
 -- | Desugar a single @Con@.
-dsCon :: DsMonad q => Con -> q [DCon]
-dsCon (NormalC n stys) = (:[]) <$> DCon [] [] n <$> (DNormalC <$> mapM (liftSndM dsType) stys)
-dsCon (RecC n vstys) = (:[]) <$> DCon [] [] n <$> (DRecC <$> mapM (liftThdOf3M dsType) vstys)
-dsCon (InfixC (s1, ty1) n (s2, ty2)) = do
-  dty1 <- dsType ty1
-  dty2 <- dsType ty2
-  return $ [DCon [] [] n (DNormalC [(s1, dty1), (s2, dty2)])]
+dsCon :: DsMonad q => [Name]  -- ^ of the bound tyvars
+      -> Con -> q [DCon]
+dsCon (NormalC n stys) = (:[]) <$> DCon [] [] n <$> (DNormalC <$> mapM dsBangType stys)
+dsCon (RecC n vstys) = (:[]) <$> DCon [] [] n <$> (DRecC <$> mapM dsVarBangType vstys)
+dsCon (InfixC sty1 n sty2) = do
+  dty1 <- dsBangType ty1
+  dty2 <- dsBangType ty2
+  return $ [DCon [] [] n (DNormalC [dty1, dty2])]
 dsCon (ForallC tvbs cxt con) = do
   dtvbs <- mapM dsTvb tvbs
   dcxt <- dsCxt cxt
@@ -816,13 +860,34 @@ dsCon (ForallC tvbs cxt con) = do
   mapM (\(DCon dtvbs' dcxt' n fields) ->
        return $ DCon (dtvbs ++ dtvbs') (dcxt ++ dcxt') n fields
        ) dcons
-#if MIN_VERSION_template_haskell(2,11,0)
+#if __GLASGOW_HASKELL__ > 710
+dsCon (GadtC nms stys rty) = do
+  -- RAE was here.
+
 dsCon (GadtC nms stys rty) = mapM (\n ->
   DCon [] [] n <$> (DGadtC <$> mapM (liftSndM dsType) stys <*> dsType rty)
   ) nms
 dsCon (RecGadtC nms vstys rty) = mapM (\n ->
   DCon [] [] n <$> (DRecGadtC <$> mapM (liftThdOf3M dsType) vstys <*> dsType rty)
   ) nms
+#endif
+
+#if __GLASGOW_HASKELL__ > 710
+-- | Desugar a @BangType@ (or a @StrictType@, if you're old-fashioned)
+dsBangType :: DsMonad q => BangType -> q DBangType
+dsBangType (b, ty) = (b, ) <$> dsType ty
+
+-- | Desugar a @VarBangType@ (or a @VarStrictType@, if you're old-fashioned)
+dsVarBangType :: DsMonad q => VarBangType -> q DVarBangType
+dsVarBangType (n, b, ty) = (n, b, ) <$> dsType ty
+#else
+-- | Desugar a @BangType@ (or a @StrictType@, if you're old-fashioned)
+dsBangType :: DsMonad q => StrictType -> q DBangType
+dsBangType (b, ty) = (strictToBang b, ) <$> dsType ty
+
+-- | Desugar a @VarBangType@ (or a @VarStrictType@, if you're old-fashioned)
+dsVarBangType :: DsMonad q => VarStrictType -> q DVarBangType
+dsVarBangType (n, b, ty) = (n, strictToBang b, ) <$> dsType ty
 #endif
 
 -- | Desugar a @Foreign@.
@@ -984,50 +1049,6 @@ dsPred WildCardT = return [DWildCardPr]
 #endif
 #endif
 
--- | Desugar a kind
-dsKind :: DsMonad q => Kind -> q DKind
-dsKind (ForallT tvbs cxt ki)
-  | [] <- cxt
-  , Just names <- mapM stripPlainTV_maybe tvbs
-  = DForallK names <$> dsKind ki
-
-  | otherwise
-  = impossible "Annotations of kind variables or kind constraints."
-dsKind (AppT (AppT ArrowT k1) k2) = DArrowK <$> dsKind k1 <*> dsKind k2
-dsKind (AppT k1 k2) = do
-  k1' <- dsKind k1
-  (con_name, args) <- case k1' of
-                        DConK n as -> return (n, as)
-                        _ -> impossible "Illegal kind application."
-  k2' <- dsKind k2
-  return $ DConK con_name (args ++ [k2'])
-dsKind k@(SigT _ _) = impossible $ "Super-kind signature in kind " ++ (pprint k)
-dsKind (VarT name) = return $ DVarK name
-dsKind (ConT name) = return $ DConK name []
-dsKind (PromotedT name) = impossible $ "Promoted data constructor " ++ show name ++ " in kind."
-dsKind (TupleT n) = return $ DConK (tupleTypeName n) []
-dsKind (UnboxedTupleT _) = impossible "Unboxed tuple kind."
-dsKind ArrowT = impossible "Unsaturated (->) in kind."
-dsKind ListT = return $ DConK ''[] []
-dsKind (PromotedTupleT _) = impossible "Promoted tuple used as a kind."
-dsKind PromotedNilT = impossible "Promoted [] used as a kind."
-dsKind PromotedConsT = impossible "Promoted (:) used as a kind."
-dsKind StarT = return DStarK
-dsKind ConstraintT = return $ DConK ''Constraint []
-dsKind (LitT _) = impossible "Literal used in a kind."
-#if __GLASGOW_HASKELL__ >= 709
-dsKind EqualityT = impossible "(~) used in a kind."
-#endif
-#if __GLASGOW_HASKELL__ > 710
-dsKind (InfixT k1 n k2) = do
-  k1' <- dsKind k1
-  k2' <- dsKind k2
-  return (DConK n [k1',k2'])
-dsKind (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
-dsKind (ParensT t) = dsKind t
-dsKind WildCardT = return DWildCardK
-#endif
-
 -- | Like 'reify', but safer and desugared. Uses local declarations where
 -- available.
 dsReify :: DsMonad q => Name -> q (Maybe DInfo)
@@ -1098,3 +1119,16 @@ applyDExp = foldl DAppE
 -- | Apply one 'DType' to a list of arguments
 applyDType :: DType -> [DType] -> DType
 applyDType = foldl DAppT
+
+-- | Convert a 'DTyVarBndr' into a 'DType'
+dTyVarBndrToDType :: DTyVarBndr -> DType
+dTyVarBndrToDType (DPlainTV a)    = DVarT a
+dTyVarBndrToDType (DKindedTV a k) = DVarT a `DSigT` k
+
+#if __GLASGOW_HASKELL__ <= 710
+-- | Convert a 'Strict' to a 'Bang'
+strictToBang :: Strict -> Bang
+strictToBang IsStrict  = Bang NoSourceUnpackedness SourceStrict
+strictToBang NotStrict = Bang NoSourceUnpackedness NoSourceStrictness
+strictToBang Unpacked  = Bang SourceUnpack SourceStrict
+#endif
