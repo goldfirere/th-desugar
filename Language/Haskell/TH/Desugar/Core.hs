@@ -655,7 +655,7 @@ fixBug8884ForFamilies (DOpenTypeFamilyD (DTypeFamilyHead name tvbs frs ann)) = d
 fixBug8884ForFamilies (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs ann) eqns) = do
   let num_args = length tvbs
       eqns' = map (fixBug8884ForEqn num_args) eqns
-  frs' <- mapM (remove_arrows num_args) frs
+  frs' <- remove_arrows num_args frs
   return (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs' ann) eqns', num_args)
 fixBug8884ForFamilies dec@(DDataFamilyD name tvbs) = do
   let num_args = length tvbs
