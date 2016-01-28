@@ -24,7 +24,7 @@ import Control.Applicative
 import Control.Monad hiding (mapM)
 import Control.Monad.Zip
 import Control.Monad.Writer hiding (mapM)
-import Data.Foldable
+import Data.Foldable hiding (notElem)
 import Data.Traversable
 import Data.Data hiding (Fixity)
 import GHC.Generics hiding (Fixity)
@@ -648,22 +648,31 @@ dsInfo (TyVarI name ty) = DTyVarI name <$> dsType ty
 
 fixBug8884ForFamilies :: DsMonad q => DDec -> q (DDec, Int)
 #if __GLASGOW_HASKELL__ < 708
-fixBug8884ForFamilies (DFamilyD flav name tvbs m_kind) = do
+fixBug8884ForFamilies (DOpenTypeFamilyD (DTypeFamilyHead name tvbs frs)) = do
   let num_args = length tvbs
-  m_kind' <- mapM (remove_arrows num_args) m_kind
-  return (DFamilyD flav name tvbs m_kind', num_args)
-fixBug8884ForFamilies (DClosedTypeFamilyD name tvbs m_kind eqns) = do
+  frs' <- remove_arrows num_args frs
+  return (DOpenTypeFamilyD (DTypeFamilyHead name tvbs frs'),num_args)
+fixBug8884ForFamilies (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs) eqns) = do
   let num_args = length tvbs
       eqns' = map (fixBug8884ForEqn num_args) eqns
-  m_kind' <- mapM (remove_arrows num_args) m_kind
-  return (DClosedTypeFamilyD name tvbs m_kind' eqns', num_args)
+  frs' <- mapM (remove_arrows num_args) frs
+  return (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs') eqns', num_args)
+fixBug8884ForFamilies dec@(DDataFamilyD name tvbs) = do
+  let num_args = length tvbs
+  return (dec, num_args)
 fixBug8884ForFamilies dec =
   impossible $ "Reifying yielded a FamilyI with a non-family Dec: " ++ show dec
 
-remove_arrows :: DsMonad q => Int -> DKind -> q DKind
-remove_arrows 0 k = return k
-remove_arrows n (DArrowK _ k) = remove_arrows (n-1) k
-remove_arrows _ _ =
+remove_arrows :: DsMonad q => Int -> DFamilyResultSig -> q DFamilyResultSig
+remove_arrows n (DKindSig k) = DKindSig <$> remove_arrows' n k
+remove_arrows n (DTyVarSig (DKindedTV nm k)) =
+  DTyVarSig <$> (DKindedTV nm <$> remove_arrows' n k)
+remove_arrows _ frs = return frs
+
+remove_arrows' :: DsMonad q => Int -> DKind -> q DKind
+remove_arrows' 0 k = return k
+remove_arrows' n (DArrowK _ k) = remove_arrows' (n-1) k
+remove_arrows' _ _ =
   impossible "Internal error: Fix for bug 8884 ran out of arrows."
 
 #else
@@ -801,11 +810,17 @@ mkExtraTvbs orig_tvbs (Just k) = do
   k' <- runQ (expandSyns k)  -- just in case
   dk <- dsType k'
   let args = split_funs [] dk
-      orig_names = map (nameBase . tvbName) orig_tvbs
       -- christiaanb: I have no idea how GHC normally picks fresh
       -- tyvars, this looks like something GHC might do. Though probably in a
       -- nicer/safer way.
-      all_names  = take (length args + length orig_tvbs)
+      --
+      -- All of this is needed so that "dec test 9" passes.
+      orig_names = map (nameBase . tvbName) orig_tvbs
+      all_names  =
+#if __GLASGOW_HASKELL__ <= 708
+                    map ('$':) $
+#endif
+                    take (length args + length orig_tvbs)
                         (map (:[]) ['a' .. 'z'] ++
                          concatMap (zipWith (:) ['a' .. 'z'] . repeat . show)
                                    [(0::Int)..])
