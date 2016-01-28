@@ -8,7 +8,7 @@ processing. The desugared types and constructors are prefixed with a D.
 -}
 
 {-# LANGUAGE TemplateHaskell, LambdaCase, CPP, DeriveDataTypeable,
-             DeriveGeneric #-}
+             DeriveGeneric, TupleSections #-}
 
 module Language.Haskell.TH.Desugar.Core where
 
@@ -68,6 +68,7 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DArrowT
            | DLitT TyLit
            | DWildCardT
+           | DStarT
            deriving (Show, Typeable, Data, Generic)
 
 -- | Kinds are types.
@@ -149,8 +150,8 @@ data DCon = DCon [DTyVarBndr] DCxt Name DConFields
 
 -- | A list of fields either for a standard data constructor or a record
 -- data constructor.
-data DConFields = DNormalC [DBangType]
-                | DRecC [DVarBangType]
+data DConFields = DNormalC [DBangType] (Maybe DType)
+                | DRecC [DVarBangType] (Maybe DType)
                 deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @BangType@ type.
@@ -161,9 +162,9 @@ type DVarBangType = (Name, Bang, DType)
 
 #if __GLASGOW_HASKELL__ <= 710
 -- | Corresponds to TH's definition
-data SourceUnpackedness = NoSourceUnpakcedness
+data SourceUnpackedness = NoSourceUnpackedness
                         | SourceNoUnpack
-                        | SouceUnpack
+                        | SourceUnpack
   deriving (Eq, Ord, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's definition
@@ -214,11 +215,7 @@ data AnnTarget = ModuleAnnotation
 
 -- | Corresponds to TH's @Info@ type.
 data DInfo = DTyConI DDec (Maybe [DInstanceDec])
-#if __GLASGOW_HASKELL__ > 710
-           | DVarI Name DType (Maybe Name)
-#else
            | DVarI Name DType (Maybe Name) Fixity
-#endif
                -- ^ The @Maybe Name@ stores the name of the enclosing definition
                -- (datatype, for a data constructor; class, for a method),
                -- if any
@@ -614,6 +611,7 @@ dsInfo (ClassI dec instances) = do
 #if __GLASGOW_HASKELL__ > 710
 dsInfo (ClassOpI name ty parent) =
   DVarI name <$> dsType ty <*> pure (Just parent)
+             <*> (maybe defaultFixity id <$> qReifyFixity name)
 #else
 dsInfo (ClassOpI name ty parent fixity) =
   DVarI name <$> dsType ty <*> pure (Just parent) <*> pure fixity
@@ -632,8 +630,10 @@ dsInfo (PrimTyConI name arity unlifted) =
 #if __GLASGOW_HASKELL__ > 710
 dsInfo (DataConI name ty parent) =
   DVarI name <$> dsType ty <*> pure (Just parent)
+             <*> (maybe defaultFixity id <$> qReifyFixity name)
 dsInfo (VarI name ty Nothing) =
   DVarI name <$> dsType ty <*> pure Nothing
+             <*> (maybe defaultFixity id <$> qReifyFixity name)
 dsInfo (VarI name _ (Just _)) =
   impossible $ "Declaration supplied with variable: " ++ show name
 #else
@@ -694,13 +694,13 @@ dsDec d@(FunD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec d@(ValD {}) = (fmap . map) DLetDec $ dsLetDec d
 #if __GLASGOW_HASKELL__ > 710
 dsDec (DataD cxt n tvbs mk cons derivings) = do
-  extra_tvbs <- mkExtraTvbs mk
+  extra_tvbs <- mkExtraTvbs tvbs mk
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
                          <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
                          <*> concatMapM dsCon cons
                          <*> dsCxt derivings)
 dsDec (NewtypeD cxt n tvbs mk con derivings) = do
-  extra_tvbs <- mkExtraTvbs mk
+  extra_tvbs <- mkExtraTvbs tvbs mk
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
                             <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
                             <*> dsCon con <*> dsCxt derivings)
@@ -708,11 +708,11 @@ dsDec (NewtypeD cxt n tvbs mk con derivings) = do
 dsDec (DataD cxt n tvbs cons derivings) =
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
                          <*> mapM dsTvb tvbs <*> concatMapM dsCon cons
-                         <*> pure derivings)
+                         <*> pure (map DConPr derivings))
 dsDec (NewtypeD cxt n tvbs con derivings) =
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
                             <*> mapM dsTvb tvbs <*> dsCon con
-                            <*> pure derivings)
+                            <*> pure (map DConPr derivings))
 #endif
 dsDec (TySynD n tvbs ty) =
   (:[]) <$> (DTySynD n <$> mapM dsTvb tvbs <*> dsType ty)
@@ -726,10 +726,10 @@ dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
 dsDec d@(InfixD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec (PragmaD prag) = (:[]) <$> (DPragmaD <$> dsPragma prag)
 #if __GLASGOW_HASKELL__ > 710
-dsDec (OpenTypeFamilyD head) =
-  (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead head)
+dsDec (OpenTypeFamilyD tfHead) =
+  (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead tfHead)
 dsDec (DataFamilyD n tvbs m_k) = do
-  extra_tvbs <- mkExtraTvbs m_k
+  extra_tvbs <- mkExtraTvbs tvbs m_k
   (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs))
 #else
 dsDec (FamilyD TypeFam n tvbs m_k) = do
@@ -741,28 +741,28 @@ dsDec (FamilyD TypeFam n tvbs m_k) = do
                                    <*> pure result_sig
                                    <*> pure Nothing))
 dsDec (FamilyD DataFam n tvbs m_k) = do
-  extra_tvbs <- mkExtraTvbs m_k
-  (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
+  extra_tvbs <- mkExtraTvbs tvbs m_k
+  (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs))
 #endif
 #if __GLASGOW_HASKELL__ > 710
 dsDec (DataInstD cxt n tys mk cons derivings) = do
-  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs mk
+  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs [] mk
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n
                              <*> ((++ extra_tvbs) <$> mapM dsType tys)
                              <*> concatMapM dsCon cons
                              <*> dsCxt derivings)
 dsDec (NewtypeInstD cxt n tys mk con derivings) = do
-  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs mk
+  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs [] mk
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n
                                 <*> ((++ extra_tvbs) <$> mapM dsType tys)
                                 <*> dsCon con
                                 <*> dsCxt derivings)
 #else
-dsDec (DataInstD cxt n tys cons derivings) =
+dsDec (DataInstD cxt n tys cons derivings) = do
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
                              <*> concatMapM dsCon cons
                              <*> pure (map DConPr derivings))
-dsDec (NewtypeInstD cxt n tys con derivings) =
+dsDec (NewtypeInstD cxt n tys con derivings) = do
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
                                 <*> dsCon con <*> pure (map DConPr derivings))
 #endif
@@ -773,8 +773,8 @@ dsDec (TySynInstD n lhs rhs) = (:[]) <$> (DTySynInstD n <$>
 #else
 dsDec (TySynInstD n eqn) = (:[]) <$> (DTySynInstD n <$> dsTySynEqn eqn)
 #if __GLASGOW_HASKELL__ > 710
-dsDec (ClosedTypeFamilyD head eqns) =
-  (:[]) <$> (DClosedTypeFamilyD <$> dsTypeFamilyHead head
+dsDec (ClosedTypeFamilyD tfHead eqns) =
+  (:[]) <$> (DClosedTypeFamilyD <$> dsTypeFamilyHead tfHead
                                 <*> mapM dsTySynEqn eqns)
 #else
 dsDec (ClosedTypeFamilyD n tvbs m_k eqns) = do
@@ -784,7 +784,8 @@ dsDec (ClosedTypeFamilyD n tvbs m_k eqns) = do
   (:[]) <$> (DClosedTypeFamilyD <$>
                (DTypeFamilyHead n <$> mapM dsTvb tvbs
                                   <*> pure result_sig
-                                  <*> pure Nothing))
+                                  <*> pure Nothing) <*>
+               mapM dsTySynEqn eqns)
 #endif
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #endif
@@ -794,13 +795,22 @@ dsDec (StandaloneDerivD cxt ty) = (:[]) <$> (DStandaloneDerivD <$> dsCxt cxt
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
 
-mkExtraTvbs :: DsMonad q => Maybe Kind -> q [DTyVarBndr]
-mkExtraTvbs Nothing = return []
-mkExtraTvbs (Just k) = do
+mkExtraTvbs :: DsMonad q => [TyVarBndr] -> Maybe Kind -> q [DTyVarBndr]
+mkExtraTvbs _ Nothing = return []
+mkExtraTvbs orig_tvbs (Just k) = do
   k' <- runQ (expandSyns k)  -- just in case
   dk <- dsType k'
-  let args = get_funs [] dk
-  names <- mapM (const (qNewName "a")) args
+  let args = split_funs [] dk
+      orig_names = map (nameBase . tvbName) orig_tvbs
+      -- christiaanb: I have no idea how GHC normally picks fresh
+      -- tyvars, this looks like something GHC might do. Though probably in a
+      -- nicer/safer way.
+      all_names  = take (length args + length orig_tvbs)
+                        (map (:[]) ['a' .. 'z'] ++
+                         concatMap (zipWith (:) ['a' .. 'z'] . repeat . show)
+                                   [(0::Int)..])
+      new_names  = filter (`notElem` orig_names) all_names
+  names <- zipWithM (\n _ -> qNewName n) new_names args
   return (zipWith DKindedTV names args)
   where
     split_funs args (DAppT (DAppT DArrowT arg) res) = split_funs (arg:args) res
@@ -845,14 +855,18 @@ dsLetDec (InfixD fixity name) = return [DInfixD fixity name]
 dsLetDec _dec = impossible "Illegal declaration in let expression."
 
 -- | Desugar a single @Con@.
-dsCon :: DsMonad q => [Name]  -- ^ of the bound tyvars
-      -> Con -> q [DCon]
-dsCon (NormalC n stys) = (:[]) <$> DCon [] [] n <$> (DNormalC <$> mapM dsBangType stys)
-dsCon (RecC n vstys) = (:[]) <$> DCon [] [] n <$> (DRecC <$> mapM dsVarBangType vstys)
+dsCon :: DsMonad q
+      => Con -> q [DCon]
+dsCon (NormalC n stys) =
+  (:[]) <$> DCon [] [] n
+        <$> (DNormalC <$> mapM dsBangType stys <*> pure Nothing)
+dsCon (RecC n vstys) =
+  (:[]) <$> DCon [] [] n
+        <$> (DRecC <$> mapM dsVarBangType vstys <*> pure Nothing)
 dsCon (InfixC sty1 n sty2) = do
-  dty1 <- dsBangType ty1
-  dty2 <- dsBangType ty2
-  return $ [DCon [] [] n (DNormalC [dty1, dty2])]
+  dty1 <- dsBangType sty1
+  dty2 <- dsBangType sty2
+  return $ [DCon [] [] n (DNormalC [dty1, dty2] Nothing)]
 dsCon (ForallC tvbs cxt con) = do
   dtvbs <- mapM dsTvb tvbs
   dcxt <- dsCxt cxt
@@ -861,14 +875,13 @@ dsCon (ForallC tvbs cxt con) = do
        return $ DCon (dtvbs ++ dtvbs') (dcxt ++ dcxt') n fields
        ) dcons
 #if __GLASGOW_HASKELL__ > 710
-dsCon (GadtC nms stys rty) = do
-  -- RAE was here.
-
 dsCon (GadtC nms stys rty) = mapM (\n ->
-  DCon [] [] n <$> (DGadtC <$> mapM (liftSndM dsType) stys <*> dsType rty)
+  DCon [] [] n <$> (DNormalC <$> mapM (liftSndM dsType) stys
+                             <*> (Just <$> dsType rty))
   ) nms
 dsCon (RecGadtC nms vstys rty) = mapM (\n ->
-  DCon [] [] n <$> (DRecGadtC <$> mapM (liftThdOf3M dsType) vstys <*> dsType rty)
+  DCon [] [] n <$> (DRecC <$> mapM (liftThdOf3M dsType) vstys
+                          <*> (Just <$> dsType rty))
   ) nms
 #endif
 
@@ -961,7 +974,7 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
 dsType :: DsMonad q => Type -> q DType
 dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> dsCxt preds <*> dsType ty
 dsType (AppT t1 t2) = DAppT <$> dsType t1 <*> dsType t2
-dsType (SigT ty ki) = DSigT <$> dsType ty <*> dsKind ki
+dsType (SigT ty ki) = DSigT <$> dsType ty <*> dsType ki
 dsType (VarT name) = return $ DVarT name
 dsType (ConT name) = return $ DConT name
   -- the only difference between ConT and PromotedT is the name lookup. Here, we assume
@@ -976,8 +989,8 @@ dsType ListT = return $ DConT ''[]
 dsType (PromotedTupleT n) = return $ DConT (tupleDataName n)
 dsType PromotedNilT = return $ DConT '[]
 dsType PromotedConsT = return $ DConT '(:)
-dsType StarT = impossible "The kind * seen in a type."
-dsType ConstraintT = impossible "The kind `Constraint' seen in a type."
+dsType StarT = return DStarT -- impossible "The kind * seen in a type."
+dsType ConstraintT = return $ DConT ''Constraint -- impossible "The kind `Constraint' seen in a type."
 dsType (LitT lit) = return $ DLitT lit
 #if __GLASGOW_HASKELL__ >= 709
 dsType EqualityT = return $ DConT ''(~)
@@ -992,7 +1005,7 @@ dsType WildCardT = return DWildCardT
 -- | Desugar a @TyVarBndr@
 dsTvb :: DsMonad q => TyVarBndr -> q DTyVarBndr
 dsTvb (PlainTV n) = return $ DPlainTV n
-dsTvb (KindedTV n k) = DKindedTV n <$> dsKind k
+dsTvb (KindedTV n k) = DKindedTV n <$> dsType k
 
 -- | Desugar a @Cxt@
 dsCxt :: DsMonad q => Cxt -> q DCxt
@@ -1018,7 +1031,7 @@ dsPred (AppT t1 t2) = do
 dsPred (SigT ty ki) = do
   preds <- dsPred ty
   case preds of
-    [p]   -> (:[]) <$> DSigPr p <$> dsKind ki
+    [p]   -> (:[]) <$> DSigPr p <$> dsType ki
     other -> return other   -- just drop the kind signature on a tuple.
 dsPred (VarT n) = return [DVarPr n]
 dsPred (ConT n) = return [DConPr n]

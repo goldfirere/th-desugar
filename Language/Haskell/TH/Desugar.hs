@@ -23,7 +23,7 @@ eir@cis.upenn.edu
 
 module Language.Haskell.TH.Desugar (
   -- * Desugared data types
-  DExp(..), DLetDec(..), DPat(..), DType(..), DKind(..), DCxt, DPred(..),
+  DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred(..),
   DTyVarBndr(..), DMatch(..), DClause(..), DDec(..), NewOrData(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
   DCon(..), DConFields(..), DBangType, DVarBangType,
@@ -113,10 +113,6 @@ instance Desugar Exp DExp where
 instance Desugar Type DType where
   desugar = dsType
   sweeten = typeToTH
-
-instance Desugar Kind DKind where
-  desugar = dsKind
-  sweeten = kindToTH
 
 instance Desugar Cxt DCxt where
   desugar = dsCxt
@@ -208,26 +204,17 @@ fvDType = go
   where
     go (DForallT tvbs _cxt ty) = go ty `S.difference` (foldMap dtvbName tvbs)
     go (DAppT ty1 ty2)         = go ty1 `S.union` go ty2
-    go (DSigT ty ki)           = go ty `S.union` fvDKind ki
+    go (DSigT ty ki)           = go ty `S.union` fvDType ki
     go (DVarT n)               = S.singleton n
     go (DConT _)               = S.empty
     go DArrowT                 = S.empty
     go (DLitT {})              = S.empty
     go DWildCardT              = S.empty
+    go DStarT                  = S.empty
 
 dtvbName :: DTyVarBndr -> S.Set Name
 dtvbName (DPlainTV n)    = S.singleton n
 dtvbName (DKindedTV n _) = S.singleton n
-
-fvDKind :: DKind -> S.Set Name
-fvDKind = go
-  where
-    go (DForallK names ki) = go ki `S.difference` (S.fromList names)
-    go (DVarK n)           = S.singleton n
-    go (DConK _ kis)       = foldMap fvDKind kis
-    go (DArrowK k1 k2)     = go k1 `S.union` go k2
-    go DStarK              = S.empty
-    go DWildCardK          = S.empty
 
 -- | Produces 'DLetDec's representing the record selector functions from
 -- the provided 'DCon'.
@@ -236,10 +223,7 @@ getRecordSelectors :: Quasi q
                    -> DCon
                    -> q [DLetDec]
 getRecordSelectors arg_ty (DCon _ _ con_name con) = case con of
-    DRecC fields -> go fields
-#if MIN_VERSION_template_haskell(2,11,0)
-    DRecGadtC fields _ -> go fields
-#endif
+    DRecC fields _ -> go fields
     _ -> return []
   where
     go fields = do

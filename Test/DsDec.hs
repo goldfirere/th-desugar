@@ -54,11 +54,7 @@ $(dsDecSplice S.standalone_deriving_test)
 #endif
 
 $(do decs <- S.rec_sel_test
-#if MIN_VERSION_template_haskell(2,11,0)
-     [DDataD nd [] name [DPlainTV tvbName] mk cons []] <- dsDecs decs
-#else
      [DDataD nd [] name [DPlainTV tvbName] cons []] <- dsDecs decs
-#endif
      let arg_ty = (DConT name) `DAppT` (DVarT tvbName)
      recsels <- fmap concat $ mapM (getRecordSelectors arg_ty) cons
      let num_sels = length recsels `div` 2 -- ignore type sigs
@@ -67,15 +63,11 @@ $(do decs <- S.rec_sel_test
                   ++ "Wanted " ++ show S.rec_sel_test_num_sels
                   ++ ", Got " ++ show num_sels
      let unrecord c@(DCon _ _ _ (DNormalC {})) = c
-         unrecord (DCon tvbs cxt con_name (DRecC fields)) =
+         unrecord (DCon tvbs cxt con_name (DRecC fields rty)) =
            let (_names, stricts, types) = unzip3 fields
                fields' = zip stricts types
            in
-           DCon tvbs cxt con_name (DNormalC fields')
-#if MIN_VERSION_template_haskell(2,11,0)
-         plaindata = [DDataD nd [] name [DPlainTV tvbName] mk (map unrecord cons) []]
-#else
+           DCon tvbs cxt con_name (DNormalC fields' rty)
          plaindata = [DDataD nd [] name [DPlainTV tvbName] (map unrecord cons) []]
-#endif
      return (decsToTH plaindata ++ map letDecToTH recsels))
 

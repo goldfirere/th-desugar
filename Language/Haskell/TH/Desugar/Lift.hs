@@ -23,14 +23,16 @@ import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Lift
 
-$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DKind, ''DPred, ''DTyVarBndr
+$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DPred, ''DTyVarBndr
                  , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DCon
                  , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
                  , ''NewOrData
 #if __GLASGOW_HASKELL__ < 707
                  , ''AnnTarget, ''Role
 #endif
-#if __GLASGOW_HASKELL__ > 710
-                 , ''DFamilyResultSig
+                 , ''DTypeFamilyHead,  ''DFamilyResultSig
+#if __GLASGOW_HASKELL__ <= 710
+                 , ''InjectivityAnn, ''Bang, ''SourceUnpackedness
+                 , ''SourceStrictness
 #endif
                  ])

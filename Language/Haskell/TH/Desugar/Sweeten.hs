@@ -25,13 +25,14 @@ Converts desugared TH back into real TH.
 
 module Language.Haskell.TH.Desugar.Sweeten (
   expToTH, matchToTH, patToTH, decsToTH, decToTH,
-  letDecToTH, typeToTH, kindToTH,
+  letDecToTH, typeToTH,
 
   conToTH, foreignToTH, pragmaToTH, ruleBndrToTH,
   clauseToTH, tvbToTH, cxtToTH, predToTH
   ) where
 
 import Prelude hiding (exp)
+import Control.Arrow ((***))
 import Language.Haskell.TH hiding (cxt)
 
 import Language.Haskell.TH.Desugar.Core
@@ -77,16 +78,21 @@ decsToTH = concatMap decToTH
 -- a one-to-one mapping between 'DDec' and @Dec@.
 decToTH :: DDec -> [Dec]
 decToTH (DLetDec d) = [letDecToTH d]
-#if MIN_VERSION_template_haskell(2,11,0)
-decToTH (DDataD Data cxt n tvbs mk cons derivings) =
-  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap kindToTH mk) (map conToTH cons) (cxtToTH derivings)]
-decToTH (DDataD Newtype cxt n tvbs mk [con] derivings) =
-  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap kindToTH mk) (conToTH con) (cxtToTH derivings)]
-#else
 decToTH (DDataD Data cxt n tvbs cons derivings) =
-  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons) derivings]
+#if __GLASGOW_HASKELL__ > 710
+  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (map conToTH cons)
+         (cxtToTH derivings)]
+#else
+  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons)
+         (map derivingToTH derivings)]
+#endif
 decToTH (DDataD Newtype cxt n tvbs [con] derivings) =
-  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con) derivings]
+#if __GLASGOW_HASKELL__ > 710
+  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (conToTH con)
+            (cxtToTH derivings)]
+#else
+  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con)
+            (map derivingToTH derivings)]
 #endif
 decToTH (DTySynD n tvbs ty) = [TySynD n (map tvbToTH tvbs) (typeToTH ty)]
 decToTH (DClassD cxt n tvbs fds decs) =
@@ -96,41 +102,54 @@ decToTH (DInstanceD cxt ty decs) =
 decToTH (DForeignD f) = [ForeignD (foreignToTH f)]
 decToTH (DPragmaD prag) = maybeToList $ fmap PragmaD (pragmaToTH prag)
 #if __GLASGOW_HASKELL__ > 710
-decToTH (DOpenTypeFamilyD n tvbs frs ann) =
+decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs ann)) =
   [OpenTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)]
-decToTH (DDataFamilyD n tvbs m_k) =
-  [DataFamilyD n (map tvbToTH tvbs) (fmap kindToTH m_k)]
 #else
-decToTH (DFamilyD flav n tvbs m_k) =
-  [FamilyD flav n (map tvbToTH tvbs) (fmap kindToTH m_k)]
+decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs _ann)) =
+  [FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)]
 #endif
-#if MIN_VERSION_template_haskell(2,11,0)
-decToTH (DDataInstD Data cxt n tys mk cons derivings) =
-  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (fmap kindToTH mk) (map conToTH cons) (cxtToTH derivings)]
-decToTH (DDataInstD Newtype cxt n tys mk [con] derivings) =
-  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (fmap kindToTH mk) (conToTH con) (cxtToTH derivings)]
+decToTH (DDataFamilyD n tvbs) =
+#if __GLASGOW_HASKELL__ > 710
+  [DataFamilyD n (map tvbToTH tvbs) Nothing]
 #else
+  [FamilyD DataFam n (map tvbToTH tvbs) Nothing]
+#endif
 decToTH (DDataInstD Data cxt n tys cons derivings) =
-  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons) derivings]
+#if __GLASGOW_HASKELL__ > 710
+  [DataInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (map conToTH cons)
+             (cxtToTH derivings)
+  ]
+#else
+  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons)
+             (map derivingToTH derivings)
+  ]
+#endif
 decToTH (DDataInstD Newtype cxt n tys [con] derivings) =
-  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con) derivings]
+#if __GLASGOW_HASKELL__ > 710
+  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (conToTH con)
+                (cxtToTH derivings)
+  ]
+#else
+  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con)
+                (map derivingToTH derivings)
+  ]
 #endif
 #if __GLASGOW_HASKELL__ < 707
 decToTH (DTySynInstD n eqn) = [tySynEqnToTHDec n eqn]
-decToTH (DClosedTypeFamilyD n tvbs m_k eqns) =
-  (FamilyD TypeFam n (map tvbToTH tvbs) (fmap kindToTH m_k)) :
+decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs) eqns) =
+  (FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)) :
   (map (tySynEqnToTHDec n) eqns)
 decToTH (DRoleAnnotD {}) = []
 #else
 decToTH (DTySynInstD n eqn) = [TySynInstD n (tySynEqnToTH eqn)]
 #if __GLASGOW_HASKELL__ > 710
-decToTH (DClosedTypeFamilyD n tvbs frs ann eqns) =
+decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs ann) eqns) =
   [ClosedTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)
-                       (map tySynEqnToTH eqns)]
+                     (map tySynEqnToTH eqns)
+  ]
 #else
-decToTH (DClosedTypeFamilyD n tvbs m_k eqns) =
-  [ClosedTypeFamilyD n (map tvbToTH tvbs) (fmap kindToTH m_k)
-                       (map tySynEqnToTH eqns)]
+decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
+  [ClosedTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) (map tySynEqnToTH eqns)]
 #endif
 decToTH (DRoleAnnotD n roles) = [RoleAnnotD n roles]
 #endif
@@ -148,9 +167,22 @@ decToTH _ = error "Newtype declaration without exactly 1 constructor."
 
 #if __GLASGOW_HASKELL__ > 710
 frsToTH :: DFamilyResultSig -> FamilyResultSig
-frsToTH DNoSig = NoSig
-frsToTH (DKindSig k) = KindSig (kindToTH k)
+frsToTH DNoSig          = NoSig
+frsToTH (DKindSig k)    = KindSig (typeToTH k)
 frsToTH (DTyVarSig tvb) = TyVarSig (tvbToTH tvb)
+#else
+frsToTH :: DFamilyResultSig -> Maybe Kind
+frsToTH DNoSig                      = Nothing
+frsToTH (DKindSig k)                = Just (typeToTH k)
+frsToTH (DTyVarSig (DPlainTV _))    = Nothing
+frsToTH (DTyVarSig (DKindedTV _ k)) = Just (typeToTH k)
+#endif
+
+#if __GLASGOW_HASKELL__ <= 710
+derivingToTH :: DPred -> Name
+derivingToTH (DConPr nm) = nm
+derivingToTH p =
+  error ("Template Haskell in GHC < 8.0 only allows simple derivings: " ++ show p)
 #endif
 
 letDecToTH :: DLetDec -> Dec
@@ -160,15 +192,23 @@ letDecToTH (DSigD name ty)      = SigD name (typeToTH ty)
 letDecToTH (DInfixD f name)     = InfixD f name
 
 conToTH :: DCon -> Con
-conToTH (DCon [] [] n (DNormalC stys)) =
-  NormalC n (map (liftSnd typeToTH) stys)
-conToTH (DCon [] [] n (DRecC vstys)) =
-  RecC n (map (liftThdOf3 typeToTH) vstys)
-#if MIN_VERSION_template_haskell(2,11,0)
-conToTH (DCon [] [] n (DGadtC stys rty)) =
+#if __GLASGOW_HASKELL__ > 710
+conToTH (DCon [] [] n (DNormalC stys (Just rty))) =
   GadtC [n] (map (liftSnd typeToTH) stys) (typeToTH rty)
-conToTH (DCon [] [] n (DRecGadtC vstys rty)) =
+conToTH (DCon [] [] n (DRecC vstys (Just rty))) =
   RecGadtC [n] (map (liftThdOf3 typeToTH) vstys) (typeToTH rty)
+#endif
+conToTH (DCon [] [] n (DNormalC stys _)) =
+#if __GLASGOW_HASKELL__ > 710
+  NormalC n (map (liftSnd typeToTH) stys)
+#else
+  NormalC n (map (bangToStrict *** typeToTH) stys)
+#endif
+conToTH (DCon [] [] n (DRecC vstys _)) =
+#if __GLASGOW_HASKELL__ > 710
+  RecC n (map (liftThdOf3 typeToTH) vstys)
+#else
+  RecC n (map (\(v,b,t) -> (v,bangToStrict b,typeToTH t)) vstys)
 #endif
 conToTH (DCon tvbs cxt n fields) =
   ForallC (map tvbToTH tvbs) (cxtToTH cxt) (conToTH $ DCon [] [] n fields)
@@ -217,7 +257,7 @@ clauseToTH (DClause pats exp) = Clause (map patToTH pats) (NormalB (expToTH exp)
 typeToTH :: DType -> Type
 typeToTH (DForallT tvbs cxt ty) = ForallT (map tvbToTH tvbs) (map predToTH cxt) (typeToTH ty)
 typeToTH (DAppT t1 t2)          = AppT (typeToTH t1) (typeToTH t2)
-typeToTH (DSigT ty ki)          = SigT (typeToTH ty) (kindToTH ki)
+typeToTH (DSigT ty ki)          = SigT (typeToTH ty) (typeToTH ki)
 typeToTH (DVarT n)              = VarT n
 typeToTH (DConT n)              = tyconToTH n
 typeToTH DArrowT                = ArrowT
@@ -227,10 +267,11 @@ typeToTH DWildCardT = WildCardT
 #else
 typeToTH DWildCardT = error "Wildcards supported only in GHC 8.0+"
 #endif
+typeToTH DStarT = StarT
 
 tvbToTH :: DTyVarBndr -> TyVarBndr
 tvbToTH (DPlainTV n)           = PlainTV n
-tvbToTH (DKindedTV n k)        = KindedTV n (kindToTH k)
+tvbToTH (DKindedTV n k)        = KindedTV n (typeToTH k)
 
 cxtToTH :: DCxt -> Cxt
 cxtToTH = map predToTH
@@ -253,7 +294,7 @@ predToTH = go []
       = error "Wildcards supported only in GHC 8.0+"
 #else
 predToTH (DAppPr p t) = AppT (predToTH p) (typeToTH t)
-predToTH (DSigPr p k) = SigT (predToTH p) (kindToTH k)
+predToTH (DSigPr p k) = SigT (predToTH p) (typeToTH k)
 predToTH (DVarPr n)   = VarT n
 predToTH (DConPr n)   = typeToTH (DConT n)
 #if __GLASGOW_HASKELL__ > 710
@@ -261,18 +302,6 @@ predToTH DWildCardPr  = WildCardT
 #else
 predToTH DWildCardPr  = error "Wildcards supported only in GHC 8.0+"
 #endif
-#endif
-
-kindToTH :: DKind -> Kind
-kindToTH (DForallK names ki) = ForallT (map PlainTV names) [] (kindToTH ki)
-kindToTH (DVarK n)           = VarT n
-kindToTH (DConK n kis)       = foldl AppT (tyconToTH n) (map kindToTH kis)
-kindToTH (DArrowK k1 k2)     = AppT (AppT ArrowT (kindToTH k1)) (kindToTH k2)
-kindToTH DStarK              = StarT
-#if __GLASGOW_HASKELL__ > 710
-kindToTH DWildCardK          = WildCardT
-#else
-kindToTH DWildCardK          = error "Wildcards supported only in GHC 8.0+"
 #endif
 
 tyconToTH :: Name -> Type
@@ -288,3 +317,11 @@ tyconToTH n
                                                  else TupleT deg
   | Just deg <- unboxedTupleNameDegree_maybe n = UnboxedTupleT deg
   | otherwise                   = ConT n
+
+#if __GLASGOW_HASKELL__ <= 710
+-- | Convert a 'Bang' to a 'Strict'
+bangToStrict :: Bang -> Strict
+bangToStrict (Bang SourceUnpack _) = Unpacked
+bangToStrict (Bang _ SourceStrict) = IsStrict
+bangToStrict (Bang _ _)            = NotStrict
+#endif
