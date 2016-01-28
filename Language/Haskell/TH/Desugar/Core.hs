@@ -671,7 +671,7 @@ remove_arrows _ frs = return frs
 
 remove_arrows' :: DsMonad q => Int -> DKind -> q DKind
 remove_arrows' 0 k = return k
-remove_arrows' n (DArrowK _ k) = remove_arrows' (n-1) k
+remove_arrows' n (DArrowT _ k) = remove_arrows' (n-1) k
 remove_arrows' _ _ =
   impossible "Internal error: Fix for bug 8884 ran out of arrows."
 
