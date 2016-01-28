@@ -648,15 +648,15 @@ dsInfo (TyVarI name ty) = DTyVarI name <$> dsType ty
 
 fixBug8884ForFamilies :: DsMonad q => DDec -> q (DDec, Int)
 #if __GLASGOW_HASKELL__ < 708
-fixBug8884ForFamilies (DOpenTypeFamilyD (DTypeFamilyHead name tvbs frs)) = do
+fixBug8884ForFamilies (DOpenTypeFamilyD (DTypeFamilyHead name tvbs frs ann)) = do
   let num_args = length tvbs
   frs' <- remove_arrows num_args frs
-  return (DOpenTypeFamilyD (DTypeFamilyHead name tvbs frs'),num_args)
-fixBug8884ForFamilies (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs) eqns) = do
+  return (DOpenTypeFamilyD (DTypeFamilyHead name tvbs frs' ann),num_args)
+fixBug8884ForFamilies (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs ann) eqns) = do
   let num_args = length tvbs
       eqns' = map (fixBug8884ForEqn num_args) eqns
   frs' <- mapM (remove_arrows num_args) frs
-  return (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs') eqns', num_args)
+  return (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs' ann) eqns', num_args)
 fixBug8884ForFamilies dec@(DDataFamilyD name tvbs) = do
   let num_args = length tvbs
   return (dec, num_args)
@@ -671,7 +671,7 @@ remove_arrows _ frs = return frs
 
 remove_arrows' :: DsMonad q => Int -> DKind -> q DKind
 remove_arrows' 0 k = return k
-remove_arrows' n (DArrowT _ k) = remove_arrows' (n-1) k
+remove_arrows' n (DAppT (DAppT DArrowT _) k) = remove_arrows' (n-1) k
 remove_arrows' _ _ =
   impossible "Internal error: Fix for bug 8884 ran out of arrows."
 
