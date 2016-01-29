@@ -136,7 +136,7 @@ decToTH (DDataInstD Newtype cxt n tys [con] derivings) =
 #endif
 #if __GLASGOW_HASKELL__ < 707
 decToTH (DTySynInstD n eqn) = [tySynEqnToTHDec n eqn]
-decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs) eqns) =
+decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
   (FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)) :
   (map (tySynEqnToTHDec n) eqns)
 decToTH (DRoleAnnotD {}) = []
