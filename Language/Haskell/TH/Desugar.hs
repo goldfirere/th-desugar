@@ -131,7 +131,7 @@ instance Desugar Con [DCon] where
   sweeten dcons = go [] cons
     where
       cons = map conToTH dcons
-#if MIN_VERSION_template_haskell(2,11,0)
+#if __GLASGOW_HASKELL__ > 710
       go nms [GadtC n stys rty]
         = GadtC (reverse (n ++ nms)) stys rty
       go nms [RecGadtC n vstys rty]
@@ -139,7 +139,7 @@ instance Desugar Con [DCon] where
 #endif
       go _   [c]
         = c
-#if MIN_VERSION_template_haskell(2,11,0)
+#if __GLASGOW_HASKELL__ > 710
       go nms (GadtC n1 stys1 rty1:GadtC n2 stys2 rty2:cons')
         | stys1 == stys2
         , rty1  == rty2
