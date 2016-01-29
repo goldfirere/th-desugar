@@ -272,10 +272,11 @@ dectest8 = [d| type family Dec8 a |]
 dectest9 = [d| data family Dec9 a (b :: * -> *) :: * -> * |]
 #if __GLASGOW_HASKELL__ < 707
 ds_dectest10 = DClosedTypeFamilyD
-                 (DTypeFamilyHead (mkName "Dec10")
-                                  [DPlainTV (mkName "a")]
-                                  (DAppT (DAppT DArrowT DStarT) DStarT)
-                                  Nothing)
+                 (DTypeFamilyHead
+                    (mkName "Dec10")
+                    [DPlainTV (mkName "a")]
+                    (DKindSig (DAppT (DAppT DArrowT DStarT) DStarT))
+                    Nothing)
                  [ DTySynEqn [DConT ''Int]  (DConT ''Maybe)
                  , DTySynEqn [DConT ''Bool] (DConT ''[]) ]
 dectest10 = [d| type family Dec10 a :: * -> *
