@@ -274,7 +274,7 @@ dectest9 = [d| data family Dec9 a (b :: * -> *) :: * -> * |]
 ds_dectest10 = DClosedTypeFamilyD
                  (DTypeFamilyHead (mkName "Dec10")
                                   [DPlainTV (mkName "a")]
-                                  (DKindSig (DArrowT DStarT DStarT))
+                                  (DAppT (DAppT DArrowT DStarT) DStarT)
                                   Nothing)
                  [ DTySynEqn [DConT ''Int]  (DConT ''Maybe)
                  , DTySynEqn [DConT ''Bool] (DConT ''[]) ]
