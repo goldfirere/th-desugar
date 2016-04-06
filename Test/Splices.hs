@@ -416,7 +416,11 @@ reifyDecs = [d|
 
 reifyDecsNames :: [Name]
 reifyDecsNames = map mkName
-  [ "r1", "R2", "r3", "R4", "R5", "R6", "R7", "r8", "r9", "R10", "r11"
+  [ "r1"
+#if __GLASGOW_HASKELL__ < 711
+  , "R2", "r3"      -- these fail due to GHC#11797
+#endif
+  , "R4", "R5", "R6", "R7", "r8", "r9", "R10", "r11"
   , "R12", "R13", "R14", "r15", "r16", "r17", "R18", "R19", "R20"
 #if __GLASGOW_HASKELL__ >= 707
   , "R21"
