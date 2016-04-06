@@ -45,7 +45,6 @@ data DExp = DVarE Name
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
           | DStaticE DExp
-          | DUnboundVarE Name
           deriving (Show, Typeable, Data, Generic)
 
 
@@ -146,12 +145,13 @@ data InjectivityAnn = InjectivityAnn Name [Name]
 
 -- | Corresponds to TH's @Con@ type.
 data DCon = DCon [DTyVarBndr] DCxt Name DConFields
+                 (Maybe DType)  -- ^ A GADT result type, if there is one
           deriving (Show, Typeable, Data, Generic)
 
 -- | A list of fields either for a standard data constructor or a record
 -- data constructor.
-data DConFields = DNormalC [DBangType] (Maybe DType)
-                | DRecC [DVarBangType] (Maybe DType)
+data DConFields = DNormalC [DBangType]
+                | DRecC [DVarBangType]
                 deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @BangType@ type.
@@ -215,7 +215,7 @@ data AnnTarget = ModuleAnnotation
 
 -- | Corresponds to TH's @Info@ type.
 data DInfo = DTyConI DDec (Maybe [DInstanceDec])
-           | DVarI Name DType (Maybe Name) Fixity
+           | DVarI Name DType (Maybe Name)
                -- ^ The @Maybe Name@ stores the name of the enclosing definition
                -- (datatype, for a data constructor; class, for a method),
                -- if any
@@ -358,7 +358,7 @@ dsExp (RecUpdE exp field_exps) = do
 dsExp (StaticE exp) = DStaticE <$> dsExp exp
 #endif
 #if __GLASGOW_HASKELL__ > 710
-dsExp (UnboundVarE n) = return (DUnboundVarE n)
+dsExp (UnboundVarE n) = return (DVarE n)
 #endif
 
 -- | Desugar a lambda expression, where the body has already been desugared
@@ -610,12 +610,10 @@ dsInfo (ClassI dec instances) = do
   return $ DTyConI ddec (Just dinstances)
 #if __GLASGOW_HASKELL__ > 710
 dsInfo (ClassOpI name ty parent) =
-  DVarI name <$> dsType ty <*> pure (Just parent)
-             <*> (maybe defaultFixity id <$> qReifyFixity name)
 #else
-dsInfo (ClassOpI name ty parent fixity) =
-  DVarI name <$> dsType ty <*> pure (Just parent) <*> pure fixity
+dsInfo (ClassOpI name ty parent _fixity) =
 #endif
+  DVarI name <$> dsType ty <*> pure (Just parent)
 dsInfo (TyConI dec) = do
   [ddec] <- dsDec dec
   return $ DTyConI ddec Nothing
@@ -630,17 +628,15 @@ dsInfo (PrimTyConI name arity unlifted) =
 #if __GLASGOW_HASKELL__ > 710
 dsInfo (DataConI name ty parent) =
   DVarI name <$> dsType ty <*> pure (Just parent)
-             <*> (maybe defaultFixity id <$> qReifyFixity name)
 dsInfo (VarI name ty Nothing) =
   DVarI name <$> dsType ty <*> pure Nothing
-             <*> (maybe defaultFixity id <$> qReifyFixity name)
 dsInfo (VarI name _ (Just _)) =
   impossible $ "Declaration supplied with variable: " ++ show name
 #else
-dsInfo (DataConI name ty parent fixity) =
-  DVarI name <$> dsType ty <*> pure (Just parent) <*> pure fixity
-dsInfo (VarI name ty Nothing fixity) =
-  DVarI name <$> dsType ty <*> pure Nothing <*> pure fixity
+dsInfo (DataConI name ty parent _fixity) =
+  DVarI name <$> dsType ty <*> pure (Just parent)
+dsInfo (VarI name ty Nothing _fixity) =
+  DVarI name <$> dsType ty <*> pure Nothing
 dsInfo (VarI name _ (Just _) _) =
   impossible $ "Declaration supplied with variable: " ++ show name
 #endif
@@ -657,22 +653,21 @@ fixBug8884ForFamilies (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs ann) eq
       eqns' = map (fixBug8884ForEqn num_args) eqns
   frs' <- remove_arrows num_args frs
   return (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs' ann) eqns', num_args)
-fixBug8884ForFamilies dec@(DDataFamilyD _ tvbs) = do
-  let num_args = length tvbs
-  return (dec, num_args)
+fixBug8884ForFamilies dec@(DDataFamilyD _ tvbs)
+  = return (dec, 0)   -- the num_args is ignored for data families
 fixBug8884ForFamilies dec =
   impossible $ "Reifying yielded a FamilyI with a non-family Dec: " ++ show dec
 
 remove_arrows :: DsMonad q => Int -> DFamilyResultSig -> q DFamilyResultSig
-remove_arrows n (DKindSig k) = DKindSig <$> remove_arrows' n k
+remove_arrows n (DKindSig k) = DKindSig <$> remove_arrows_kind n k
 remove_arrows n (DTyVarSig (DKindedTV nm k)) =
-  DTyVarSig <$> (DKindedTV nm <$> remove_arrows' n k)
+  DTyVarSig <$> (DKindedTV nm <$> remove_arrows_kind n k)
 remove_arrows _ frs = return frs
 
-remove_arrows' :: DsMonad q => Int -> DKind -> q DKind
-remove_arrows' 0 k = return k
-remove_arrows' n (DAppT (DAppT DArrowT _) k) = remove_arrows' (n-1) k
-remove_arrows' _ _ =
+remove_arrows_kind :: DsMonad q => Int -> DKind -> q DKind
+remove_arrows_kind 0 k = return k
+remove_arrows_kind n (DAppT (DAppT DArrowT _) k) = remove_arrows_kind (n-1) k
+remove_arrows_kind _ _ =
   impossible "Internal error: Fix for bug 8884 ran out of arrows."
 
 #else
@@ -742,13 +737,7 @@ dsDec (DataFamilyD n tvbs m_k) = do
   (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs))
 #else
 dsDec (FamilyD TypeFam n tvbs m_k) = do
-  result_sig <- case m_k of
-    Nothing -> return DNoSig
-    Just k  -> DKindSig <$> dsType k
-  (:[]) <$> (DOpenTypeFamilyD <$>
-                (DTypeFamilyHead n <$> mapM dsTvb tvbs
-                                   <*> pure result_sig
-                                   <*> pure Nothing))
+  (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead n tvbs m_k)
 dsDec (FamilyD DataFam n tvbs m_k) = do
   extra_tvbs <- mkExtraTvbs tvbs m_k
   (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs))
@@ -787,14 +776,8 @@ dsDec (ClosedTypeFamilyD tfHead eqns) =
                                 <*> mapM dsTySynEqn eqns)
 #else
 dsDec (ClosedTypeFamilyD n tvbs m_k eqns) = do
-  result_sig <- case m_k of
-    Nothing -> return DNoSig
-    Just k  -> DKindSig <$> dsType k
-  (:[]) <$> (DClosedTypeFamilyD <$>
-               (DTypeFamilyHead n <$> mapM dsTvb tvbs
-                                  <*> pure result_sig
-                                  <*> pure Nothing) <*>
-               mapM dsTySynEqn eqns)
+  (:[]) <$> (DClosedTypeFamilyD <$> dsTypeFamilyHead n tvbs m_k
+                                <*> mapM dsTySynEqn eqns)
 #endif
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #endif
@@ -805,7 +788,7 @@ dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
 
 mkExtraTvbs :: DsMonad q => [TyVarBndr] -> Maybe Kind -> q [DTyVarBndr]
-mkExtraTvbs _ Nothing = return []
+mkExtraTvbs _         Nothing = return []
 mkExtraTvbs orig_tvbs (Just k) = do
   k' <- runQ (expandSyns k)  -- just in case
   dk <- dsType k'
@@ -813,6 +796,9 @@ mkExtraTvbs orig_tvbs (Just k) = do
       -- christiaanb: I have no idea how GHC normally picks fresh
       -- tyvars, this looks like something GHC might do. Though probably in a
       -- nicer/safer way.
+      --
+      -- RAE: It's actually not terribly far off from what GHC does. This is
+      -- terrible. But I don't see another way to do this. <shudder>
       --
       -- All of this is needed so that "dec test 9" passes.
       orig_names = map (nameBase . tvbName) orig_tvbs
@@ -844,6 +830,17 @@ dsTypeFamilyHead (TypeFamilyHead n tvbs result inj)
   = DTypeFamilyHead n <$> mapM dsTvb tvbs
                       <*> dsFamilyResultSig result
                       <*> pure inj
+#else
+-- | Desugar bits and pieces into a 'DTypeFamilyHead'
+dsTypeFamilyHead :: DsMonad q
+                 => Name -> [TyVarBndr] -> Maybe Kind -> q DTypeFamilyHead
+dsTypeFamilyHead n tvbs m_kind = do
+  result_sig <- case m_kind of
+    Nothing -> return DNoSig
+    Just k  -> DKindSig <$> dsType k
+  DTypeFamilyHead n <$> mapM dsTvb tvbs
+                    <*> pure result_sig
+                    <*> pure Nothing
 #endif
 
 -- | Desugar @Dec@s that can appear in a let expression
@@ -873,31 +870,30 @@ dsLetDec _dec = impossible "Illegal declaration in let expression."
 dsCon :: DsMonad q
       => Con -> q [DCon]
 dsCon (NormalC n stys) =
-  (:[]) <$> DCon [] [] n
-        <$> (DNormalC <$> mapM dsBangType stys <*> pure Nothing)
+  (:[]) <$> (DCon [] [] n <$> (DNormalC <$> mapM dsBangType stys) <*> pure Nothing)
 dsCon (RecC n vstys) =
-  (:[]) <$> DCon [] [] n
-        <$> (DRecC <$> mapM dsVarBangType vstys <*> pure Nothing)
+  (:[]) <$> (DCon [] [] n <$> (DRecC <$> mapM dsVarBangType vstys) <*> pure Nothing)
 dsCon (InfixC sty1 n sty2) = do
   dty1 <- dsBangType sty1
   dty2 <- dsBangType sty2
-  return $ [DCon [] [] n (DNormalC [dty1, dty2] Nothing)]
+  return $ [DCon [] [] n (DNormalC [dty1, dty2]) Nothing]
 dsCon (ForallC tvbs cxt con) = do
   dtvbs <- mapM dsTvb tvbs
   dcxt <- dsCxt cxt
   dcons <- dsCon con
-  mapM (\(DCon dtvbs' dcxt' n fields) ->
-       return $ DCon (dtvbs ++ dtvbs') (dcxt ++ dcxt') n fields
-       ) dcons
+  return $ flip map dcons $ \(DCon dtvbs' dcxt' n fields m_kind) ->
+    DCon (dtvbs ++ dtvbs') (dcxt ++ dcxt') n fields m_kind
 #if __GLASGOW_HASKELL__ > 710
-dsCon (GadtC nms stys rty) = mapM (\n ->
-  DCon [] [] n <$> (DNormalC <$> mapM (liftSndM dsType) stys
-                             <*> (Just <$> dsType rty))
-  ) nms
-dsCon (RecGadtC nms vstys rty) = mapM (\n ->
-  DCon [] [] n <$> (DRecC <$> mapM (liftThdOf3M dsType) vstys
-                          <*> (Just <$> dsType rty))
-  ) nms
+dsCon (GadtC nms btys rty) = do
+  dbtys <- mapM dsBangType btys
+  drty  <- dsType rty
+  return $ flip map nms $ \nm ->
+    DCon [] [] nm (DNormalC dbtys) (Just drty)
+dsCon (RecGadtC nms vbtys rty) = do
+  dvbtys <- mapM dsVarBangType vbtys
+  drty   <- dsType rty
+  return $ flip map nms $ \nm ->
+    DCon [] [] nm (DRecC dvbtys) (Just drty)
 #endif
 
 #if __GLASGOW_HASKELL__ > 710
@@ -1004,8 +1000,8 @@ dsType ListT = return $ DConT ''[]
 dsType (PromotedTupleT n) = return $ DConT (tupleDataName n)
 dsType PromotedNilT = return $ DConT '[]
 dsType PromotedConsT = return $ DConT '(:)
-dsType StarT = return DStarT -- impossible "The kind * seen in a type."
-dsType ConstraintT = return $ DConT ''Constraint -- impossible "The kind `Constraint' seen in a type."
+dsType StarT = return DStarT
+dsType ConstraintT = return $ DConT ''Constraint
 dsType (LitT lit) = return $ DLitT lit
 #if __GLASGOW_HASKELL__ >= 709
 dsType EqualityT = return $ DConT ''(~)
@@ -1153,10 +1149,15 @@ dTyVarBndrToDType :: DTyVarBndr -> DType
 dTyVarBndrToDType (DPlainTV a)    = DVarT a
 dTyVarBndrToDType (DKindedTV a k) = DVarT a `DSigT` k
 
+-- | Convert a 'Strict' to a 'Bang' in GHCs 7.x. This is just
+-- the identity operation in GHC 8.x, which has no 'Strict'.
+-- (This is included in GHC 8.x only for good Haddocking.)
 #if __GLASGOW_HASKELL__ <= 710
--- | Convert a 'Strict' to a 'Bang'
 strictToBang :: Strict -> Bang
 strictToBang IsStrict  = Bang NoSourceUnpackedness SourceStrict
 strictToBang NotStrict = Bang NoSourceUnpackedness NoSourceStrictness
 strictToBang Unpacked  = Bang SourceUnpack SourceStrict
+#else
+strictToBang :: Bang -> Bang
+strictToBang = id
 #endif

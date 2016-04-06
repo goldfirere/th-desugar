@@ -45,7 +45,13 @@ testDecSplice n = do
 #else
   rolesDs  <- reifyRoles dsName
   rolesReg <- reifyRoles regName
+#if __GLASGOW_HASKELL__ < 711
   eqTHSplice (infoDs, rolesDs) (infoReg, rolesReg)
+#else
+  fixityDs  <- reifyFixity dsName
+  fixityReg <- reifyFixity regName
+  eqTHSplice (infoDs, rolesDs, fixityDs) (infoReg, rolesReg, fixityReg)
+#endif
 #endif
 
 unqualify :: Data a => a -> a
@@ -199,6 +205,12 @@ test36_expand = [| let f :: Const Int (,) Bool Char -> Char
                        f = snd in
                    f |]
 
+#if __GLASGOW_HASKELL__ >= 711
+test40_wildcards = [| let f :: (Show a, _) => a -> a -> _
+                          f x y = if x == y then show x else "bad" in
+                      f True False :: String |]
+#endif
+
 type family TFExpand x
 type instance TFExpand Int = Bool
 type instance TFExpand (Maybe a) = [a]
@@ -300,6 +312,16 @@ dectest11 = [d| class Dec11 a where
               |]
 standalone_deriving_test = [d| deriving instance Eq a => Eq (Blarggie a) |]
 #endif
+
+dectest12 = [d| data Dec12 a where
+                  MkGInt :: Dec12 Int
+                  MkGOther :: Dec12 b
+
+              |]
+
+dectest13 = [d| data Dec13 :: (* -> Constraint) -> * where
+                  MkDec13 :: c a => a -> Dec13 c
+              |]
 
 instance_test = [d| instance (Show a, Show b) => Show (a -> b) where
                        show _ = "function" |]

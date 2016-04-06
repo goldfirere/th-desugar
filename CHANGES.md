@@ -4,6 +4,8 @@
 Version 1.6
 -----------
 * Work with GHC 8, with thanks to @christiaanb for getting this change going.
+  This means that several core datatypes have changed: partcularly, we now have
+  `DTypeFamilyHead` and fixities are now reified separately from other things.
 
 * `DKind` is merged with `DType`.
 

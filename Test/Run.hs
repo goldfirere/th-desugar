@@ -12,6 +12,11 @@ eir@cis.upenn.edu
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
 
+#if __GLASGOW_HASKELL__ >= 711
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# OPTIONS_GHC -Wno-partial-type-signatures -Wno-redundant-constraints #-}
+#endif
+
 module Run where
 
 import Prelude hiding ( exp )
@@ -100,6 +105,9 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "pred"     ~: $test37_pred     @=? $(dsSplice test37_pred)
              , "pred2"    ~: $test38_pred2    @=? $(dsSplice test38_pred2)
              , "eq"       ~: $test39_eq       @=? $(dsSplice test39_eq)
+#endif
+#if __GLASGOW_HASKELL__ >= 711
+             , "wildcard" ~: $test40_wildcards@=? $(dsSplice test40_wildcards)
 #endif
              ]
 

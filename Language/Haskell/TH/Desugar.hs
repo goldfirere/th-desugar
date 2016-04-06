@@ -76,9 +76,7 @@ module Language.Haskell.TH.Desugar (
   substTy,
   tupleDegree_maybe, tupleNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
-#if __GLASGOW_HASKELL__ <= 710
   strictToBang,
-#endif
 
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
@@ -126,35 +124,9 @@ instance Desugar [Dec] [DDec] where
   desugar = dsDecs
   sweeten = decsToTH
 
-instance Desugar Con [DCon] where
-  desugar = dsCon
-  sweeten dcons = go [] cons
-    where
-      cons = map conToTH dcons
-#if __GLASGOW_HASKELL__ > 710
-      go nms [GadtC n stys rty]
-        = GadtC (reverse (n ++ nms)) stys rty
-      go nms [RecGadtC n vstys rty]
-        = RecGadtC (reverse (n ++ nms)) vstys rty
-#endif
-      go _   [c]
-        = c
-#if __GLASGOW_HASKELL__ > 710
-      go nms (GadtC n1 stys1 rty1:GadtC n2 stys2 rty2:cons')
-        | stys1 == stys2
-        , rty1  == rty2
-        = go (n1 ++ nms) (GadtC n2 stys2 rty2:cons')
-        | otherwise
-        = error "Combining GADT constructors with different field/return types"
-      go nms (RecGadtC n1 vstys1 rty1:RecGadtC n2 vstys2 rty2:cons')
-        | vstys1 == vstys2
-        , rty1   == rty2
-        = go (n1 ++ nms) (RecGadtC n2 vstys2 rty2:cons')
-        | otherwise
-        = error "Combining GADT constructors with different field/return types"
-#endif
-      go _ _
-        = error "Combining different types of data constructors"
+instance Desugar [Con] [DCon] where
+  desugar = concatMapM dsCon
+  sweeten = map conToTH
 
 -- | If the declaration passed in is a 'DValD', creates new, equivalent
 -- declarations such that the 'DPat' in all 'DValD's is just a plain
@@ -222,8 +194,8 @@ getRecordSelectors :: Quasi q
                    => DType        -- ^ the type of the argument
                    -> DCon
                    -> q [DLetDec]
-getRecordSelectors arg_ty (DCon _ _ con_name con) = case con of
-    DRecC fields _ -> go fields
+getRecordSelectors arg_ty (DCon _ _ con_name con _) = case con of
+    DRecC fields -> go fields
     _ -> return []
   where
     go fields = do

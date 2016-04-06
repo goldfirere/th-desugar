@@ -85,7 +85,7 @@ simplCaseExp vars clauses =
      matchResultToDExp `liftM` simplCase vars eis
 
 data EquationInfo = EquationInfo [DPat] MatchResult  -- like DClause, but with a hole
-                            
+
 -- analogous to GHC's match (in deSugar/Match.lhs)
 simplCase :: DsMonad q
           => [Name]         -- the names of the scrutinees
@@ -143,7 +143,7 @@ tidy1 v (DBangPa pat) =
     DBangPa p  -> tidy1 v (DBangPa p) -- discard ! under !
     DWildPa    -> return (id, DBangPa pat)  -- no change
 tidy1 _ DWildPa = return (id, DWildPa)
-    
+
 wrapBind :: Name -> Name -> DExp -> DExp
 wrapBind new old
   | new == old = id
@@ -209,9 +209,9 @@ extractBoundNamesDPat DWildPa         = S.empty
 
 data PatGroup
   = PgAny         -- immediate match (wilds, vars, lazies)
-  | PgCon Name 
-  | PgLit Lit  
-  | PgBang     
+  | PgCon Name
+  | PgLit Lit
+  | PgBang
 
 -- like GHC's groupEquations
 groupClauses :: [EquationInfo] -> [[(PatGroup, EquationInfo)]]
@@ -270,7 +270,7 @@ matchOneCon vars eqns@(eqn1 : _)
        return $ CaseAlt (pat_con pat1) arg_vars match_result
   where
     pat1 = firstPat eqn1
-    
+
     pat_args (DConPa _ pats) = pats
     pat_args _               = error "Internal error in th-desugar (pat_args)"
 
@@ -312,7 +312,7 @@ mkDataConCase var case_alts = do
     get_cons (DDataInstD _ _ _ _ cons _) = cons
     get_cons _                           = []
 
-    get_con_name (DCon _ _ n _) = n
+    get_con_name (DCon _ _ n _ _) = n
 
 matchEmpty :: DsMonad q => Name -> q [MatchResult]
 matchEmpty var = return [mk_seq]

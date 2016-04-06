@@ -13,6 +13,9 @@ module Language.Haskell.TH.Desugar.Reify (
   -- * Reification
   reifyWithLocals_maybe, reifyWithLocals, reifyWithWarning, reifyInDecs,
 
+  -- ** Fixity reification
+  qReifyFixity, reifyFixity, reifyFixityWithLocals, reifyFixityInDecs,
+
   -- * Datatype lookup
   getDataD, dataConNameToCon, dataConNameToDataName,
 
@@ -30,6 +33,11 @@ import Data.Maybe
 import Control.Applicative
 #endif
 import qualified Data.Set as S
+#if __GLASGOW_HASKELL__ >= 800
+import qualified Control.Monad.Fail as Fail
+#else
+import qualified Control.Monad as Fail
+#endif
 
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax hiding ( lift )
@@ -62,13 +70,17 @@ reifyWithWarning :: Quasi q => Name -> q Info
 reifyWithWarning name = qRecover (reifyFail name) (qReify name)
 
 -- | Print out a warning about separating splices and fail.
+#if __GLASGOW_HASKELL__ >= 800
+reifyFail :: Fail.MonadFail m => Name -> m a
+#else
 reifyFail :: Monad m => Name -> m a
+#endif
 reifyFail name =
-  fail $ "Looking up " ++ (show name) ++ " in the list of available " ++
-       "declarations failed.\nThis lookup fails if the declaration " ++
-       "referenced was made in the same Template\nHaskell splice as the use " ++
-       "of the declaration. If this is the case, put\nthe reference to " ++
-       "the declaration in a new splice."
+  Fail.fail $ "Looking up " ++ (show name) ++ " in the list of available " ++
+              "declarations failed.\nThis lookup fails if the declaration " ++
+              "referenced was made in the same Template\nHaskell splice as the use " ++
+              "of the declaration. If this is the case, put\nthe reference to " ++
+              "the declaration in a new splice."
 
 ---------------------------------
 -- Utilities
@@ -151,7 +163,11 @@ instance DsMonad IO where
 -- | A convenient implementation of the 'DsMonad' class. Use by calling
 -- 'withLocalDeclarations'.
 newtype DsM q a = DsM (ReaderT [Dec] q a)
-  deriving (Functor, Applicative, Monad, MonadTrans, Quasi)
+  deriving ( Functor, Applicative, Monad, MonadTrans, Quasi
+#if __GLASGOW_HASKELL__ >= 800
+           , Fail.MonadFail
+#endif
+           )
 
 instance Quasi q => DsMonad (DsM q) where
   localDeclarations = DsM ask
@@ -182,6 +198,14 @@ withLocalDeclarations new_decs (DsM x) = do
 -- | Look through a list of declarations and possibly return a relevant 'Info'
 reifyInDecs :: Name -> [Dec] -> Maybe Info
 reifyInDecs n decs = firstMatch (reifyInDec n decs) decs
+
+-- | Look through a list of declarations and possibly return a fixity.
+reifyFixityInDecs :: Name -> [Dec] -> Maybe Fixity
+reifyFixityInDecs n = firstMatch match_fixity
+  where
+    match_fixity (InfixD fixity n') | n `nameMatches` n' = Just fixity
+    match_fixity _                                       = Nothing
+
 
 reifyInDec :: Name -> [Dec] -> Dec -> Maybe Info
 reifyInDec n decs (FunD n' _) | n `nameMatches` n' = Just $ mkVarI n decs
@@ -240,7 +264,8 @@ reifyInDec n _decs (ClassD _ ty_name tvbs _ sub_decs)
 reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
   | Just ty <- findType n sub_decs
   = Just $ ClassOpI n (addClassCxt ty_name tvbs ty)
-                    ty_name (findFixity n $ sub_decs ++ decs)
+                    ty_name (fromMaybe defaultFixity $
+                             reifyFixityInDecs n $ sub_decs ++ decs)
 #endif
 reifyInDec n decs (ClassD _ _ _ _ sub_decs)
   | Just info <- firstMatch (reifyInDec n (sub_decs ++ decs)) sub_decs
@@ -301,7 +326,7 @@ maybeReifyCon n decs ty_name ty_args cons
     con_to_type (RecGadtC _ vstys rty) = mkArrows (map thdOf3 vstys) rty
 #endif
 #if __GLASGOW_HASKELL__ < 711
-    fixity = findFixity n decs
+    fixity = fromMaybe defaultFixity $ reifyFixityInDecs n decs
 #endif
     tvbs = map PlainTV $ S.elems $ freeNamesOfTypes ty_args
 maybeReifyCon _ _ _ _ _ = Nothing
@@ -316,15 +341,8 @@ mkVarITy :: Name -> [Dec] -> Type -> Info
 #if __GLASGOW_HASKELL__ > 710
 mkVarITy n _decs ty = VarI n ty Nothing
 #else
-mkVarITy n decs ty = VarI n ty Nothing (findFixity n decs)
-#endif
-
-#if __GLASGOW_HASKELL__ < 711
-findFixity :: Name -> [Dec] -> Fixity
-findFixity n = fromMaybe defaultFixity . firstMatch match_fixity
-  where
-    match_fixity (InfixD fixity n') | n `nameMatches` n' = Just fixity
-    match_fixity _                                   = Nothing
+mkVarITy n decs ty = VarI n ty Nothing (fromMaybe defaultFixity $
+                                        reifyFixityInDecs n decs)
 #endif
 
 findType :: Name -> [Dec] -> Maybe Type
@@ -433,3 +451,38 @@ handleBug8884 (FamilyD flav name tvbs m_kind)
     stupid_kind = mkArrows args_kinds result_kind
 handleBug8884 dec = dec
 #endif
+
+---------------------------------
+-- Reifying fixities
+---------------------------------
+--
+-- This section allows GHC 7.x to call reifyFixity
+
+#if __GLASGOW_HASKELL__ < 711
+qReifyFixity :: Quasi m => Name -> m (Maybe Fixity)
+qReifyFixity name = do
+  info <- qReify name
+  return $ case info of
+    ClassOpI _ _ _ fixity -> Just fixity
+    DataConI _ _ _ fixity -> Just fixity
+    VarI _ _ _ fixity     -> Just fixity
+    _                     -> Nothing
+
+{- | @reifyFixity nm@ attempts to find a fixity declaration for @nm@. For
+example, if the function @foo@ has the fixity declaration @infixr 7 foo@, then
+@reifyFixity 'foo@ would return @'Just' ('Fixity' 7 'InfixR')@. If the function
+@bar@ does not have a fixity declaration, then @reifyFixity 'bar@ returns
+'Nothing', so you may assume @bar@ has 'defaultFixity'.
+-}
+reifyFixity :: Name -> Q (Maybe Fixity)
+reifyFixity = qReifyFixity
+#endif
+
+-- | Like 'reifyWithLocals_maybe', but for fixities. Note that a return of
+-- @Nothing@ might mean that the name is not in scope, or it might mean
+-- that the name has no assigned fixity. (Use 'reifyWithLocals_maybe' if
+-- you really need to tell the difference.)
+reifyFixityWithLocals :: DsMonad q => Name -> q (Maybe Fixity)
+reifyFixityWithLocals name = qRecover
+  (return . reifyFixityInDecs name =<< localDeclarations)
+  (qReifyFixity name)

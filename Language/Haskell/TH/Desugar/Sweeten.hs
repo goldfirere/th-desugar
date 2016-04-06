@@ -32,7 +32,12 @@ module Language.Haskell.TH.Desugar.Sweeten (
   ) where
 
 import Prelude hiding (exp)
+import Control.Arrow (second)
+
+#if __GLASGOW_HASKELL__ < 711
 import Control.Arrow ((***))
+#endif
+
 import Language.Haskell.TH hiding (cxt)
 
 import Language.Haskell.TH.Desugar.Core
@@ -53,11 +58,6 @@ expToTH (DSigE exp ty)       = SigE (expToTH exp) (typeToTH ty)
 expToTH (DStaticE _)         = error "Static expressions supported only in GHC 7.10+"
 #else
 expToTH (DStaticE exp)       = StaticE (expToTH exp)
-#endif
-#if __GLASGOW_HASKELL__ > 710
-expToTH (DUnboundVarE n) = UnboundVarE n
-#else
-expToTH (DUnboundVarE _) = error "Wildcards supported only in GHC 8.0+"
 #endif
 
 matchToTH :: DMatch -> Match
@@ -193,25 +193,25 @@ letDecToTH (DInfixD f name)     = InfixD f name
 
 conToTH :: DCon -> Con
 #if __GLASGOW_HASKELL__ > 710
-conToTH (DCon [] [] n (DNormalC stys (Just rty))) =
-  GadtC [n] (map (liftSnd typeToTH) stys) (typeToTH rty)
-conToTH (DCon [] [] n (DRecC vstys (Just rty))) =
-  RecGadtC [n] (map (liftThdOf3 typeToTH) vstys) (typeToTH rty)
+conToTH (DCon [] [] n (DNormalC stys) (Just rty)) =
+  GadtC [n] (map (second typeToTH) stys) (typeToTH rty)
+conToTH (DCon [] [] n (DRecC vstys) (Just rty)) =
+  RecGadtC [n] (map (thirdOf3 typeToTH) vstys) (typeToTH rty)
 #endif
-conToTH (DCon [] [] n (DNormalC stys _)) =
+conToTH (DCon [] [] n (DNormalC stys) _) =
 #if __GLASGOW_HASKELL__ > 710
-  NormalC n (map (liftSnd typeToTH) stys)
+  NormalC n (map (second typeToTH) stys)
 #else
   NormalC n (map (bangToStrict *** typeToTH) stys)
 #endif
-conToTH (DCon [] [] n (DRecC vstys _)) =
+conToTH (DCon [] [] n (DRecC vstys) _) =
 #if __GLASGOW_HASKELL__ > 710
-  RecC n (map (liftThdOf3 typeToTH) vstys)
+  RecC n (map (thirdOf3 typeToTH) vstys)
 #else
   RecC n (map (\(v,b,t) -> (v,bangToStrict b,typeToTH t)) vstys)
 #endif
-conToTH (DCon tvbs cxt n fields) =
-  ForallC (map tvbToTH tvbs) (cxtToTH cxt) (conToTH $ DCon [] [] n fields)
+conToTH (DCon tvbs cxt n fields rty) =
+  ForallC (map tvbToTH tvbs) (cxtToTH cxt) (conToTH $ DCon [] [] n fields rty)
 
 foreignToTH :: DForeign -> Foreign
 foreignToTH (DImportF cc safety str n ty) =
@@ -284,7 +284,7 @@ predToTH = go []
     go acc (DSigPr p _) = go acc                p  -- this shouldn't happen.
     go _   (DVarPr _)
       = error "Template Haskell in GHC <= 7.8 does not support variable constraints."
-    go acc (DConPr n) 
+    go acc (DConPr n)
       | nameBase n == "~"
       , [t1, t2] <- acc
       = EqualP t1 t2

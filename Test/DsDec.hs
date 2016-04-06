@@ -7,13 +7,18 @@ eir@cis.upenn.edu
 {-# LANGUAGE TemplateHaskell, GADTs, PolyKinds, TypeFamilies,
              MultiParamTypeClasses, FunctionalDependencies,
              FlexibleInstances, DataKinds, CPP, RankNTypes,
-             StandaloneDeriving, DefaultSignatures #-}
+             StandaloneDeriving, DefaultSignatures,
+             ConstraintKinds #-}
 #if __GLASGOW_HASKELL__ >= 707
 {-# LANGUAGE RoleAnnotations #-}
 #endif
 
 {-# OPTIONS_GHC -fno-warn-orphans -fno-warn-incomplete-patterns
                 -fno-warn-name-shadowing #-}
+
+#if __GLASGOW_HASKELL__ >= 711
+{-# OPTIONS_GHC -Wno-redundant-constraints #-}
+#endif
 
 module DsDec where
 
@@ -53,6 +58,9 @@ $(dsDecSplice S.dectest11)
 $(dsDecSplice S.standalone_deriving_test)
 #endif
 
+$(dsDecSplice S.dectest12)
+$(dsDecSplice S.dectest13)
+
 $(do decs <- S.rec_sel_test
      [DDataD nd [] name [DPlainTV tvbName] cons []] <- dsDecs decs
      let arg_ty = (DConT name) `DAppT` (DVarT tvbName)
@@ -62,12 +70,11 @@ $(do decs <- S.rec_sel_test
        reportError $ "Wrong number of record selectors extracted.\n"
                   ++ "Wanted " ++ show S.rec_sel_test_num_sels
                   ++ ", Got " ++ show num_sels
-     let unrecord c@(DCon _ _ _ (DNormalC {})) = c
-         unrecord (DCon tvbs cxt con_name (DRecC fields rty)) =
+     let unrecord c@(DCon _ _ _ (DNormalC {}) _) = c
+         unrecord (DCon tvbs cxt con_name (DRecC fields) rty) =
            let (_names, stricts, types) = unzip3 fields
                fields' = zip stricts types
            in
-           DCon tvbs cxt con_name (DNormalC fields' rty)
+           DCon tvbs cxt con_name (DNormalC fields') rty
          plaindata = [DDataD nd [] name [DPlainTV tvbName] (map unrecord cons) []]
      return (decsToTH plaindata ++ map letDecToTH recsels))
-

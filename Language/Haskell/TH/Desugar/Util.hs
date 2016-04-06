@@ -14,8 +14,8 @@ module Language.Haskell.TH.Desugar.Util (
   nameOccursIn, allNamesIn, mkTypeName, mkDataName, isDataName,
   stripVarP_maybe, extractBoundNamesStmt,
   concatMapM, mapMaybeM, expectJustM,
-  liftSndM, liftThdOf3M, stripPlainTV_maybe,
-  liftSnd, liftThdOf3, splitAtList, extractBoundNamesDec,
+  stripPlainTV_maybe,
+  thirdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat,
   tvbName, tvbToType, nameMatches, freeNamesOfTypes, thdOf3, firstMatch,
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
@@ -27,7 +27,6 @@ import Prelude hiding (mapM, foldl, concatMap, any)
 import Language.Haskell.TH hiding ( cxt )
 import Language.Haskell.TH.Syntax
 
-import Control.Arrow  ( second )
 import qualified Data.Set as S
 import Data.Foldable
 import Data.Generics hiding ( Fixity )
@@ -232,20 +231,11 @@ splitAtList (_ : t) (x : xs) =
   (x : as, bs)
 splitAtList (_ : _) [] = ([], [])
 
-liftSnd :: (a -> b) -> (c, a) -> (c, b)
-liftSnd = second
-
-liftSndM :: Monad m => (a -> m b) -> (c, a) -> m (c, b)
-liftSndM f (c, a) = f a >>= return . (c, )
-
 thdOf3 :: (a,b,c) -> c
 thdOf3 (_,_,c) = c
 
-liftThdOf3 :: (a -> b) -> (c, d, a) -> (c, d, b)
-liftThdOf3 f (c, d, a) = (c, d, f a)
-
-liftThdOf3M :: Monad m => (a -> m b) -> (c, d, a) -> m (c, d, b)
-liftThdOf3M f (c, d, a) = f a >>= return . (c, d, )
+thirdOf3 :: (a -> b) -> (c, d, a) -> (c, d, b)
+thirdOf3 f (c, d, a) = (c, d, f a)
 
 -- lift concatMap into a monad
 -- could this be more efficient?
