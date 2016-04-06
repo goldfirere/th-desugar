@@ -32,11 +32,7 @@ module Language.Haskell.TH.Desugar.Sweeten (
   ) where
 
 import Prelude hiding (exp)
-import Control.Arrow (second)
-
-#if __GLASGOW_HASKELL__ < 711
-import Control.Arrow ((***))
-#endif
+import Control.Arrow
 
 import Language.Haskell.TH hiding (cxt)
 
