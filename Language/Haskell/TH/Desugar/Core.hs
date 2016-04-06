@@ -653,7 +653,7 @@ fixBug8884ForFamilies (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs ann) eq
       eqns' = map (fixBug8884ForEqn num_args) eqns
   frs' <- remove_arrows num_args frs
   return (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs' ann) eqns', num_args)
-fixBug8884ForFamilies dec@(DDataFamilyD _ tvbs)
+fixBug8884ForFamilies dec@(DDataFamilyD _ _)
   = return (dec, 0)   -- the num_args is ignored for data families
 fixBug8884ForFamilies dec =
   impossible $ "Reifying yielded a FamilyI with a non-family Dec: " ++ show dec
