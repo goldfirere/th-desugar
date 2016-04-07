@@ -9,7 +9,7 @@ eir@cis.upenn.edu
              ScopedTypeVariables, RankNTypes, TypeFamilies, ImpredicativeTypes,
              DataKinds, PolyKinds, GADTs, MultiParamTypeClasses,
              FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
-             DefaultSignatures #-}
+             DefaultSignatures, ConstraintKinds #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
