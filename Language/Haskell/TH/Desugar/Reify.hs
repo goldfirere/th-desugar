@@ -270,7 +270,11 @@ reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
 reifyInDec n decs (ClassD _ _ _ _ sub_decs)
   | Just info <- firstMatch (reifyInDec n (sub_decs ++ decs)) sub_decs
   = Just info
+#if __GLASGOW_HASKELL__ >= 711
+reifyInDec n decs (InstanceD _ _ _ sub_decs)
+#else
 reifyInDec n decs (InstanceD _ _ sub_decs)
+#endif
   | Just info <- firstMatch reify_in_instance sub_decs
   = Just info
   where
@@ -354,7 +358,12 @@ findType n = firstMatch match_type
 findInstances :: Name -> [Dec] -> [Dec]
 findInstances n = map stripInstanceDec . concatMap match_instance
   where
-    match_instance d@(InstanceD _ ty _)        | ConT n' <- ty_head ty
+#if __GLASGOW_HASKELL__ >= 711
+    match_instance d@(InstanceD _ _ ty _)
+#else
+    match_instance d@(InstanceD _ ty _)
+#endif
+                                               | ConT n' <- ty_head ty
                                                , n `nameMatches` n' = [d]
 #if __GLASGOW_HASKELL__ > 710
     match_instance d@(DataInstD _ n' _ _ _ _)    | n `nameMatches` n' = [d]
@@ -368,7 +377,13 @@ findInstances n = map stripInstanceDec . concatMap match_instance
 #else
     match_instance d@(TySynInstD n' _ _)       | n `nameMatches` n' = [d]
 #endif
-    match_instance (InstanceD _ _ decs) = concatMap match_instance decs
+
+#if __GLASGOW_HASKELL__ >= 711
+    match_instance (InstanceD _ _ _ decs)
+#else
+    match_instance (InstanceD _ _ decs)
+#endif
+                                        = concatMap match_instance decs
     match_instance _                    = []
 
     ty_head (ForallT _ _ ty) = ty_head ty
@@ -399,8 +414,12 @@ addClassCxt class_name tvbs ty = ForallT tvbs class_cxt ty
 #endif
 
 stripInstanceDec :: Dec -> Dec
-stripInstanceDec (InstanceD cxt ty _) = InstanceD cxt ty []
-stripInstanceDec dec                  = dec
+#if __GLASGOW_HASKELL__ >= 711
+stripInstanceDec (InstanceD over cxt ty _) = InstanceD over cxt ty []
+#else
+stripInstanceDec (InstanceD cxt ty _)      = InstanceD cxt ty []
+#endif
+stripInstanceDec dec                       = dec
 
 mkArrows :: [Type] -> Type -> Type
 mkArrows []     res_ty = res_ty

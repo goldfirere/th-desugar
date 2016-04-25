@@ -24,7 +24,8 @@ eir@cis.upenn.edu
 module Language.Haskell.TH.Desugar (
   -- * Desugared data types
   DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred(..),
-  DTyVarBndr(..), DMatch(..), DClause(..), DDec(..), NewOrData(..),
+  DTyVarBndr(..), DMatch(..), DClause(..), DDec(..),
+  Overlap(..), NewOrData(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
   DCon(..), DConFields(..), DBangType, DVarBangType,
   Bang(..), SourceUnpackedness(..), SourceStrictness(..),

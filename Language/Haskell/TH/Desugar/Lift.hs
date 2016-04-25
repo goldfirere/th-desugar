@@ -33,6 +33,6 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DPred, ''DTyVarBndr
                  , ''DTypeFamilyHead,  ''DFamilyResultSig
 #if __GLASGOW_HASKELL__ <= 710
                  , ''InjectivityAnn, ''Bang, ''SourceUnpackedness
-                 , ''SourceStrictness
+                 , ''SourceStrictness, ''Overlap
 #endif
                  ])

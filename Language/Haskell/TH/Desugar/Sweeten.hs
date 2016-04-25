@@ -93,8 +93,13 @@ decToTH (DDataD Newtype cxt n tvbs [con] derivings) =
 decToTH (DTySynD n tvbs ty) = [TySynD n (map tvbToTH tvbs) (typeToTH ty)]
 decToTH (DClassD cxt n tvbs fds decs) =
   [ClassD (cxtToTH cxt) n (map tvbToTH tvbs) fds (decsToTH decs)]
-decToTH (DInstanceD cxt ty decs) =
+#if __GLASGOW_HASKELL__ >= 711
+decToTH (DInstanceD over cxt ty decs) =
+  [InstanceD over (cxtToTH cxt) (typeToTH ty) (decsToTH decs)]
+#else
+decToTH (DInstanceD _ cxt ty decs) =
   [InstanceD (cxtToTH cxt) (typeToTH ty) (decsToTH decs)]
+#endif
 decToTH (DForeignD f) = [ForeignD (foreignToTH f)]
 decToTH (DPragmaD prag) = maybeToList $ fmap PragmaD (pragmaToTH prag)
 #if __GLASGOW_HASKELL__ > 710

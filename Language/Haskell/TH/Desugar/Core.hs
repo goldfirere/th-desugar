@@ -114,7 +114,7 @@ data DDec = DLetDec DLetDec
           | DDataD NewOrData DCxt Name [DTyVarBndr] [DCon] [DPred]
           | DTySynD Name [DTyVarBndr] DType
           | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
-          | DInstanceD DCxt DType [DDec]
+          | DInstanceD (Maybe Overlap) DCxt DType [DDec]
           | DForeignD DForeign
           | DPragmaD DPragma
           | DOpenTypeFamilyD DTypeFamilyHead
@@ -126,6 +126,11 @@ data DDec = DLetDec DLetDec
           | DStandaloneDerivD DCxt DType
           | DDefaultSigD Name DType
           deriving (Show, Typeable, Data, Generic)
+
+#if __GLASGOW_HASKELL__ < 711
+data Overlap = Overlappable | Overlapping | Overlaps | Incoherent
+  deriving (Eq, Ord, Show, Typeable, Data, Generic)
+#endif
 
 -- | Corresponds to TH's 'TypeFamilyHead' type
 data DTypeFamilyHead = DTypeFamilyHead Name [DTyVarBndr] DFamilyResultSig
@@ -723,8 +728,13 @@ dsDec (TySynD n tvbs ty) =
 dsDec (ClassD cxt n tvbs fds decs) =
   (:[]) <$> (DClassD <$> dsCxt cxt <*> pure n <*> mapM dsTvb tvbs
                      <*> pure fds <*> dsDecs decs)
+#if __GLASGOW_HASKELL__ >= 711
+dsDec (InstanceD over cxt ty decs) =
+  (:[]) <$> (DInstanceD <$> pure over <*> dsCxt cxt <*> dsType ty <*> dsDecs decs)
+#else
 dsDec (InstanceD cxt ty decs) =
-  (:[]) <$> (DInstanceD <$> dsCxt cxt <*> dsType ty <*> dsDecs decs)
+  (:[]) <$> (DInstanceD <$> pure Nothing <*> dsCxt cxt <*> dsType ty <*> dsDecs decs)
+#endif
 dsDec d@(SigD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
 dsDec d@(InfixD {}) = (fmap . map) DLetDec $ dsLetDec d
