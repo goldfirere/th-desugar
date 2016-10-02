@@ -9,6 +9,7 @@ processing. The desugared types and constructors are prefixed with a D.
 
 {-# LANGUAGE TemplateHaskell, LambdaCase, CPP, DeriveDataTypeable,
              DeriveGeneric, TupleSections #-}
+{-# OPTIONS_GHC -fno-warn-dodgy-imports #-}
 
 module Language.Haskell.TH.Desugar.Core where
 
