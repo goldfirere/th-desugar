@@ -9,13 +9,14 @@ processing. The desugared types and constructors are prefixed with a D.
 
 {-# LANGUAGE TemplateHaskell, LambdaCase, CPP, DeriveDataTypeable,
              DeriveGeneric, TupleSections #-}
+{-# OPTIONS_GHC -fno-warn-dodgy-imports #-}
 
 module Language.Haskell.TH.Desugar.Core where
 
 import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
-import Language.Haskell.TH hiding (match, clause, cxt)
-import Language.Haskell.TH.Syntax hiding (lift)
+import Language.Haskell.TH hiding (Newtype, match, clause, cxt)
+import Language.Haskell.TH.Syntax hiding (Newtype, lift)
 import Language.Haskell.TH.ExpandSyns ( expandSyns )
 
 #if __GLASGOW_HASKELL__ < 709
@@ -231,6 +232,10 @@ data DInfo = DTyConI DDec (Maybe [DInstanceDec])
            deriving (Show, Typeable, Data, Generic)
 
 type DInstanceDec = DDec -- ^ Guaranteed to be an instance declaration
+
+#if __GLASGOW_HASKELL__ >= 801
+data DDerivClause = DDerivClause (Maybe DerivStrategy) DCxt
+#endif
 
 -- | Desugar an expression
 dsExp :: DsMonad q => Exp -> q DExp
@@ -707,12 +712,12 @@ dsDec (DataD cxt n tvbs mk cons derivings) = do
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
                          <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
                          <*> concatMapM dsCon cons
-                         <*> dsCxt derivings)
+                         <*> concatMapM dsDerivClause derivings)
 dsDec (NewtypeD cxt n tvbs mk con derivings) = do
   extra_tvbs <- mkExtraTvbs tvbs mk
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
                             <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
-                            <*> dsCon con <*> dsCxt derivings)
+                            <*> dsCon con <*> concatMapM dsDerivClause derivings)
 #else
 dsDec (DataD cxt n tvbs cons derivings) =
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
@@ -758,13 +763,13 @@ dsDec (DataInstD cxt n tys mk cons derivings) = do
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n
                              <*> ((++ extra_tvbs) <$> mapM dsType tys)
                              <*> concatMapM dsCon cons
-                             <*> dsCxt derivings)
+                             <*> concatMapM dsDerivClause derivings)
 dsDec (NewtypeInstD cxt n tys mk con derivings) = do
   extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs [] mk
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n
                                 <*> ((++ extra_tvbs) <$> mapM dsType tys)
                                 <*> dsCon con
-                                <*> dsCxt derivings)
+                                <*> concatMapM dsDerivClause derivings)
 #else
 dsDec (DataInstD cxt n tys cons derivings) = do
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
@@ -792,8 +797,14 @@ dsDec (ClosedTypeFamilyD n tvbs m_k eqns) = do
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #endif
 #if __GLASGOW_HASKELL__ >= 709
-dsDec (StandaloneDerivD cxt ty) = (:[]) <$> (DStandaloneDerivD <$> dsCxt cxt
-                                                               <*> dsType ty)
+#if __GLASGOW_HASKELL__ >= 801
+dsDec (StandaloneDerivD (Just _) cxt ty) = fail "Deriving strategies not supported by th-desugar."
+dsDec (StandaloneDerivD Nothing cxt ty) =
+#else
+dsDec (StandaloneDerivD cxt ty) =
+#endif
+  (:[]) <$> (DStandaloneDerivD <$> dsCxt cxt
+                               <*> dsType ty)
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
 
@@ -1031,6 +1042,15 @@ dsTvb (KindedTV n k) = DKindedTV n <$> dsType k
 -- | Desugar a @Cxt@
 dsCxt :: DsMonad q => Cxt -> q DCxt
 dsCxt = concatMapM dsPred
+
+#if __GLASGOW_HASKELL__ >= 801
+dsDerivClause :: DsMonad q => DerivClause -> q DCxt
+dsDerivClause (DerivClause Nothing cxt) = dsCxt cxt
+dsDerivClause (DerivClause _ cxt) = fail "Deriving strategies not supported in th-desugar."
+#else
+dsDerivClause :: DsMonad q => Pred -> q DCxt
+dsDerivClause = dsPred
+#endif
 
 -- | Desugar a @Pred@, flattening any internal tuples
 dsPred :: DsMonad q => Pred -> q DCxt

@@ -8,6 +8,7 @@ Converts desugared TH back into real TH.
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -fno-warn-dodgy-imports #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -34,7 +35,7 @@ module Language.Haskell.TH.Desugar.Sweeten (
 import Prelude hiding (exp)
 import Control.Arrow
 
-import Language.Haskell.TH hiding (cxt)
+import Language.Haskell.TH hiding (Newtype, cxt)
 
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
@@ -77,7 +78,11 @@ decToTH (DLetDec d) = [letDecToTH d]
 decToTH (DDataD Data cxt n tvbs cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
   [DataD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (map conToTH cons)
+#if __GLASGOW_HASKELL__ >= 801
+         [DerivClause Nothing (cxtToTH derivings)]]
+#else
          (cxtToTH derivings)]
+#endif
 #else
   [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons)
          (map derivingToTH derivings)]
@@ -85,7 +90,11 @@ decToTH (DDataD Data cxt n tvbs cons derivings) =
 decToTH (DDataD Newtype cxt n tvbs [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
   [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (conToTH con)
+#if __GLASGOW_HASKELL__ >= 801
+            [DerivClause Nothing (cxtToTH derivings)]]
+#else
             (cxtToTH derivings)]
+#endif
 #else
   [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con)
             (map derivingToTH derivings)]
@@ -118,7 +127,11 @@ decToTH (DDataFamilyD n tvbs) =
 decToTH (DDataInstD Data cxt n tys cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
   [DataInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (map conToTH cons)
+#if __GLASGOW_HASKELL__ >= 801
+             [DerivClause Nothing (cxtToTH derivings)]
+#else
              (cxtToTH derivings)
+#endif
   ]
 #else
   [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons)
@@ -128,7 +141,11 @@ decToTH (DDataInstD Data cxt n tys cons derivings) =
 decToTH (DDataInstD Newtype cxt n tys [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
   [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (conToTH con)
+#if __GLASGOW_HASKELL__ >= 801
+                [DerivClause Nothing (cxtToTH derivings)]
+#else
                 (cxtToTH derivings)
+#endif
   ]
 #else
   [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con)
@@ -161,7 +178,11 @@ decToTH (DDefaultSigD {})      =
   error "Default method signatures supported only in GHC 7.10+"
 #else
 decToTH (DStandaloneDerivD cxt ty) =
+#if __GLASGOW_HASKELL__ >= 801
+  [StandaloneDerivD Nothing (cxtToTH cxt) (typeToTH ty)]
+#else
   [StandaloneDerivD (cxtToTH cxt) (typeToTH ty)]
+#endif
 decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
 #endif
 decToTH _ = error "Newtype declaration without exactly 1 constructor."
