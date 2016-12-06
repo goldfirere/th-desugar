@@ -7,7 +7,8 @@ eir@cis.upenn.edu
 {-# LANGUAGE TemplateHaskell, UnboxedTuples, ParallelListComp, CPP,
              RankNTypes, ImpredicativeTypes, TypeFamilies,
              DataKinds, ConstraintKinds, PolyKinds, MultiParamTypeClasses,
-             FlexibleInstances, ExistentialQuantification #-}
+             FlexibleInstances, ExistentialQuantification,
+             ScopedTypeVariables #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
@@ -108,6 +109,9 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #endif
 #if __GLASGOW_HASKELL__ >= 711
              , "wildcard" ~: $test40_wildcards@=? $(dsSplice test40_wildcards)
+#endif
+#if MIN_VERSION_template_haskell(2,12,0)
+             , "typeapps" ~: $test41_typeapps @=? $(dsSplice test41_typeapps)
 #endif
              ]
 

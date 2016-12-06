@@ -56,6 +56,11 @@ expToTH (DStaticE _)         = error "Static expressions supported only in GHC 7
 #else
 expToTH (DStaticE exp)       = StaticE (expToTH exp)
 #endif
+#if MIN_VERSION_template_haskell(2,12,0)
+expToTH (DAppTypeE exp ty)   = AppTypeE (expToTH exp) (typeToTH ty)
+#else
+expToTH (DAppTypeE {})       = error "Type applications supported only in GHC 8.2+"
+#endif
 
 matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
