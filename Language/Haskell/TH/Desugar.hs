@@ -25,6 +25,7 @@ module Language.Haskell.TH.Desugar (
   -- * Desugared data types
   DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred(..),
   DTyVarBndr(..), DMatch(..), DClause(..), DDec(..),
+  DDerivClause(..), DDerivStrategy(..),
   Overlap(..), NewOrData(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
   DCon(..), DConFields(..), DBangType, DVarBangType,
@@ -49,6 +50,7 @@ module Language.Haskell.TH.Desugar (
 #if __GLASGOW_HASKELL__ > 710
   dsTypeFamilyHead, dsFamilyResultSig,
 #endif
+  dsDerivClause,
 
   -- * Converting desugared AST back to TH AST
   module Language.Haskell.TH.Desugar.Sweeten,

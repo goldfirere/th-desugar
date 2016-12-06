@@ -26,6 +26,7 @@ import Language.Haskell.TH.Lift
 $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DPred, ''DTyVarBndr
                  , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DCon
                  , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
+                 , ''DDerivClause, ''DDerivStrategy
                  , ''NewOrData
 #if __GLASGOW_HASKELL__ < 707
                  , ''AnnTarget, ''Role

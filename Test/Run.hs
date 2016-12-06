@@ -205,6 +205,13 @@ test_standalone_deriving = (MkBlarggie 5 'x') == (MkBlarggie 5 'x')
 test_standalone_deriving = True
 #endif
 
+test_deriving_strategies :: Bool
+#if MIN_VERSION_template_haskell(2,12,0)
+test_deriving_strategies = compare (MkBlarggie 5 'x') (MkBlarggie 5 'x') == EQ
+#else
+test_deriving_strategies = True
+#endif
+
 local_reifications :: [String]
 local_reifications = $(do decs <- reifyDecs
                           m_infos <- withLocalDeclarations decs $
@@ -271,6 +278,8 @@ main = hspec $ do
     it "extracts record selectors" $ test_rec_sels
 
     it "works with standalone deriving" $ test_standalone_deriving
+
+    it "workds with deriving strategies" $ test_deriving_strategies
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')

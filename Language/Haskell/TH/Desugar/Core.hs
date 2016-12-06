@@ -15,6 +15,9 @@ module Language.Haskell.TH.Desugar.Core where
 
 import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
+#if MIN_VERSION_template_haskell(2,12,0)
+import qualified Language.Haskell.TH as TH
+#endif
 import Language.Haskell.TH hiding (Newtype, match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (Newtype, lift)
 import Language.Haskell.TH.ExpandSyns ( expandSyns )
@@ -113,7 +116,7 @@ data NewOrData = Newtype
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
-          | DDataD NewOrData DCxt Name [DTyVarBndr] [DCon] [DPred]
+          | DDataD NewOrData DCxt Name [DTyVarBndr] [DCon] [DDerivClause]
           | DTySynD Name [DTyVarBndr] DType
           | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
           | DInstanceD (Maybe Overlap) DCxt DType [DDec]
@@ -122,10 +125,10 @@ data DDec = DLetDec DLetDec
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
           | DDataFamilyD Name [DTyVarBndr]
-          | DDataInstD NewOrData DCxt Name [DType] [DCon] [DPred]
+          | DDataInstD NewOrData DCxt Name [DType] [DCon] [DDerivClause]
           | DTySynInstD Name DTySynEqn
           | DRoleAnnotD Name [Role]
-          | DStandaloneDerivD DCxt DType
+          | DStandaloneDerivD (Maybe DDerivStrategy) DCxt DType
           | DDefaultSigD Name DType
           deriving (Show, Typeable, Data, Generic)
 
@@ -234,9 +237,18 @@ data DInfo = DTyConI DDec (Maybe [DInstanceDec])
 
 type DInstanceDec = DDec -- ^ Guaranteed to be an instance declaration
 
-#if __GLASGOW_HASKELL__ >= 801
-data DDerivClause = DDerivClause (Maybe DerivStrategy) DCxt
-#endif
+-- | Corresponds to TH's @DerivClause@ type.
+data DDerivClause = DDerivClause (Maybe DDerivStrategy) DCxt
+                  deriving (Show, Typeable, Data, Generic)
+
+-- | Corresponds to TH's @DerivStrategy@ type.
+
+-- This is redefined here, since the Newtype constructor of DerivStrategy
+-- conflicts with the Newtype constructor of NewOrData.
+data DDerivStrategy = DStock    -- ^ A \"standard\" derived instance
+                    | DAnyclass -- ^ @-XDeriveAnyClass@
+                    | DNewtype  -- ^ @-XGeneralizedNewtypeDeriving@
+                    deriving (Show, Typeable, Data, Generic)
 
 -- | Desugar an expression
 dsExp :: DsMonad q => Exp -> q DExp
@@ -724,21 +736,22 @@ dsDec (DataD cxt n tvbs mk cons derivings) = do
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
                          <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
                          <*> concatMapM dsCon cons
-                         <*> concatMapM dsDerivClause derivings)
+                         <*> mapM dsDerivClause derivings)
 dsDec (NewtypeD cxt n tvbs mk con derivings) = do
   extra_tvbs <- mkExtraTvbs tvbs mk
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
                             <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
-                            <*> dsCon con <*> concatMapM dsDerivClause derivings)
+                            <*> dsCon con
+                            <*> mapM dsDerivClause derivings)
 #else
 dsDec (DataD cxt n tvbs cons derivings) =
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
                          <*> mapM dsTvb tvbs <*> concatMapM dsCon cons
-                         <*> pure (map DConPr derivings))
+                         <*> mapM dsDerivClause derivings)
 dsDec (NewtypeD cxt n tvbs con derivings) =
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
                             <*> mapM dsTvb tvbs <*> dsCon con
-                            <*> pure (map DConPr derivings))
+                            <*> mapM dsDerivClause derivings)
 #endif
 dsDec (TySynD n tvbs ty) =
   (:[]) <$> (DTySynD n <$> mapM dsTvb tvbs <*> dsType ty)
@@ -775,21 +788,21 @@ dsDec (DataInstD cxt n tys mk cons derivings) = do
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n
                              <*> ((++ extra_tvbs) <$> mapM dsType tys)
                              <*> concatMapM dsCon cons
-                             <*> concatMapM dsDerivClause derivings)
+                             <*> mapM dsDerivClause derivings)
 dsDec (NewtypeInstD cxt n tys mk con derivings) = do
   extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs [] mk
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n
                                 <*> ((++ extra_tvbs) <$> mapM dsType tys)
                                 <*> dsCon con
-                                <*> concatMapM dsDerivClause derivings)
+                                <*> mapM dsDerivClause derivings)
 #else
 dsDec (DataInstD cxt n tys cons derivings) = do
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
                              <*> concatMapM dsCon cons
-                             <*> pure (map DConPr derivings))
+                             <*> mapM dsDerivClause derivings)
 dsDec (NewtypeInstD cxt n tys con derivings) = do
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                                <*> dsCon con <*> pure (map DConPr derivings))
+                                <*> dsCon con <*> mapM dsDerivClause derivings)
 #endif
 #if __GLASGOW_HASKELL__ < 707
 dsDec (TySynInstD n lhs rhs) = (:[]) <$> (DTySynInstD n <$>
@@ -809,14 +822,17 @@ dsDec (ClosedTypeFamilyD n tvbs m_k eqns) = do
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #endif
 #if __GLASGOW_HASKELL__ >= 709
-#if __GLASGOW_HASKELL__ >= 801
-dsDec (StandaloneDerivD (Just _) cxt ty) = fail "Deriving strategies not supported by th-desugar."
-dsDec (StandaloneDerivD Nothing cxt ty) =
-#else
+# if MIN_VERSION_template_haskell(2,12,0)
+dsDec (StandaloneDerivD mds cxt ty) =
+  (:[]) <$> (DStandaloneDerivD (fmap dsDerivStrategy mds)
+               <$> dsCxt cxt
+               <*> dsType ty)
+# else
 dsDec (StandaloneDerivD cxt ty) =
-#endif
-  (:[]) <$> (DStandaloneDerivD <$> dsCxt cxt
-                               <*> dsType ty)
+  (:[]) <$> (DStandaloneDerivD Nothing
+               <$> dsCxt cxt
+               <*> dsType ty)
+# endif
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
 
@@ -1055,13 +1071,23 @@ dsTvb (KindedTV n k) = DKindedTV n <$> dsType k
 dsCxt :: DsMonad q => Cxt -> q DCxt
 dsCxt = concatMapM dsPred
 
-#if __GLASGOW_HASKELL__ >= 801
-dsDerivClause :: DsMonad q => DerivClause -> q DCxt
-dsDerivClause (DerivClause Nothing cxt) = dsCxt cxt
-dsDerivClause (DerivClause _ cxt) = fail "Deriving strategies not supported in th-desugar."
+#if MIN_VERSION_template_haskell(2,12,0)
+-- | Desugar a @DerivClause@.
+dsDerivClause :: DsMonad q => DerivClause -> q DDerivClause
+dsDerivClause (DerivClause mds cxt) =
+  DDerivClause (fmap dsDerivStrategy mds) <$> dsCxt cxt
+
+-- | Desugar a @DerivStrategy@.
+dsDerivStrategy :: DerivStrategy -> DDerivStrategy
+dsDerivStrategy Stock      = DStock
+dsDerivStrategy Anyclass   = DAnyclass
+dsDerivStrategy TH.Newtype = DNewtype
+#elif MIN_VERSION_template_haskell(2,11,0)
+dsDerivClause :: DsMonad q => Pred -> q DDerivClause
+dsDerivClause p = DDerivClause Nothing <$> dsPred p
 #else
-dsDerivClause :: DsMonad q => Pred -> q DCxt
-dsDerivClause = dsPred
+dsDerivClause :: DsMonad q => Name -> q DDerivClause
+dsDerivClause n = pure $ DDerivClause Nothing [DConPr n]
 #endif
 
 -- | Desugar a @Pred@, flattening any internal tuples

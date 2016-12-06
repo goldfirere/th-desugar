@@ -11,8 +11,12 @@ eir@cis.upenn.edu
              FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
              DefaultSignatures, ConstraintKinds #-}
 
-#if __GLASGOW_HASKELL__ >= 800
+#if __GLASGOW_HASKELL__ >= 709
 {-# LANGUAGE TypeApplications #-}
+#endif
+
+#if __GLASGOW_HASKELL__ >= 801
+{-# LANGUAGE DerivingStrategies #-}
 #endif
 
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
@@ -322,6 +326,9 @@ dectest11 = [d| class Dec11 a where
                   meth13 = (==)
               |]
 standalone_deriving_test = [d| deriving instance Eq a => Eq (Blarggie a) |]
+#endif
+#if MIN_VERSION_template_haskell(2,12,0)
+deriv_strat_test = [d| deriving stock instance Ord a => Ord (Blarggie a) |]
 #endif
 
 dectest12 = [d| data Dec12 a where
