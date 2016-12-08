@@ -61,7 +61,7 @@ expToTH (DAppTypeE exp ty)   = AppTypeE (expToTH exp) (typeToTH ty)
 #else
 -- In the event that we're on a version of Template Haskell without support for
 -- type applications, we will simply drop the applied type.
-expToTH (DAppTypeE exp _)    = AppE (expToTH exp)
+expToTH (DAppTypeE exp _)    = expToTH exp
 #endif
 
 matchToTH :: DMatch -> Match
