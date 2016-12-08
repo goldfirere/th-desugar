@@ -371,7 +371,7 @@ dsExp (StaticE exp) = DStaticE <$> dsExp exp
 #if __GLASGOW_HASKELL__ > 710
 dsExp (UnboundVarE n) = return (DVarE n)
 #endif
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
 dsExp (AppTypeE exp ty) = DAppTypeE <$> dsExp exp <*> dsType ty
 #endif
 

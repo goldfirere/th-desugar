@@ -216,9 +216,9 @@ test40_wildcards = [| let f :: (Show a, _) => a -> a -> _
                       f True False :: String |]
 #endif
 
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
 test41_typeapps = [| let f :: forall a. (a -> Bool) -> Bool
-                         f g = g (undefined @(_) @(a)) in
+                         f g = g (undefined @_ @a) in
                      f (const True) |]
 #endif
 
@@ -497,7 +497,7 @@ test_exprs = [ test1_sections
              , test38_pred2
              , test39_eq
 #endif
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
              , test41_typeapps
 #endif
              ]

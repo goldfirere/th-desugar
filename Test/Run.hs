@@ -110,7 +110,7 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #if __GLASGOW_HASKELL__ >= 711
              , "wildcard" ~: $test40_wildcards@=? $(dsSplice test40_wildcards)
 #endif
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
              , "typeapps" ~: $test41_typeapps @=? $(dsSplice test41_typeapps)
 #endif
              ]
