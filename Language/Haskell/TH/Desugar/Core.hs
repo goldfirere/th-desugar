@@ -1082,7 +1082,7 @@ dsDerivStrategy :: DerivStrategy -> DDerivStrategy
 dsDerivStrategy Stock      = DStock
 dsDerivStrategy Anyclass   = DAnyclass
 dsDerivStrategy TH.Newtype = DNewtype
-#elif __GLASGOW_HASKELL__ >= 709
+#elif __GLASGOW_HASKELL__ >= 711
 dsDerivClause :: DsMonad q => Pred -> q DDerivClause
 dsDerivClause p = DDerivClause Nothing <$> dsPred p
 #else
