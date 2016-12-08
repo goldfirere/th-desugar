@@ -61,7 +61,7 @@ $(dsDecSplice S.dectest11)
 $(dsDecSplice S.standalone_deriving_test)
 #endif
 
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
 $(dsDecSplice S.deriv_strat_test)
 #endif
 

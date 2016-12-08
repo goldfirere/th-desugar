@@ -206,7 +206,7 @@ test_standalone_deriving = True
 #endif
 
 test_deriving_strategies :: Bool
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
 test_deriving_strategies = compare (MkBlarggie 5 'x') (MkBlarggie 5 'x') == EQ
 #else
 test_deriving_strategies = True

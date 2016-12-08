@@ -15,7 +15,7 @@ module Language.Haskell.TH.Desugar.Core where
 
 import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
 import qualified Language.Haskell.TH as TH
 #endif
 import Language.Haskell.TH hiding (Newtype, match, clause, cxt)
@@ -822,17 +822,17 @@ dsDec (ClosedTypeFamilyD n tvbs m_k eqns) = do
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #endif
 #if __GLASGOW_HASKELL__ >= 709
-# if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
 dsDec (StandaloneDerivD mds cxt ty) =
   (:[]) <$> (DStandaloneDerivD (fmap dsDerivStrategy mds)
                <$> dsCxt cxt
                <*> dsType ty)
-# else
+#else
 dsDec (StandaloneDerivD cxt ty) =
   (:[]) <$> (DStandaloneDerivD Nothing
                <$> dsCxt cxt
                <*> dsType ty)
-# endif
+#endif
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
 
@@ -1071,18 +1071,18 @@ dsTvb (KindedTV n k) = DKindedTV n <$> dsType k
 dsCxt :: DsMonad q => Cxt -> q DCxt
 dsCxt = concatMapM dsPred
 
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
 -- | Desugar a @DerivClause@.
 dsDerivClause :: DsMonad q => DerivClause -> q DDerivClause
 dsDerivClause (DerivClause mds cxt) =
   DDerivClause (fmap dsDerivStrategy mds) <$> dsCxt cxt
 
--- | Desugar a @DerivStrategy@.
+-- | Desugar a @DerivStrategy@. (Available only with GHC 8.2+)
 dsDerivStrategy :: DerivStrategy -> DDerivStrategy
 dsDerivStrategy Stock      = DStock
 dsDerivStrategy Anyclass   = DAnyclass
 dsDerivStrategy TH.Newtype = DNewtype
-#elif MIN_VERSION_template_haskell(2,11,0)
+#elif __GLASGOW_HASKELL__ >= 709
 dsDerivClause :: DsMonad q => Pred -> q DDerivClause
 dsDerivClause p = DDerivClause Nothing <$> dsPred p
 #else

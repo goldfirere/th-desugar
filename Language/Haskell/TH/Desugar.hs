@@ -51,6 +51,9 @@ module Language.Haskell.TH.Desugar (
   dsTypeFamilyHead, dsFamilyResultSig,
 #endif
   dsDerivClause,
+#if __GLASGOW_HASKELL__ >= 801
+  dsDerivStrategy,
+#endif
 
   -- * Converting desugared AST back to TH AST
   module Language.Haskell.TH.Desugar.Sweeten,

@@ -35,7 +35,7 @@ module Language.Haskell.TH.Desugar.Sweeten (
 import Prelude hiding (exp)
 import Control.Arrow
 
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
 import qualified Language.Haskell.TH as TH
 #endif
 import Language.Haskell.TH hiding (Newtype, cxt)
@@ -169,9 +169,9 @@ decToTH (DDefaultSigD {})      =
 #else
 decToTH (DStandaloneDerivD _mds cxt ty) =
   [StandaloneDerivD
-# if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
     (fmap derivStrategyToTH _mds)
-# endif
+#endif
     (cxtToTH cxt) (typeToTH ty)]
 decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
 #endif
@@ -288,7 +288,7 @@ tvbToTH (DKindedTV n k)        = KindedTV n (typeToTH k)
 cxtToTH :: DCxt -> Cxt
 cxtToTH = map predToTH
 
-#if MIN_VERSION_template_haskell(2,12,0)
+#if __GLASGOW_HASKELL__ >= 801
 derivClauseToTH :: DDerivClause -> [DerivClause]
 derivClauseToTH (DDerivClause mds cxt) =
   [DerivClause (fmap derivStrategyToTH mds) (cxtToTH cxt)]
