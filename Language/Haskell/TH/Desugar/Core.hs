@@ -41,6 +41,7 @@ data DExp = DVarE Name
           | DConE Name
           | DLitE Lit
           | DAppE DExp DExp
+          | DAppTypeE DExp DType
           | DLamE [Name] DExp
           | DCaseE DExp [DMatch]
           | DLetE [DLetDec] DExp
@@ -369,6 +370,9 @@ dsExp (StaticE exp) = DStaticE <$> dsExp exp
 #endif
 #if __GLASGOW_HASKELL__ > 710
 dsExp (UnboundVarE n) = return (DVarE n)
+#endif
+#if __GLASGOW_HASKELL__ >= 801
+dsExp (AppTypeE exp ty) = DAppTypeE <$> dsExp exp <*> dsType ty
 #endif
 
 -- | Desugar a lambda expression, where the body has already been desugared

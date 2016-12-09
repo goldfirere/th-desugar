@@ -10,6 +10,11 @@ eir@cis.upenn.edu
              DataKinds, PolyKinds, GADTs, MultiParamTypeClasses,
              FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
              DefaultSignatures, ConstraintKinds #-}
+
+#if __GLASGOW_HASKELL__ >= 800
+{-# LANGUAGE TypeApplications #-}
+#endif
+
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
@@ -209,6 +214,12 @@ test36_expand = [| let f :: Const Int (,) Bool Char -> Char
 test40_wildcards = [| let f :: (Show a, _) => a -> a -> _
                           f x y = if x == y then show x else "bad" in
                       f True False :: String |]
+#endif
+
+#if __GLASGOW_HASKELL__ >= 801
+test41_typeapps = [| let f :: forall a. (a -> Bool) -> Bool
+                         f g = g (undefined @_ @a) in
+                     f (const True) |]
 #endif
 
 type family TFExpand x
@@ -485,5 +496,8 @@ test_exprs = [ test1_sections
              , test37_pred
              , test38_pred2
              , test39_eq
+#endif
+#if __GLASGOW_HASKELL__ >= 801
+             , test41_typeapps
 #endif
              ]

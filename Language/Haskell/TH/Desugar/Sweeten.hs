@@ -56,6 +56,13 @@ expToTH (DStaticE _)         = error "Static expressions supported only in GHC 7
 #else
 expToTH (DStaticE exp)       = StaticE (expToTH exp)
 #endif
+#if __GLASGOW_HASKELL__ >= 801
+expToTH (DAppTypeE exp ty)   = AppTypeE (expToTH exp) (typeToTH ty)
+#else
+-- In the event that we're on a version of Template Haskell without support for
+-- type applications, we will simply drop the applied type.
+expToTH (DAppTypeE exp _)    = expToTH exp
+#endif
 
 matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
