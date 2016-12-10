@@ -8,7 +8,6 @@ Converts desugared TH back into real TH.
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -fno-warn-dodgy-imports #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -35,10 +34,7 @@ module Language.Haskell.TH.Desugar.Sweeten (
 import Prelude hiding (exp)
 import Control.Arrow
 
-#if __GLASGOW_HASKELL__ >= 801
-import qualified Language.Haskell.TH as TH
-#endif
-import Language.Haskell.TH hiding (Newtype, cxt)
+import Language.Haskell.TH hiding (cxt)
 
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
@@ -170,7 +166,7 @@ decToTH (DDefaultSigD {})      =
 decToTH (DStandaloneDerivD _mds cxt ty) =
   [StandaloneDerivD
 #if __GLASGOW_HASKELL__ >= 801
-    (fmap derivStrategyToTH _mds)
+    _mds
 #endif
     (cxtToTH cxt) (typeToTH ty)]
 decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
@@ -290,13 +286,7 @@ cxtToTH = map predToTH
 
 #if __GLASGOW_HASKELL__ >= 801
 derivClauseToTH :: DDerivClause -> [DerivClause]
-derivClauseToTH (DDerivClause mds cxt) =
-  [DerivClause (fmap derivStrategyToTH mds) (cxtToTH cxt)]
-
-derivStrategyToTH :: DDerivStrategy -> DerivStrategy
-derivStrategyToTH DStock    = Stock
-derivStrategyToTH DAnyclass = Anyclass
-derivStrategyToTH DNewtype  = TH.Newtype
+derivClauseToTH (DDerivClause mds cxt) = [DerivClause mds (cxtToTH cxt)]
 #else
 derivClauseToTH :: DDerivClause -> Cxt
 derivClauseToTH (DDerivClause _ cxt) = cxtToTH cxt

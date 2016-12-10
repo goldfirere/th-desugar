@@ -9,17 +9,13 @@ processing. The desugared types and constructors are prefixed with a D.
 
 {-# LANGUAGE TemplateHaskell, LambdaCase, CPP, DeriveDataTypeable,
              DeriveGeneric, TupleSections #-}
-{-# OPTIONS_GHC -fno-warn-dodgy-imports #-}
 
 module Language.Haskell.TH.Desugar.Core where
 
 import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
-#if __GLASGOW_HASKELL__ >= 801
-import qualified Language.Haskell.TH as TH
-#endif
-import Language.Haskell.TH hiding (Newtype, match, clause, cxt)
-import Language.Haskell.TH.Syntax hiding (Newtype, lift)
+import Language.Haskell.TH hiding (match, clause, cxt)
+import Language.Haskell.TH.Syntax hiding (lift)
 import Language.Haskell.TH.ExpandSyns ( expandSyns )
 
 #if __GLASGOW_HASKELL__ < 709
@@ -128,7 +124,7 @@ data DDec = DLetDec DLetDec
           | DDataInstD NewOrData DCxt Name [DType] [DCon] [DDerivClause]
           | DTySynInstD Name DTySynEqn
           | DRoleAnnotD Name [Role]
-          | DStandaloneDerivD (Maybe DDerivStrategy) DCxt DType
+          | DStandaloneDerivD (Maybe DerivStrategy) DCxt DType
           | DDefaultSigD Name DType
           deriving (Show, Typeable, Data, Generic)
 
@@ -238,17 +234,16 @@ data DInfo = DTyConI DDec (Maybe [DInstanceDec])
 type DInstanceDec = DDec -- ^ Guaranteed to be an instance declaration
 
 -- | Corresponds to TH's @DerivClause@ type.
-data DDerivClause = DDerivClause (Maybe DDerivStrategy) DCxt
+data DDerivClause = DDerivClause (Maybe DerivStrategy) DCxt
                   deriving (Show, Typeable, Data, Generic)
 
--- | Corresponds to TH's @DerivStrategy@ type.
-
--- This is redefined here, since the Newtype constructor of DerivStrategy
--- conflicts with the Newtype constructor of NewOrData.
-data DDerivStrategy = DStock    -- ^ A \"standard\" derived instance
-                    | DAnyclass -- ^ @-XDeriveAnyClass@
-                    | DNewtype  -- ^ @-XGeneralizedNewtypeDeriving@
-                    deriving (Show, Typeable, Data, Generic)
+#if __GLASGOW_HASKELL__ < 801
+-- | Same as @DerivStrategy@ from TH; defined here for backwards compatibility.
+data DerivStrategy = StockStrategy    -- ^ A \"standard\" derived instance
+                   | AnyclassStrategy -- ^ @-XDeriveAnyClass@
+                   | NewtypeStrategy  -- ^ @-XGeneralizedNewtypeDeriving@
+                   deriving (Show, Typeable, Data, Generic)
+#endif
 
 -- | Desugar an expression
 dsExp :: DsMonad q => Exp -> q DExp
@@ -824,14 +819,10 @@ dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #if __GLASGOW_HASKELL__ >= 709
 #if __GLASGOW_HASKELL__ >= 801
 dsDec (StandaloneDerivD mds cxt ty) =
-  (:[]) <$> (DStandaloneDerivD (fmap dsDerivStrategy mds)
-               <$> dsCxt cxt
-               <*> dsType ty)
+  (:[]) <$> (DStandaloneDerivD mds     <$> dsCxt cxt <*> dsType ty)
 #else
 dsDec (StandaloneDerivD cxt ty) =
-  (:[]) <$> (DStandaloneDerivD Nothing
-               <$> dsCxt cxt
-               <*> dsType ty)
+  (:[]) <$> (DStandaloneDerivD Nothing <$> dsCxt cxt <*> dsType ty)
 #endif
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
@@ -1074,14 +1065,7 @@ dsCxt = concatMapM dsPred
 #if __GLASGOW_HASKELL__ >= 801
 -- | Desugar a @DerivClause@.
 dsDerivClause :: DsMonad q => DerivClause -> q DDerivClause
-dsDerivClause (DerivClause mds cxt) =
-  DDerivClause (fmap dsDerivStrategy mds) <$> dsCxt cxt
-
--- | Desugar a @DerivStrategy@. (Available only with GHC 8.2+)
-dsDerivStrategy :: DerivStrategy -> DDerivStrategy
-dsDerivStrategy Stock      = DStock
-dsDerivStrategy Anyclass   = DAnyclass
-dsDerivStrategy TH.Newtype = DNewtype
+dsDerivClause (DerivClause mds cxt) = DDerivClause mds <$> dsCxt cxt
 #elif __GLASGOW_HASKELL__ >= 711
 dsDerivClause :: DsMonad q => Pred -> q DDerivClause
 dsDerivClause p = DDerivClause Nothing <$> dsPred p

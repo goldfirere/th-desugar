@@ -11,7 +11,7 @@ eir@cis.upenn.edu
              FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
              DefaultSignatures, ConstraintKinds #-}
 
-#if __GLASGOW_HASKELL__ >= 709
+#if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE TypeApplications #-}
 #endif
 
