@@ -56,6 +56,7 @@ data DPat = DLitPa Lit
           | DConPa Name [DPat]
           | DTildePa DPat
           | DBangPa DPat
+          | DSigPa DPat DType
           | DWildPa
           deriving (Show, Typeable, Data, Generic)
 
@@ -590,10 +591,7 @@ dsPat (ListP pats) = go pats
           h' <- dsPat h
           t' <- go t
           return $ DConPa '(:) [h', t']
-dsPat (SigP _ _) =
-  lift $ impossible
-             ("At last check (Aug 2013), type patterns in signatures are not\n" ++
-              "supported in GHC. They are not supported in th-desugar either.")
+dsPat (SigP pat ty) = DSigPa <$> dsPat pat <*> dsType ty
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
 
@@ -604,6 +602,7 @@ dPatToDExp (DVarPa name) = DVarE name
 dPatToDExp (DConPa name pats) = foldl DAppE (DConE name) (map dPatToDExp pats)
 dPatToDExp (DTildePa pat) = dPatToDExp pat
 dPatToDExp (DBangPa pat) = dPatToDExp pat
+dPatToDExp (DSigPa pat ty) = DSigE (dPatToDExp pat) ty
 dPatToDExp DWildPa = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
@@ -614,6 +613,7 @@ removeWilds p@(DVarPa _) = return p
 removeWilds (DConPa con_name pats) = DConPa con_name <$> mapM removeWilds pats
 removeWilds (DTildePa pat) = DTildePa <$> removeWilds pat
 removeWilds (DBangPa pat) = DBangPa <$> removeWilds pat
+removeWilds (DSigPa pat ty) = DSigPa <$> removeWilds pat <*> pure ty
 removeWilds DWildPa = DVarPa <$> newUniqueName "wild"
 
 extractBoundNamesDPat :: DPat -> S.Set Name
@@ -1174,9 +1174,10 @@ isUniversalPattern (DConPa con_name pats) = do
   if length cons == 1
   then fmap and $ mapM isUniversalPattern pats
   else return False
-isUniversalPattern (DTildePa {}) = return True
-isUniversalPattern (DBangPa pat) = isUniversalPattern pat
-isUniversalPattern DWildPa       = return True
+isUniversalPattern (DTildePa {})  = return True
+isUniversalPattern (DBangPa pat)  = isUniversalPattern pat
+isUniversalPattern (DSigPa pat _) = isUniversalPattern pat
+isUniversalPattern DWildPa        = return True
 
 -- | Apply one 'DExp' to a list of arguments
 applyDExp :: DExp -> [DExp] -> DExp

@@ -73,6 +73,7 @@ patToTH (DVarPa n)      = VarP n
 patToTH (DConPa n pats) = ConP n (map patToTH pats)
 patToTH (DTildePa pat)  = TildeP (patToTH pat)
 patToTH (DBangPa pat)   = BangP (patToTH pat)
+patToTH (DSigPa pat ty) = SigP (patToTH pat) (typeToTH ty)
 patToTH DWildPa         = WildP
 
 decsToTH :: [DDec] -> [Dec]

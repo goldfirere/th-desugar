@@ -142,7 +142,9 @@ tidy1 v (DBangPa pat) =
     DConPa _ _ -> tidy1 v pat   -- already strict
     DTildePa p -> tidy1 v (DBangPa p) -- discard ~ under !
     DBangPa p  -> tidy1 v (DBangPa p) -- discard ! under !
+    DSigPa p _ -> tidy1 v (DBangPa p) -- discard sig under !
     DWildPa    -> return (id, DBangPa pat)  -- no change
+tidy1 v (DSigPa pat _) = tidy1 v pat
 tidy1 _ DWildPa = return (id, DWildPa)
 
 wrapBind :: Name -> Name -> DExp -> DExp
@@ -216,10 +218,11 @@ groupClauses clauses
 
 patGroup :: DPat -> PatGroup
 patGroup (DLitPa l)     = PgLit l
-patGroup (DVarPa {})    = error "Internal error in th-desugar (patGroup DVarP)"
+patGroup (DVarPa {})    = error "Internal error in th-desugar (patGroup DVarPa)"
 patGroup (DConPa con _) = PgCon con
-patGroup (DTildePa {})  = error "Internal error in th-desugar (patGroup DTildeP)"
+patGroup (DTildePa {})  = error "Internal error in th-desugar (patGroup DTildePa)"
 patGroup (DBangPa {})   = PgBang
+patGroup (DSigPa{})     = error "Internal error in th-desugar (patGroup DSigPa)"
 patGroup DWildPa        = PgAny
 
 sameGroup :: PatGroup -> PatGroup -> Bool

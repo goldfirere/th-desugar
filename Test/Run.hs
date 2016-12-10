@@ -89,8 +89,9 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "asp"      ~: $test20_asp      @=? $(dsSplice test20_asp)
              , "wildp"    ~: $test21_wildp    @=? $(dsSplice test21_wildp)
              , "listp"    ~: $test22_listp    @=? $(dsSplice test22_listp)
--- type signatures in patterns not yet handled by Template Haskell
---           , "sigp"     ~: $test23_sigp     @=? $(dsSplice test23_sigp)
+#if __GLASGOW_HASKELL__ >= 801
+             , "sigp"     ~: $test23_sigp     @=? $(dsSplice test23_sigp)
+#endif
              , "fun"      ~: $test24_fun      @=? $(dsSplice test24_fun)
              , "fun2"     ~: $test25_fun2     @=? $(dsSplice test25_fun2)
              , "forall"   ~: $test26_forall   @=? $(dsSplice test26_forall)
