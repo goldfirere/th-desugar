@@ -57,6 +57,8 @@ scExp (DCaseE scrut matches)
 scExp (DLetE decs body) = DLetE <$> mapM scLetDec decs <*> scExp body
 scExp (DSigE exp ty) = DSigE <$> scExp exp <*> pure ty
 scExp (DAppTypeE exp ty) = DAppTypeE <$> scExp exp <*> pure ty
+scExp (DUnboxedSumE exp alt arity) =
+  DUnboxedSumE <$> scExp exp <*> pure alt <*> pure arity
 scExp e = return e
 
 -- | Like 'scExp', but for a 'DLetDec'.
@@ -140,13 +142,14 @@ tidy1 v (DTildePa pat) = do
   return (maybeDLetE sel_decs, DWildPa)
 tidy1 v (DBangPa pat) =
   case pat of
-    DLitPa _   -> tidy1 v pat   -- already strict
-    DVarPa _   -> return (id, DBangPa pat)  -- no change
-    DConPa _ _ -> tidy1 v pat   -- already strict
-    DTildePa p -> tidy1 v (DBangPa p) -- discard ~ under !
-    DBangPa p  -> tidy1 v (DBangPa p) -- discard ! under !
-    DSigPa p _ -> tidy1 v (DBangPa p) -- discard sig under !
-    DWildPa    -> return (id, DBangPa pat)  -- no change
+    DLitPa _         -> tidy1 v pat   -- already strict
+    DVarPa _         -> return (id, DBangPa pat)  -- no change
+    DConPa _ _       -> tidy1 v pat   -- already strict
+    DTildePa p       -> tidy1 v (DBangPa p) -- discard ~ under !
+    DBangPa p        -> tidy1 v (DBangPa p) -- discard ! under !
+    DSigPa p _       -> tidy1 v (DBangPa p) -- discard sig under !
+    DUnboxedSumPa {} -> tidy1 v pat   -- already strict
+    DWildPa          -> return (id, DBangPa pat)  -- no change
 tidy1 v (DSigPa pat ty)
   | no_tyvars_ty ty = tidy1 v pat
   -- The match-flattener doesn't know how to deal with patterns that mention
@@ -163,6 +166,7 @@ tidy1 v (DSigPa pat ty)
     no_tyvar_ty (DVarT{}) = False
     no_tyvar_ty t         = gmapQl (&&) True no_tyvars_ty t
 tidy1 _ DWildPa = return (id, DWildPa)
+tidy1 _ p@(DUnboxedSumPa {}) = return (id, p)
 
 wrapBind :: Name -> Name -> DExp -> DExp
 wrapBind new old
@@ -234,13 +238,14 @@ groupClauses clauses
     (pg1,_) `same_gp` (pg2,_) = pg1 `sameGroup` pg2
 
 patGroup :: DPat -> PatGroup
-patGroup (DLitPa l)     = PgLit l
-patGroup (DVarPa {})    = error "Internal error in th-desugar (patGroup DVarPa)"
-patGroup (DConPa con _) = PgCon con
-patGroup (DTildePa {})  = error "Internal error in th-desugar (patGroup DTildePa)"
-patGroup (DBangPa {})   = PgBang
-patGroup (DSigPa{})     = error "Internal error in th-desugar (patGroup DSigPa)"
-patGroup DWildPa        = PgAny
+patGroup (DLitPa l)         = PgLit l
+patGroup (DVarPa {})        = error "Internal error in th-desugar (patGroup DVarPa)"
+patGroup (DConPa con _)     = PgCon con
+patGroup (DTildePa {})      = error "Internal error in th-desugar (patGroup DTildePa)"
+patGroup (DBangPa {})       = PgBang
+patGroup (DSigPa{})         = error "Internal error in th-desugar (patGroup DSigPa)"
+patGroup (DUnboxedSumPa {}) = error "Internal error in th-desugar (patGroup DUnboxedSumPa)"
+patGroup DWildPa            = PgAny
 
 sameGroup :: PatGroup -> PatGroup -> Bool
 sameGroup PgAny     PgAny     = True

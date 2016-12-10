@@ -17,6 +17,7 @@ eir@cis.upenn.edu
 
 #if __GLASGOW_HASKELL__ >= 801
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE UnboxedSums #-}
 #endif
 
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
@@ -229,6 +230,11 @@ test41_typeapps = [| let f :: forall a. (a -> Bool) -> Bool
 test42_scoped_tvs = [| let f :: (Read a, Show a) => a -> String -> String
                            f (_ :: b) (x :: String) = show (read x :: b)
                        in f True "True" |]
+
+test43_ubx_sums = [| let f :: (# Bool | String #) -> Bool
+                         f (# b |   #) = not b
+                         f (#   | c #) = c == "c" in
+                     f (# | "a" #) |]
 #endif
 
 type family TFExpand x
@@ -527,5 +533,6 @@ test_exprs = [ test1_sections
 #if __GLASGOW_HASKELL__ >= 801
              , test41_typeapps
              , test42_scoped_tvs
+             , test43_ubx_sums
 #endif
              ]

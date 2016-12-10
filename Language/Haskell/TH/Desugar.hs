@@ -163,6 +163,7 @@ flattenDValD (DValD pat exp) = do
         DBangPa pa -> DBangPa (wildify name y pa)
         DSigPa pa ty -> DSigPa (wildify name y pa) ty
         DWildPa -> DWildPa
+        DUnboxedSumPa pa alt arity -> DUnboxedSumPa (wildify name y pa) alt arity
 
 flattenDValD other_dec = return [other_dec]
 
@@ -178,6 +179,7 @@ fvDType = go
     go (DLitT {})              = S.empty
     go DWildCardT              = S.empty
     go DStarT                  = S.empty
+    go (DUnboxedSumT {})       = S.empty
 
 dtvbName :: DTyVarBndr -> S.Set Name
 dtvbName (DPlainTV n)    = S.singleton n

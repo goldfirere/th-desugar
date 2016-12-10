@@ -182,25 +182,28 @@ extractBoundNamesDec _              = S.empty
 
 -- | Extract the names bound in a @Pat@
 extractBoundNamesPat :: Pat -> S.Set Name
-extractBoundNamesPat (LitP _)            = S.empty
-extractBoundNamesPat (VarP name)         = S.singleton name
-extractBoundNamesPat (TupP pats)         = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (UnboxedTupP pats)  = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (ConP _ pats)       = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (InfixP p1 _ p2)    = extractBoundNamesPat p1 `S.union`
-                                           extractBoundNamesPat p2
-extractBoundNamesPat (UInfixP p1 _ p2)   = extractBoundNamesPat p1 `S.union`
-                                           extractBoundNamesPat p2
-extractBoundNamesPat (ParensP pat)       = extractBoundNamesPat pat
-extractBoundNamesPat (TildeP pat)        = extractBoundNamesPat pat
-extractBoundNamesPat (BangP pat)         = extractBoundNamesPat pat
-extractBoundNamesPat (AsP name pat)      = S.singleton name `S.union` extractBoundNamesPat pat
-extractBoundNamesPat WildP               = S.empty
-extractBoundNamesPat (RecP _ field_pats) = let (_, pats) = unzip field_pats in
-                                           foldMap extractBoundNamesPat pats
-extractBoundNamesPat (ListP pats)        = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (SigP pat _)        = extractBoundNamesPat pat
-extractBoundNamesPat (ViewP _ pat)       = extractBoundNamesPat pat
+extractBoundNamesPat (LitP _)              = S.empty
+extractBoundNamesPat (VarP name)           = S.singleton name
+extractBoundNamesPat (TupP pats)           = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (UnboxedTupP pats)    = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (ConP _ pats)         = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (InfixP p1 _ p2)      = extractBoundNamesPat p1 `S.union`
+                                             extractBoundNamesPat p2
+extractBoundNamesPat (UInfixP p1 _ p2)     = extractBoundNamesPat p1 `S.union`
+                                             extractBoundNamesPat p2
+extractBoundNamesPat (ParensP pat)         = extractBoundNamesPat pat
+extractBoundNamesPat (TildeP pat)          = extractBoundNamesPat pat
+extractBoundNamesPat (BangP pat)           = extractBoundNamesPat pat
+extractBoundNamesPat (AsP name pat)        = S.singleton name `S.union` extractBoundNamesPat pat
+extractBoundNamesPat WildP                 = S.empty
+extractBoundNamesPat (RecP _ field_pats)   = let (_, pats) = unzip field_pats in
+                                             foldMap extractBoundNamesPat pats
+extractBoundNamesPat (ListP pats)          = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (SigP pat _)          = extractBoundNamesPat pat
+extractBoundNamesPat (ViewP _ pat)         = extractBoundNamesPat pat
+#if __GLASGOW_HASKELL__ >= 801
+extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
+#endif
 
 freeNamesOfTypes :: [Type] -> S.Set Name
 freeNamesOfTypes = mconcat . map go
