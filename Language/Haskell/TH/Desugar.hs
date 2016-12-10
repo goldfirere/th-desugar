@@ -164,14 +164,6 @@ flattenDValD (DValD pat exp) = do
 
 flattenDValD other_dec = return [other_dec]
 
-extractBoundNamesDPat :: DPat -> S.Set Name
-extractBoundNamesDPat (DLitPa _)      = S.empty
-extractBoundNamesDPat (DVarPa n)      = S.singleton n
-extractBoundNamesDPat (DConPa _ pats) = foldMap extractBoundNamesDPat pats
-extractBoundNamesDPat (DTildePa pat)  = extractBoundNamesDPat pat
-extractBoundNamesDPat (DBangPa pat)   = extractBoundNamesDPat pat
-extractBoundNamesDPat DWildPa         = S.empty
-
 fvDType :: DType -> S.Set Name
 fvDType = go
   where

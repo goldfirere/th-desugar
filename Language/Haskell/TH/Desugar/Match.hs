@@ -200,14 +200,6 @@ mkSelectorDecs pat name
       rhs_mr <- simplCase [scrut_var] [EquationInfo [pat] (\_ -> DVarE bndr_var)]
       return (DValD (DVarPa bndr_var) (rhs_mr (DVarE err_var)))
 
-extractBoundNamesDPat :: DPat -> S.Set Name
-extractBoundNamesDPat (DLitPa _)      = S.empty
-extractBoundNamesDPat (DVarPa n)      = S.singleton n
-extractBoundNamesDPat (DConPa _ pats) = S.unions (map extractBoundNamesDPat pats)
-extractBoundNamesDPat (DTildePa p)    = extractBoundNamesDPat p
-extractBoundNamesDPat (DBangPa p)     = extractBoundNamesDPat p
-extractBoundNamesDPat DWildPa         = S.empty
-
 data PatGroup
   = PgAny         -- immediate match (wilds, vars, lazies)
   | PgCon Name
