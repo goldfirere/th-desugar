@@ -616,6 +616,14 @@ removeWilds (DTildePa pat) = DTildePa <$> removeWilds pat
 removeWilds (DBangPa pat) = DBangPa <$> removeWilds pat
 removeWilds DWildPa = DVarPa <$> newUniqueName "wild"
 
+extractBoundNamesDPat :: DPat -> S.Set Name
+extractBoundNamesDPat (DLitPa _)      = S.empty
+extractBoundNamesDPat (DVarPa n)      = S.singleton n
+extractBoundNamesDPat (DConPa _ pats) = S.unions (map extractBoundNamesDPat pats)
+extractBoundNamesDPat (DTildePa p)    = extractBoundNamesDPat p
+extractBoundNamesDPat (DBangPa p)     = extractBoundNamesDPat p
+extractBoundNamesDPat DWildPa         = S.empty
+
 -- | Desugar @Info@
 dsInfo :: DsMonad q => Info -> q DInfo
 dsInfo (ClassI dec instances) = do
