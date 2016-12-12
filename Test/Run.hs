@@ -131,9 +131,11 @@ test_e6b = $(test_expand6 >>= dsExp >>= expand >>= return . expToTH)
 test_e7a = $test_expand7
 test_e7b = $(test_expand7 >>= dsExp >>= expand >>= return . expToTH)
 test_e7c = $(test_expand7 >>= dsExp >>= expandUnsoundly >>= return . expToTH)
+#if __GLASGOW_HASKELL__ < 801
 test_e8a = $(test_expand8 >>= dsExp >>= expand >>= return . expToTH)
-  -- the line above should fail once GHC#8953 is fixed for closed type
-  -- families
+  -- This won't expand on recent GHCs now that GHC Trac #8953 is fixed for
+  -- closed type families.
+#endif
 test_e8b = $(test_expand8 >>= dsExp >>= expandUnsoundly >>= return . expToTH)
 #endif
 
@@ -150,7 +152,9 @@ test_expand = and [ hasSameType test35a test35b
                   , hasSameType test_e6a test_e6b
                   , hasSameType test_e7a test_e7b
                   , hasSameType test_e7a test_e7c
+#if __GLASGOW_HASKELL__ < 801
                   , hasSameType test_e8a test_e8a
+#endif
 #endif
                   ]
 
