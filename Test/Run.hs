@@ -112,7 +112,8 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "wildcard" ~: $test40_wildcards@=? $(dsSplice test40_wildcards)
 #endif
 #if __GLASGOW_HASKELL__ >= 801
-             , "typeapps" ~: $test41_typeapps @=? $(dsSplice test41_typeapps)
+             , "typeapps"   ~: $test41_typeapps   @=? $(dsSplice test41_typeapps)
+             , "scoped_tvs" ~: $test42_scoped_tvs @=? $(dsSplice test42_scoped_tvs)
 #endif
              ]
 

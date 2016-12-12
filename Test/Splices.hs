@@ -221,6 +221,11 @@ test40_wildcards = [| let f :: (Show a, _) => a -> a -> _
 test41_typeapps = [| let f :: forall a. (a -> Bool) -> Bool
                          f g = g (undefined @_ @a) in
                      f (const True) |]
+
+test42_scoped_tvs = [| let f :: forall a. Maybe a -> Bool
+                           f (Just (_ :: a)) = True
+                           f Nothing         = False
+                       in f Nothing |]
 #endif
 
 type family TFExpand x
@@ -503,5 +508,6 @@ test_exprs = [ test1_sections
 #endif
 #if __GLASGOW_HASKELL__ >= 801
              , test41_typeapps
+             , test42_scoped_tvs
 #endif
              ]
