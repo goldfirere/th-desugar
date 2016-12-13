@@ -158,8 +158,9 @@ test19_bangp = [| map (\ !() -> 5) [()] |]
 test20_asp = [| map (\ a@(b :+: c) -> (if c then b + 1 else b - 1, a)) [5 :+: True, 10 :+: False] |]
 test21_wildp = [| zipWith (\_ _ -> 10) [1,2,3] ['a','b','c'] |]
 test22_listp = [| map (\ [a,b,c] -> a + b + c) [[1,2,3],[4,5,6]] |]
--- type signatures in patterns not yet handled by Template Haskell
--- test23_sigp = [| map (\ (a :: Int) -> a + a) [5, 10] |]
+#if __GLASGOW_HASKELL__ >= 801
+test23_sigp = [| map (\ (a :: Int) -> a + a) [5, 10] |]
+#endif
 
 -- See Note [Annotating list elements]
 test24_fun = [| let f :: Maybe (Maybe a) -> Maybe a
@@ -224,6 +225,10 @@ test40_wildcards = [| let f :: (Show a, _) => a -> a -> _
 test41_typeapps = [| let f :: forall a. (a -> Bool) -> Bool
                          f g = g (undefined @_ @a) in
                      f (const True) |]
+
+test42_scoped_tvs = [| let f :: (Read a, Show a) => a -> String -> String
+                           f (_ :: b) (x :: String) = show (read x :: b)
+                       in f True "True" |]
 #endif
 
 type family TFExpand x
@@ -461,6 +466,11 @@ simplCaseTests =
      |]
   , [| let foo [] = True
            foo _  = False in (foo [], foo "hi") |]
+#if __GLASGOW_HASKELL__ >= 801
+  , [| let foo ([] :: String) = True
+           foo (_  :: String) = False
+        in foo "hello" |]
+#endif
   ]
 
 -- These foralls are needed because of bug trac9262, fixed in ghc-7.10.
@@ -495,6 +505,9 @@ test_exprs = [ test1_sections
              , test20_asp
              , test21_wildp
              , test22_listp
+#if __GLASGOW_HASKELL__ >= 801
+             , test23_sigp
+#endif
              , test24_fun
              , test25_fun2
              , test26_forall
@@ -513,5 +526,6 @@ test_exprs = [ test1_sections
 #endif
 #if __GLASGOW_HASKELL__ >= 801
              , test41_typeapps
+             , test42_scoped_tvs
 #endif
              ]

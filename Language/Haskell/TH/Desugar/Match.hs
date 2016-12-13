@@ -24,6 +24,9 @@ import Prelude hiding ( fail, exp )
 import Control.Applicative
 #endif
 import Control.Monad hiding ( fail )
+import qualified Control.Monad as Monad
+import Data.Data
+import Data.Generics
 import qualified Data.Set as S
 import qualified Data.Map as Map
 import Language.Haskell.TH.Instances ()
@@ -142,7 +145,23 @@ tidy1 v (DBangPa pat) =
     DConPa _ _ -> tidy1 v pat   -- already strict
     DTildePa p -> tidy1 v (DBangPa p) -- discard ~ under !
     DBangPa p  -> tidy1 v (DBangPa p) -- discard ! under !
+    DSigPa p _ -> tidy1 v (DBangPa p) -- discard sig under !
     DWildPa    -> return (id, DBangPa pat)  -- no change
+tidy1 v (DSigPa pat ty)
+  | no_tyvars_ty ty = tidy1 v pat
+  -- The match-flattener doesn't know how to deal with patterns that mention
+  -- type variables properly, so we give up if we encounter one.
+  -- See https://github.com/goldfirere/th-desugar/pull/48#issuecomment-266778976
+  -- for further discussion.
+  | otherwise = Monad.fail
+    "Match-flattening patterns that mention type variables is not supported."
+  where
+    no_tyvars_ty :: Data a => a -> Bool
+    no_tyvars_ty = everything (&&) (mkQ True no_tyvar_ty)
+
+    no_tyvar_ty :: DType -> Bool
+    no_tyvar_ty (DVarT{}) = False
+    no_tyvar_ty t         = gmapQl (&&) True no_tyvars_ty t
 tidy1 _ DWildPa = return (id, DWildPa)
 
 wrapBind :: Name -> Name -> DExp -> DExp
@@ -216,10 +235,11 @@ groupClauses clauses
 
 patGroup :: DPat -> PatGroup
 patGroup (DLitPa l)     = PgLit l
-patGroup (DVarPa {})    = error "Internal error in th-desugar (patGroup DVarP)"
+patGroup (DVarPa {})    = error "Internal error in th-desugar (patGroup DVarPa)"
 patGroup (DConPa con _) = PgCon con
-patGroup (DTildePa {})  = error "Internal error in th-desugar (patGroup DTildeP)"
+patGroup (DTildePa {})  = error "Internal error in th-desugar (patGroup DTildePa)"
 patGroup (DBangPa {})   = PgBang
+patGroup (DSigPa{})     = error "Internal error in th-desugar (patGroup DSigPa)"
 patGroup DWildPa        = PgAny
 
 sameGroup :: PatGroup -> PatGroup -> Bool
