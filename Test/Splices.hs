@@ -422,7 +422,14 @@ reifyDecs = [d|
 
   type R20 = Bool
 #if __GLASGOW_HASKELL__ >= 707
-  type family R21 (a :: k) (b :: k) :: k where R21 (a :: k) (b :: k) = b
+  type family R21 (a :: k) (b :: k) :: k where
+#if __GLASGOW_HASKELL__ >= 801
+    R21 (a :: k) (b :: k) = b
+#else
+    -- Due to GHC Trac #12646, R21 will get reified without kind signatures on
+    -- a and b on older GHCs, so we must reflect that here.
+    R21 a b = b
+#endif
 #endif
   class XXX a where
     r22 :: a -> a
