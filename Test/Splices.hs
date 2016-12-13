@@ -452,6 +452,9 @@ simplCaseTests =
      |]
   , [| let foo [] = True
            foo _  = False in (foo [], foo "hi") |]
+#if __GLASGOW_HASKELL__ >= 801
+  , test42_scoped_tvs
+#endif
   ]
 
 -- These foralls are needed because of bug trac9262, fixed in ghc-7.10.
