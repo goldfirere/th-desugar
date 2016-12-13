@@ -25,6 +25,7 @@ module Language.Haskell.TH.Desugar (
   -- * Desugared data types
   DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred(..),
   DTyVarBndr(..), DMatch(..), DClause(..), DDec(..),
+  DDerivClause(..), DerivStrategy(..),
   Overlap(..), NewOrData(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
   DCon(..), DConFields(..), DBangType, DVarBangType,
@@ -43,7 +44,7 @@ module Language.Haskell.TH.Desugar (
   dsCon, dsForeign, dsPragma, dsRuleBndr,
 
   -- ** Secondary desugaring functions
-  PatM, dsPred, dsPat, dsDec, dsLetDec,
+  PatM, dsPred, dsPat, dsDec, dsDerivClause, dsLetDec,
   dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses,
   dsBangType, dsVarBangType,
 #if __GLASGOW_HASKELL__ > 710

@@ -8,7 +8,6 @@ Converts desugared TH back into real TH.
 
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -fno-warn-dodgy-imports #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -29,13 +28,13 @@ module Language.Haskell.TH.Desugar.Sweeten (
   letDecToTH, typeToTH,
 
   conToTH, foreignToTH, pragmaToTH, ruleBndrToTH,
-  clauseToTH, tvbToTH, cxtToTH, predToTH
+  clauseToTH, tvbToTH, cxtToTH, predToTH, derivClauseToTH,
   ) where
 
 import Prelude hiding (exp)
 import Control.Arrow
 
-import Language.Haskell.TH hiding (Newtype, cxt)
+import Language.Haskell.TH hiding (cxt)
 
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
@@ -85,11 +84,7 @@ decToTH (DLetDec d) = [letDecToTH d]
 decToTH (DDataD Data cxt n tvbs cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
   [DataD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (map conToTH cons)
-#if __GLASGOW_HASKELL__ >= 801
-         [DerivClause Nothing (cxtToTH derivings)]]
-#else
-         (cxtToTH derivings)]
-#endif
+         (concatMap derivClauseToTH derivings)]
 #else
   [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons)
          (map derivingToTH derivings)]
@@ -97,11 +92,7 @@ decToTH (DDataD Data cxt n tvbs cons derivings) =
 decToTH (DDataD Newtype cxt n tvbs [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
   [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (conToTH con)
-#if __GLASGOW_HASKELL__ >= 801
-            [DerivClause Nothing (cxtToTH derivings)]]
-#else
-            (cxtToTH derivings)]
-#endif
+            (concatMap derivClauseToTH derivings)]
 #else
   [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con)
             (map derivingToTH derivings)]
@@ -134,30 +125,18 @@ decToTH (DDataFamilyD n tvbs) =
 decToTH (DDataInstD Data cxt n tys cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
   [DataInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (map conToTH cons)
-#if __GLASGOW_HASKELL__ >= 801
-             [DerivClause Nothing (cxtToTH derivings)]
-#else
-             (cxtToTH derivings)
-#endif
-  ]
+             (concatMap derivClauseToTH derivings)]
 #else
   [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons)
-             (map derivingToTH derivings)
-  ]
+             (map derivingToTH derivings)]
 #endif
 decToTH (DDataInstD Newtype cxt n tys [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
   [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (conToTH con)
-#if __GLASGOW_HASKELL__ >= 801
-                [DerivClause Nothing (cxtToTH derivings)]
-#else
-                (cxtToTH derivings)
-#endif
-  ]
+                (concatMap derivClauseToTH derivings)]
 #else
   [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con)
-                (map derivingToTH derivings)
-  ]
+                (map derivingToTH derivings)]
 #endif
 #if __GLASGOW_HASKELL__ < 707
 decToTH (DTySynInstD n eqn) = [tySynEqnToTHDec n eqn]
@@ -184,12 +163,12 @@ decToTH (DStandaloneDerivD {}) =
 decToTH (DDefaultSigD {})      =
   error "Default method signatures supported only in GHC 7.10+"
 #else
-decToTH (DStandaloneDerivD cxt ty) =
+decToTH (DStandaloneDerivD _mds cxt ty) =
+  [StandaloneDerivD
 #if __GLASGOW_HASKELL__ >= 801
-  [StandaloneDerivD Nothing (cxtToTH cxt) (typeToTH ty)]
-#else
-  [StandaloneDerivD (cxtToTH cxt) (typeToTH ty)]
+    _mds
 #endif
+    (cxtToTH cxt) (typeToTH ty)]
 decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
 #endif
 decToTH _ = error "Newtype declaration without exactly 1 constructor."
@@ -208,8 +187,8 @@ frsToTH (DTyVarSig (DKindedTV _ k)) = Just (typeToTH k)
 #endif
 
 #if __GLASGOW_HASKELL__ <= 710
-derivingToTH :: DPred -> Name
-derivingToTH (DConPr nm) = nm
+derivingToTH :: DDerivClause -> Name
+derivingToTH (DDerivClause _ [DConPr nm]) = nm
 derivingToTH p =
   error ("Template Haskell in GHC < 8.0 only allows simple derivings: " ++ show p)
 #endif
@@ -304,6 +283,14 @@ tvbToTH (DKindedTV n k)        = KindedTV n (typeToTH k)
 
 cxtToTH :: DCxt -> Cxt
 cxtToTH = map predToTH
+
+#if __GLASGOW_HASKELL__ >= 801
+derivClauseToTH :: DDerivClause -> [DerivClause]
+derivClauseToTH (DDerivClause mds cxt) = [DerivClause mds (cxtToTH cxt)]
+#else
+derivClauseToTH :: DDerivClause -> Cxt
+derivClauseToTH (DDerivClause _ cxt) = cxtToTH cxt
+#endif
 
 predToTH :: DPred -> Pred
 #if __GLASGOW_HASKELL__ < 709

@@ -24,7 +24,7 @@ import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Lift
 
 $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DPred, ''DTyVarBndr
-                 , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DCon
+                 , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DDerivClause, ''DCon
                  , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
                  , ''NewOrData
 #if __GLASGOW_HASKELL__ < 707
@@ -34,5 +34,8 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DPred, ''DTyVarBndr
 #if __GLASGOW_HASKELL__ <= 710
                  , ''InjectivityAnn, ''Bang, ''SourceUnpackedness
                  , ''SourceStrictness, ''Overlap
+#endif
+#if __GLASGOW_HASKELL__ < 801
+                 , ''DerivStrategy
 #endif
                  ])

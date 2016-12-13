@@ -131,9 +131,11 @@ test_e6b = $(test_expand6 >>= dsExp >>= expand >>= return . expToTH)
 test_e7a = $test_expand7
 test_e7b = $(test_expand7 >>= dsExp >>= expand >>= return . expToTH)
 test_e7c = $(test_expand7 >>= dsExp >>= expandUnsoundly >>= return . expToTH)
+#if __GLASGOW_HASKELL__ < 801
 test_e8a = $(test_expand8 >>= dsExp >>= expand >>= return . expToTH)
-  -- the line above should fail once GHC#8953 is fixed for closed type
-  -- families
+  -- This won't expand on recent GHCs now that GHC Trac #8953 is fixed for
+  -- closed type families.
+#endif
 test_e8b = $(test_expand8 >>= dsExp >>= expandUnsoundly >>= return . expToTH)
 #endif
 
@@ -150,7 +152,9 @@ test_expand = and [ hasSameType test35a test35b
                   , hasSameType test_e6a test_e6b
                   , hasSameType test_e7a test_e7b
                   , hasSameType test_e7a test_e7c
+#if __GLASGOW_HASKELL__ < 801
                   , hasSameType test_e8a test_e8a
+#endif
 #endif
                   ]
 
@@ -203,6 +207,13 @@ test_standalone_deriving :: Bool
 test_standalone_deriving = (MkBlarggie 5 'x') == (MkBlarggie 5 'x')
 #else
 test_standalone_deriving = True
+#endif
+
+test_deriving_strategies :: Bool
+#if __GLASGOW_HASKELL__ >= 801
+test_deriving_strategies = compare (MkBlarggie 5 'x') (MkBlarggie 5 'x') == EQ
+#else
+test_deriving_strategies = True
 #endif
 
 local_reifications :: [String]
@@ -271,6 +282,8 @@ main = hspec $ do
     it "extracts record selectors" $ test_rec_sels
 
     it "works with standalone deriving" $ test_standalone_deriving
+
+    it "workds with deriving strategies" $ test_deriving_strategies
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')

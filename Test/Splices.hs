@@ -11,8 +11,12 @@ eir@cis.upenn.edu
              FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
              DefaultSignatures, ConstraintKinds #-}
 
-#if __GLASGOW_HASKELL__ >= 800
+#if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE TypeApplications #-}
+#endif
+
+#if __GLASGOW_HASKELL__ >= 801
+{-# LANGUAGE DerivingStrategies #-}
 #endif
 
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
@@ -323,6 +327,9 @@ dectest11 = [d| class Dec11 a where
               |]
 standalone_deriving_test = [d| deriving instance Eq a => Eq (Blarggie a) |]
 #endif
+#if __GLASGOW_HASKELL__ >= 801
+deriv_strat_test = [d| deriving stock instance Ord a => Ord (Blarggie a) |]
+#endif
 
 dectest12 = [d| data Dec12 a where
                   MkGInt :: Dec12 Int
@@ -417,7 +424,14 @@ reifyDecs = [d|
 
   type R20 = Bool
 #if __GLASGOW_HASKELL__ >= 707
-  type family R21 (a :: k) (b :: k) :: k where R21 a b = b
+  type family R21 (a :: k) (b :: k) :: k where
+#if __GLASGOW_HASKELL__ >= 801
+    R21 (a :: k) (b :: k) = b
+#else
+    -- Due to GHC Trac #12646, R21 will get reified without kind signatures on
+    -- a and b on older GHCs, so we must reflect that here.
+    R21 a b = b
+#endif
 #endif
   class XXX a where
     r22 :: a -> a
