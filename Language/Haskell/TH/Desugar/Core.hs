@@ -622,6 +622,7 @@ extractBoundNamesDPat (DVarPa n)      = S.singleton n
 extractBoundNamesDPat (DConPa _ pats) = S.unions (map extractBoundNamesDPat pats)
 extractBoundNamesDPat (DTildePa p)    = extractBoundNamesDPat p
 extractBoundNamesDPat (DBangPa p)     = extractBoundNamesDPat p
+extractBoundNamesDPat (DSigPa p _)    = extractBoundNamesDPat p
 extractBoundNamesDPat DWildPa         = S.empty
 
 -- | Desugar @Info@
