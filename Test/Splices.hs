@@ -223,7 +223,7 @@ test41_typeapps = [| let f :: forall a. (a -> Bool) -> Bool
                      f (const True) |]
 
 test42_scoped_tvs = [| let f :: (Read a, Show a) => a -> String -> String
-                           f (_ :: b) x = show (read x :: b)
+                           f (_ :: b) (x :: String) = show (read x :: b)
                        in f True "True" |]
 #endif
 
@@ -460,7 +460,9 @@ simplCaseTests =
   , [| let foo [] = True
            foo _  = False in (foo [], foo "hi") |]
 #if __GLASGOW_HASKELL__ >= 801
-  , test42_scoped_tvs
+  , [| let foo ([] :: String) = True
+           foo (_  :: String) = False
+        in foo "hello" |]
 #endif
   ]
 
