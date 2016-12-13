@@ -422,7 +422,7 @@ reifyDecs = [d|
 
   type R20 = Bool
 #if __GLASGOW_HASKELL__ >= 707
-  type family R21 (a :: k) (b :: k) :: k where R21 a b = b
+  type family R21 (a :: k) (b :: k) :: k where R21 (a :: k) (b :: k) = b
 #endif
   class XXX a where
     r22 :: a -> a
