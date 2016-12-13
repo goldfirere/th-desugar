@@ -222,10 +222,9 @@ test41_typeapps = [| let f :: forall a. (a -> Bool) -> Bool
                          f g = g (undefined @_ @a) in
                      f (const True) |]
 
-test42_scoped_tvs = [| let f :: forall a. Maybe a -> Bool
-                           f (Just (_ :: a)) = True
-                           f Nothing         = False
-                       in f Nothing |]
+test42_scoped_tvs = [| let f :: (Read a, Show a) => a -> String -> String
+                           f (_ :: b) x = show (read x :: b)
+                       in f True "True" |]
 #endif
 
 type family TFExpand x
