@@ -25,7 +25,7 @@ module Language.Haskell.TH.Desugar (
   -- * Desugared data types
   DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred(..),
   DTyVarBndr(..), DMatch(..), DClause(..), DDec(..),
-  DDerivClause(..), DerivStrategy(..),
+  DDerivClause(..), DerivStrategy(..), DPatSynDir(..),
   Overlap(..), NewOrData(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
   DCon(..), DConFields(..), DBangType, DVarBangType,
@@ -49,6 +49,9 @@ module Language.Haskell.TH.Desugar (
   dsBangType, dsVarBangType,
 #if __GLASGOW_HASKELL__ > 710
   dsTypeFamilyHead, dsFamilyResultSig,
+#endif
+#if __GLASGOW_HASKELL__ >= 801
+  dsPatSynDir,
 #endif
 
   -- * Converting desugared AST back to TH AST

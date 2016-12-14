@@ -240,6 +240,9 @@ reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `nameMatches` n'
   = Just $ FamilyI dec []
 #endif
 #endif
+#if __GLASGOW_HASKELL__ >= 801
+reifyInDec n _ (PatSynSigD n' ty) | n `nameMatches` n' = Just $ PatSynI n ty
+#endif
 
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
