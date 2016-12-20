@@ -333,6 +333,9 @@ tyconToTH n
                                                  then PromotedTupleT deg
                                                  else TupleT deg
   | Just deg <- unboxedTupleNameDegree_maybe n = UnboxedTupleT deg
+#if __GLASGOW_HASKELL__ >= 801
+  | Just deg <- unboxedSumNameDegree_maybe n   = UnboxedSumT deg
+#endif
   | otherwise                   = ConT n
 
 #if __GLASGOW_HASKELL__ <= 710
