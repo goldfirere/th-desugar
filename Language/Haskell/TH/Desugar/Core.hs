@@ -46,7 +46,6 @@ data DExp = DVarE Name
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
           | DStaticE DExp
-          | DUnboxedSumE DExp SumAlt SumArity
           deriving (Show, Typeable, Data, Generic)
 
 
@@ -58,7 +57,6 @@ data DPat = DLitPa Lit
           | DBangPa DPat
           | DSigPa DPat DType
           | DWildPa
-          | DUnboxedSumPa DPat SumAlt SumArity
           deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Type@ type, used to represent
@@ -72,7 +70,6 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DLitT TyLit
            | DWildCardT
            | DStarT
-           | DUnboxedSumT SumArity
            deriving (Show, Typeable, Data, Generic)
 
 -- | Kinds are types.
@@ -249,14 +246,6 @@ data DerivStrategy = StockStrategy    -- ^ A \"standard\" derived instance
                    deriving (Show, Typeable, Data, Generic)
 #endif
 
-#if __GLASGOW_HASKELL__ < 801
--- | Same as @SumAlt@ from TH; defined here for backwards compatibility.
-type SumAlt = Int
-
--- | Same as @SumArity@ from TH; defined here for backwards compatibility.
-type SumArity = Int
-#endif
-
 -- | Desugar an expression
 dsExp :: DsMonad q => Exp -> q DExp
 dsExp (VarE n) = return $ DVarE n
@@ -393,7 +382,7 @@ dsExp (UnboundVarE n) = return (DVarE n)
 #if __GLASGOW_HASKELL__ >= 801
 dsExp (AppTypeE exp ty) = DAppTypeE <$> dsExp exp <*> dsType ty
 dsExp (UnboxedSumE exp alt arity) =
-  DUnboxedSumE <$> dsExp exp <*> pure alt <*> pure arity
+  DAppE (DConE $ unboxedSumDataName alt arity) <$> dsExp exp
 #endif
 
 -- | Desugar a lambda expression, where the body has already been desugared
@@ -614,7 +603,7 @@ dsPat (ListP pats) = go pats
 dsPat (SigP pat ty) = DSigPa <$> dsPat pat <*> dsType ty
 #if __GLASGOW_HASKELL__ >= 801
 dsPat (UnboxedSumP pat alt arity) =
-  DUnboxedSumPa <$> dsPat pat <*> pure alt <*> pure arity
+  DConPa (unboxedSumDataName alt arity) <$> ((:[]) <$> dsPat pat)
 #endif
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
@@ -627,7 +616,6 @@ dPatToDExp (DConPa name pats) = foldl DAppE (DConE name) (map dPatToDExp pats)
 dPatToDExp (DTildePa pat) = dPatToDExp pat
 dPatToDExp (DBangPa pat) = dPatToDExp pat
 dPatToDExp (DSigPa pat ty) = DSigE (dPatToDExp pat) ty
-dPatToDExp (DUnboxedSumPa pat alt arity) = DUnboxedSumE (dPatToDExp pat) alt arity
 dPatToDExp DWildPa = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
@@ -640,18 +628,15 @@ removeWilds (DTildePa pat) = DTildePa <$> removeWilds pat
 removeWilds (DBangPa pat) = DBangPa <$> removeWilds pat
 removeWilds (DSigPa pat ty) = DSigPa <$> removeWilds pat <*> pure ty
 removeWilds DWildPa = DVarPa <$> newUniqueName "wild"
-removeWilds (DUnboxedSumPa pat alt arity) =
-  DUnboxedSumPa <$> removeWilds pat <*> pure alt <*> pure arity
 
 extractBoundNamesDPat :: DPat -> S.Set Name
-extractBoundNamesDPat (DLitPa _)            = S.empty
-extractBoundNamesDPat (DVarPa n)            = S.singleton n
-extractBoundNamesDPat (DConPa _ pats)       = S.unions (map extractBoundNamesDPat pats)
-extractBoundNamesDPat (DTildePa p)          = extractBoundNamesDPat p
-extractBoundNamesDPat (DBangPa p)           = extractBoundNamesDPat p
-extractBoundNamesDPat (DSigPa p _)          = extractBoundNamesDPat p
-extractBoundNamesDPat (DUnboxedSumPa p _ _) = extractBoundNamesDPat p
-extractBoundNamesDPat DWildPa               = S.empty
+extractBoundNamesDPat (DLitPa _)      = S.empty
+extractBoundNamesDPat (DVarPa n)      = S.singleton n
+extractBoundNamesDPat (DConPa _ pats) = S.unions (map extractBoundNamesDPat pats)
+extractBoundNamesDPat (DTildePa p)    = extractBoundNamesDPat p
+extractBoundNamesDPat (DBangPa p)     = extractBoundNamesDPat p
+extractBoundNamesDPat (DSigPa p _)    = extractBoundNamesDPat p
+extractBoundNamesDPat DWildPa         = S.empty
 
 -- | Desugar @Info@
 dsInfo :: DsMonad q => Info -> q DInfo
@@ -1075,7 +1060,7 @@ dsType (ParensT t) = dsType t
 dsType WildCardT = return DWildCardT
 #endif
 #if __GLASGOW_HASKELL__ >= 801
-dsType (UnboxedSumT arity) = return $ DUnboxedSumT arity
+dsType (UnboxedSumT arity) = return $ DConT (unboxedSumTypeName arity)
 #endif
 
 -- | Desugar a @TyVarBndr@
@@ -1217,8 +1202,6 @@ isUniversalPattern (DTildePa {})  = return True
 isUniversalPattern (DBangPa pat)  = isUniversalPattern pat
 isUniversalPattern (DSigPa pat _) = isUniversalPattern pat
 isUniversalPattern DWildPa        = return True
-isUniversalPattern (DUnboxedSumPa {}) = return False
-  -- Unboxed sums always have multiple constructors
 
 -- | Apply one 'DExp' to a list of arguments
 applyDExp :: DExp -> [DExp] -> DExp

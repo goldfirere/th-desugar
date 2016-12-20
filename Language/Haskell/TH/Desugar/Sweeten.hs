@@ -42,21 +42,20 @@ import Language.Haskell.TH.Desugar.Util
 import Data.Maybe ( maybeToList )
 
 expToTH :: DExp -> Exp
-expToTH (DVarE n)                    = VarE n
-expToTH (DConE n)                    = ConE n
-expToTH (DLitE l)                    = LitE l
-expToTH (DAppE e1 e2)                = AppE (expToTH e1) (expToTH e2)
-expToTH (DLamE names exp)            = LamE (map VarP names) (expToTH exp)
-expToTH (DCaseE exp matches)         = CaseE (expToTH exp) (map matchToTH matches)
-expToTH (DLetE decs exp)             = LetE (map letDecToTH decs) (expToTH exp)
-expToTH (DSigE exp ty)               = SigE (expToTH exp) (typeToTH ty)
+expToTH (DVarE n)            = VarE n
+expToTH (DConE n)            = ConE n
+expToTH (DLitE l)            = LitE l
+expToTH (DAppE e1 e2)        = AppE (expToTH e1) (expToTH e2)
+expToTH (DLamE names exp)    = LamE (map VarP names) (expToTH exp)
+expToTH (DCaseE exp matches) = CaseE (expToTH exp) (map matchToTH matches)
+expToTH (DLetE decs exp)     = LetE (map letDecToTH decs) (expToTH exp)
+expToTH (DSigE exp ty)       = SigE (expToTH exp) (typeToTH ty)
 #if __GLASGOW_HASKELL__ < 709
-expToTH (DStaticE _)                 = error "Static expressions supported only in GHC 7.10+"
+expToTH (DStaticE _)         = error "Static expressions supported only in GHC 7.10+"
 #else
-expToTH (DStaticE exp)               = StaticE (expToTH exp)
+expToTH (DStaticE exp)       = StaticE (expToTH exp)
 #endif
 #if __GLASGOW_HASKELL__ >= 801
-expToTH (DUnboxedSumE exp alt arity) = UnboxedSumE (expToTH exp) alt arity
 expToTH (DAppTypeE exp ty)   = AppTypeE (expToTH exp) (typeToTH ty)
 #else
 -- In the event that we're on a version of Template Haskell without support for
@@ -68,16 +67,13 @@ matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
 
 patToTH :: DPat -> Pat
-patToTH (DLitPa lit)                  = LitP lit
-patToTH (DVarPa n)                    = VarP n
-patToTH (DConPa n pats)               = ConP n (map patToTH pats)
-patToTH (DTildePa pat)                = TildeP (patToTH pat)
-patToTH (DBangPa pat)                 = BangP (patToTH pat)
-patToTH (DSigPa pat ty)               = SigP (patToTH pat) (typeToTH ty)
-patToTH DWildPa                       = WildP
-#if __GLASGOW_HASKELL__ >= 801
-patToTH (DUnboxedSumPa pat alt arity) = UnboxedSumP (patToTH pat) alt arity
-#endif
+patToTH (DLitPa lit)    = LitP lit
+patToTH (DVarPa n)      = VarP n
+patToTH (DConPa n pats) = ConP n (map patToTH pats)
+patToTH (DTildePa pat)  = TildeP (patToTH pat)
+patToTH (DBangPa pat)   = BangP (patToTH pat)
+patToTH (DSigPa pat ty) = SigP (patToTH pat) (typeToTH ty)
+patToTH DWildPa         = WildP
 
 decsToTH :: [DDec] -> [Dec]
 decsToTH = concatMap decToTH
@@ -276,14 +272,11 @@ typeToTH (DConT n)              = tyconToTH n
 typeToTH DArrowT                = ArrowT
 typeToTH (DLitT lit)            = LitT lit
 #if __GLASGOW_HASKELL__ > 710
-typeToTH DWildCardT             = WildCardT
+typeToTH DWildCardT = WildCardT
 #else
-typeToTH DWildCardT             = error "Wildcards supported only in GHC 8.0+"
+typeToTH DWildCardT = error "Wildcards supported only in GHC 8.0+"
 #endif
-typeToTH DStarT                 = StarT
-#if __GLASGOW_HASKELL__ >= 801
-typeToTH (DUnboxedSumT arity)   = UnboxedSumT arity
-#endif
+typeToTH DStarT = StarT
 
 tvbToTH :: DTyVarBndr -> TyVarBndr
 tvbToTH (DPlainTV n)           = PlainTV n

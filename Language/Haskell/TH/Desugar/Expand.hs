@@ -187,8 +187,6 @@ expand_con ign n args = do
     build_subst DArrowT DArrowT = Just M.empty
     build_subst (DLitT pat_lit) (DLitT arg_lit)
       | pat_lit == arg_lit = Just M.empty
-    build_subst (DUnboxedSumT pat_arity) (DUnboxedSumT arg_arity)
-      | pat_arity == arg_arity = Just M.empty
     build_subst _ _ = Nothing
 
     merge_maps :: [Maybe (M.Map Name DType)] -> Maybe (M.Map Name DType)
@@ -264,7 +262,6 @@ dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
 dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
 dTypeToDPred DWildCardT      = return DWildCardPr
 dTypeToDPred DStarT          = impossible "Star used as head of constraint"
-dTypeToDPred DUnboxedSumT{}  = impossible "Unboxed sum used as head of constraint"
 
 -- | Expand all type synonyms and type families in the desugared abstract
 -- syntax tree provided, where type family simplification is on a "best effort"
