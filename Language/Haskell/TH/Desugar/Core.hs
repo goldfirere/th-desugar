@@ -381,6 +381,8 @@ dsExp (UnboundVarE n) = return (DVarE n)
 #endif
 #if __GLASGOW_HASKELL__ >= 801
 dsExp (AppTypeE exp ty) = DAppTypeE <$> dsExp exp <*> dsType ty
+dsExp (UnboxedSumE exp alt arity) =
+  DAppE (DConE $ unboxedSumDataName alt arity) <$> dsExp exp
 #endif
 
 -- | Desugar a lambda expression, where the body has already been desugared
@@ -599,6 +601,10 @@ dsPat (ListP pats) = go pats
           t' <- go t
           return $ DConPa '(:) [h', t']
 dsPat (SigP pat ty) = DSigPa <$> dsPat pat <*> dsType ty
+#if __GLASGOW_HASKELL__ >= 801
+dsPat (UnboxedSumP pat alt arity) =
+  DConPa (unboxedSumDataName alt arity) <$> ((:[]) <$> dsPat pat)
+#endif
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
 
@@ -1053,6 +1059,9 @@ dsType (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
 dsType (ParensT t) = dsType t
 dsType WildCardT = return DWildCardT
 #endif
+#if __GLASGOW_HASKELL__ >= 801
+dsType (UnboxedSumT arity) = return $ DConT (unboxedSumTypeName arity)
+#endif
 
 -- | Desugar a @TyVarBndr@
 dsTvb :: DsMonad q => TyVarBndr -> q DTyVarBndr
@@ -1123,6 +1132,10 @@ dsPred (InfixT t1 n t2) = (:[]) <$> (DAppPr <$> (DAppPr (DConPr n) <$> dsType t1
 dsPred (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
 dsPred (ParensT t) = dsPred t
 dsPred WildCardT = return [DWildCardPr]
+#endif
+#if __GLASGOW_HASKELL__ >= 801
+dsPred t@(UnboxedSumT {}) =
+  impossible $ "Unboxed sum seen as head of constraint: " ++ show t
 #endif
 #endif
 

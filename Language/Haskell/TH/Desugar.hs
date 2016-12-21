@@ -77,6 +77,7 @@ module Language.Haskell.TH.Desugar (
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
   substTy,
   tupleDegree_maybe, tupleNameDegree_maybe,
+  unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
   strictToBang,
 
