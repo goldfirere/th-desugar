@@ -5,6 +5,8 @@ Version 1.7
 -----------
 * Support for TH's support for `TypeApplications`, thanks to @RyanGlScott.
 
+* Support for unboxed sums, thanks to @RyanGlScott.
+
 Version 1.6
 -----------
 * Work with GHC 8, with thanks to @christiaanb for getting this change going.
