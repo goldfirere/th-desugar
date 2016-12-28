@@ -178,6 +178,12 @@ decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
 #if __GLASGOW_HASKELL__ >= 801
 decToTH (DPatSynD n args dir pat) = [PatSynD n args (patSynDirToTH dir) (patToTH pat)]
 decToTH (DPatSynSigD n ty)        = [PatSynSigD n (typeToTH ty)]
+#else
+decToTH dec
+  | DPatSynD{}    <- dec = patSynErr
+  | DPatSynSigD{} <- dec = patSynErr
+  where
+    patSynErr = error "Pattern synonyms supported only in GHC 8.2+"
 #endif
 decToTH _ = error "Newtype declaration without exactly 1 constructor."
 

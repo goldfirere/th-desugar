@@ -25,7 +25,7 @@ module Language.Haskell.TH.Desugar (
   -- * Desugared data types
   DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred(..),
   DTyVarBndr(..), DMatch(..), DClause(..), DDec(..),
-  DDerivClause(..), DerivStrategy(..), DPatSynDir(..),
+  DDerivClause(..), DerivStrategy(..), DPatSynDir(..), DPatSynType,
   Overlap(..), PatSynArgs(..), NewOrData(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
   DCon(..), DConFields(..), DBangType, DVarBangType,

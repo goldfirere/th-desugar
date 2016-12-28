@@ -851,7 +851,9 @@ dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #if __GLASGOW_HASKELL__ >= 801
 dsDec (PatSynD n args dir pat) = do
   dir' <- dsPatSynDir n dir
-  (pat', []) <- dsPatX pat
+  (pat', vars) <- dsPatX pat
+  unless (null vars) $
+    fail $ "Pattern synonym definition cannot contain as-patterns (@)."
   return [DPatSynD n args dir' pat']
 dsDec (PatSynSigD n ty) = (:[]) <$> (DPatSynSigD n <$> dsType ty)
 dsDec (StandaloneDerivD mds cxt ty) =
