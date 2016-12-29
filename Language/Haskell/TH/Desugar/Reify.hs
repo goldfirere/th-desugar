@@ -240,6 +240,10 @@ reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `nameMatches` n'
   = Just $ FamilyI dec []
 #endif
 #endif
+#if __GLASGOW_HASKELL__ >= 801
+reifyInDec n decs (PatSynD n' _ _ _) | n `nameMatches` n'
+  = Just $ mkPatSynI n decs
+#endif
 
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
@@ -336,10 +340,7 @@ maybeReifyCon n decs ty_name ty_args cons
 maybeReifyCon _ _ _ _ _ = Nothing
 
 mkVarI :: Name -> [Dec] -> Info
-mkVarI n decs = mkVarITy n decs (fromMaybe no_type $ findType n decs)
-  where
-    no_type = error $ "No type information found in local declaration for "
-                      ++ show n
+mkVarI n decs = mkVarITy n decs (fromMaybe (no_type n) $ findType n decs)
 
 mkVarITy :: Name -> [Dec] -> Type -> Info
 #if __GLASGOW_HASKELL__ > 710
@@ -354,6 +355,21 @@ findType n = firstMatch match_type
   where
     match_type (SigD n' ty) | n `nameMatches` n' = Just ty
     match_type _                             = Nothing
+
+#if __GLASGOW_HASKELL__ >= 801
+mkPatSynI :: Name -> [Dec] -> Info
+mkPatSynI n decs = PatSynI n (fromMaybe (no_type n) $ findPatSynType n decs)
+
+findPatSynType :: Name -> [Dec] -> Maybe PatSynType
+findPatSynType n = firstMatch match_pat_syn_type
+  where
+    match_pat_syn_type (PatSynSigD n' psty) | n `nameMatches` n' = Just psty
+    match_pat_syn_type _                                         = Nothing
+#endif
+
+no_type :: Name -> Type
+no_type n = error $ "No type information found in local declaration for "
+                    ++ show n
 
 findInstances :: Name -> [Dec] -> [Dec]
 findInstances n = map stripInstanceDec . concatMap match_instance

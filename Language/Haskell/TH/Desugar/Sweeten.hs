@@ -29,6 +29,9 @@ module Language.Haskell.TH.Desugar.Sweeten (
 
   conToTH, foreignToTH, pragmaToTH, ruleBndrToTH,
   clauseToTH, tvbToTH, cxtToTH, predToTH, derivClauseToTH,
+#if __GLASGOW_HASKELL__ >= 801
+  patSynDirToTH
+#endif
   ) where
 
 import Prelude hiding (exp)
@@ -172,6 +175,16 @@ decToTH (DStandaloneDerivD _mds cxt ty) =
     (cxtToTH cxt) (typeToTH ty)]
 decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
 #endif
+#if __GLASGOW_HASKELL__ >= 801
+decToTH (DPatSynD n args dir pat) = [PatSynD n args (patSynDirToTH dir) (patToTH pat)]
+decToTH (DPatSynSigD n ty)        = [PatSynSigD n (typeToTH ty)]
+#else
+decToTH dec
+  | DPatSynD{}    <- dec = patSynErr
+  | DPatSynSigD{} <- dec = patSynErr
+  where
+    patSynErr = error "Pattern synonyms supported only in GHC 8.2+"
+#endif
 decToTH _ = error "Newtype declaration without exactly 1 constructor."
 
 #if __GLASGOW_HASKELL__ > 710
@@ -291,6 +304,13 @@ derivClauseToTH (DDerivClause mds cxt) = [DerivClause mds (cxtToTH cxt)]
 #else
 derivClauseToTH :: DDerivClause -> Cxt
 derivClauseToTH (DDerivClause _ cxt) = cxtToTH cxt
+#endif
+
+#if __GLASGOW_HASKELL__ >= 801
+patSynDirToTH :: DPatSynDir -> PatSynDir
+patSynDirToTH DUnidir              = Unidir
+patSynDirToTH DImplBidir           = ImplBidir
+patSynDirToTH (DExplBidir clauses) = ExplBidir (map clauseToTH clauses)
 #endif
 
 predToTH :: DPred -> Pred

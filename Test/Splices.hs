@@ -9,7 +9,7 @@ eir@cis.upenn.edu
              ScopedTypeVariables, RankNTypes, TypeFamilies, ImpredicativeTypes,
              DataKinds, PolyKinds, GADTs, MultiParamTypeClasses,
              FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
-             DefaultSignatures, ConstraintKinds #-}
+             DefaultSignatures, ConstraintKinds, GADTs, ViewPatterns #-}
 
 #if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE TypeApplications #-}
@@ -17,6 +17,7 @@ eir@cis.upenn.edu
 
 #if __GLASGOW_HASKELL__ >= 801
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE UnboxedSums #-}
 #endif
 
@@ -448,6 +449,28 @@ reifyDecs = [d|
     r22 :: a -> a
     r22 = id   -- test #32
 
+#if __GLASGOW_HASKELL__ >= 801
+  pattern Point :: Int -> Int -> (Int, Int)
+  pattern Point{x, y} = (x, y)
+
+  data T a where
+    MkT :: Eq b => a -> b -> T a
+
+  foo :: Show a => a -> Bool
+  foo x = show x == "foo"
+
+  -- NB: we can't use the pattern signature
+  --
+  --     pattern P :: Show a => Eq b => b -> T a
+  --
+  -- due to GHC Trac #13018
+  pattern P :: forall a. Show a => forall b. Eq b => b -> T a
+  pattern P x <- MkT (foo -> True) x
+
+  pattern HeadC :: a -> [a]
+  pattern HeadC x <- x:_ where
+    HeadC x = [x]
+#endif
   |]
 
 reifyDecsNames :: [Name]

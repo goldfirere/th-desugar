@@ -8,13 +8,14 @@ eir@cis.upenn.edu
              RankNTypes, ImpredicativeTypes, TypeFamilies,
              DataKinds, ConstraintKinds, PolyKinds, MultiParamTypeClasses,
              FlexibleInstances, ExistentialQuantification,
-             ScopedTypeVariables #-}
+             ScopedTypeVariables, GADTs, ViewPatterns #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
 
 #if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures -Wno-redundant-constraints #-}
 #endif
 

@@ -127,11 +127,31 @@ data DDec = DLetDec DLetDec
           | DRoleAnnotD Name [Role]
           | DStandaloneDerivD (Maybe DerivStrategy) DCxt DType
           | DDefaultSigD Name DType
+          | DPatSynD Name PatSynArgs DPatSynDir DPat
+          | DPatSynSigD Name DPatSynType
           deriving (Show, Typeable, Data, Generic)
 
 #if __GLASGOW_HASKELL__ < 711
 data Overlap = Overlappable | Overlapping | Overlaps | Incoherent
   deriving (Eq, Ord, Show, Typeable, Data, Generic)
+#endif
+
+-- | Corresponds to TH's 'PatSynDir' type
+data DPatSynDir = DUnidir              -- ^ @pattern P x {<-} p@
+                | DImplBidir           -- ^ @pattern P x {=} p@
+                | DExplBidir [DClause] -- ^ @pattern P x {<-} p where P x = e@
+                deriving (Show, Typeable, Data, Generic)
+
+-- | Corresponds to TH's 'PatSynType' type
+type DPatSynType = DType
+
+#if __GLASGOW_HASKELL__ < 801
+-- | Same as @PatSynArgs@ from TH; defined here for backwards compatibility.
+data PatSynArgs
+  = PrefixPatSyn [Name]        -- ^ @pattern P {x y z} = p@
+  | InfixPatSyn Name Name      -- ^ @pattern {x P y} = p@
+  | RecordPatSyn [Name]        -- ^ @pattern P { {x,y,z} } = p@
+  deriving (Show, Typeable, Data, Generic)
 #endif
 
 -- | Corresponds to TH's 'TypeFamilyHead' type
@@ -230,6 +250,7 @@ data DInfo = DTyConI DDec (Maybe [DInstanceDec])
            | DPrimTyConI Name Int Bool
                -- ^ The @Int@ is the arity; the @Bool@ is whether this tycon
                -- is unlifted.
+           | DPatSynI Name DPatSynType
            deriving (Show, Typeable, Data, Generic)
 
 type DInstanceDec = DDec -- ^ Guaranteed to be an instance declaration
@@ -677,6 +698,9 @@ dsInfo (VarI name _ (Just _) _) =
   impossible $ "Declaration supplied with variable: " ++ show name
 #endif
 dsInfo (TyVarI name ty) = DTyVarI name <$> dsType ty
+#if __GLASGOW_HASKELL__ >= 801
+dsInfo (PatSynI name ty) = DPatSynI name <$> dsType ty
+#endif
 
 fixBug8884ForFamilies :: DsMonad q => DDec -> q (DDec, Int)
 #if __GLASGOW_HASKELL__ < 708
@@ -825,6 +849,13 @@ dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #endif
 #if __GLASGOW_HASKELL__ >= 709
 #if __GLASGOW_HASKELL__ >= 801
+dsDec (PatSynD n args dir pat) = do
+  dir' <- dsPatSynDir n dir
+  (pat', vars) <- dsPatX pat
+  unless (null vars) $
+    fail $ "Pattern synonym definition cannot contain as-patterns (@)."
+  return [DPatSynD n args dir' pat']
+dsDec (PatSynSigD n ty) = (:[]) <$> (DPatSynSigD n <$> dsType ty)
 dsDec (StandaloneDerivD mds cxt ty) =
   (:[]) <$> (DStandaloneDerivD mds     <$> dsCxt cxt <*> dsType ty)
 #else
@@ -1082,6 +1113,14 @@ dsDerivClause p = DDerivClause Nothing <$> dsPred p
 #else
 dsDerivClause :: DsMonad q => Name -> q DDerivClause
 dsDerivClause n = pure $ DDerivClause Nothing [DConPr n]
+#endif
+
+#if __GLASGOW_HASKELL__ >= 801
+-- | Desugar a @PatSynDir@. (Available only with GHC 8.2+)
+dsPatSynDir :: DsMonad q => Name -> PatSynDir -> q DPatSynDir
+dsPatSynDir _ Unidir              = pure DUnidir
+dsPatSynDir _ ImplBidir           = pure DImplBidir
+dsPatSynDir n (ExplBidir clauses) = DExplBidir <$> dsClauses n clauses
 #endif
 
 -- | Desugar a @Pred@, flattening any internal tuples
