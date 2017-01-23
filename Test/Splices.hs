@@ -408,7 +408,11 @@ testRecSelTypes n = do
 
 reifyDecs :: Q [Dec]
 reifyDecs = [d|
-  r1 :: a -> a
+  -- NB: Use a forall here! If you don't, when you splice r1 in and then reify
+  -- it, GHC will add an explicit forall behind the scenes, which will cause an
+  -- incongruity with the locally reified declaration (which would lack an
+  -- explicit forall).
+  r1 :: forall a. a -> a
   r1 x = x
 
   class R2 a b where
@@ -459,12 +463,7 @@ reifyDecs = [d|
   foo :: Show a => a -> Bool
   foo x = show x == "foo"
 
-  -- NB: we can't use the pattern signature
-  --
-  --     pattern P :: Show a => Eq b => b -> T a
-  --
-  -- due to GHC Trac #13018
-  pattern P :: forall a. Show a => forall b. Eq b => b -> T a
+  pattern P :: Show a => Eq b => b -> T a
   pattern P x <- MkT (foo -> True) x
 
   pattern HeadC :: a -> [a]
