@@ -257,6 +257,11 @@ pragmaToTH (DLineP {}) = Nothing
 #else
 pragmaToTH (DLineP n str) = Just $ LineP n str
 #endif
+#if __GLASGOW_HASKELL__ < 801
+pragmaToTH (DCompleteP {}) = Nothing
+#else
+pragmaToTH (DCompleteP cls mty) = Just $ CompleteP cls mty
+#endif
 
 ruleBndrToTH :: DRuleBndr -> RuleBndr
 ruleBndrToTH (DRuleVar n) = RuleVar n

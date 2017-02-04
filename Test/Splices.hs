@@ -469,6 +469,20 @@ reifyDecs = [d|
   pattern HeadC :: a -> [a]
   pattern HeadC x <- x:_ where
     HeadC x = [x]
+
+  class LL f where
+    llMeth :: f a -> ()
+
+  instance LL [] where
+    llMeth _ = ()
+
+  pattern LLMeth :: LL f => f a
+  pattern LLMeth <- (llMeth -> ())
+
+  {-# COMPLETE LLMeth :: [] #-}
+
+  llEx :: [a] -> Int
+  llEx LLMeth = 5
 #endif
   |]
 
