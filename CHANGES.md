@@ -7,6 +7,8 @@ Version 1.7
 
 * Support for unboxed sums, thanks to @RyanGlScott.
 
+* Support for `COMPLETE` pragmas.
+
 Version 1.6
 -----------
 * Work with GHC 8, with thanks to @christiaanb for getting this change going.

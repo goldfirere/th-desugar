@@ -217,6 +217,7 @@ data DPragma = DInlineP Name Inline RuleMatch Phases
              | DRuleP String [DRuleBndr] DExp DExp Phases
              | DAnnP AnnTarget DExp
              | DLineP Int String
+             | DCompleteP [Name] (Maybe Name)
              deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @RuleBndr@ type.
@@ -1013,6 +1014,9 @@ dsPragma (AnnP target exp)               = DAnnP target <$> dsExp exp
 #endif
 #if __GLASGOW_HASKELL__ >= 709
 dsPragma (LineP n str)                   = return $ DLineP n str
+#endif
+#if __GLASGOW_HASKELL__ >= 801
+dsPragma (CompleteP cls mty)             = return $ DCompleteP cls mty
 #endif
 
 -- | Desugar a @RuleBndr@.
