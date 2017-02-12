@@ -57,7 +57,10 @@ scExp (DCaseE scrut matches)
 scExp (DLetE decs body) = DLetE <$> mapM scLetDec decs <*> scExp body
 scExp (DSigE exp ty) = DSigE <$> scExp exp <*> pure ty
 scExp (DAppTypeE exp ty) = DAppTypeE <$> scExp exp <*> pure ty
-scExp e = return e
+scExp e@(DVarE {}) = return e
+scExp e@(DConE {}) = return e
+scExp e@(DLitE {}) = return e
+scExp e@(DStaticE {}) = return e
 
 -- | Like 'scExp', but for a 'DLetDec'.
 scLetDec :: DsMonad q => DLetDec -> q DLetDec
@@ -70,7 +73,9 @@ scLetDec (DFunD name clauses@(DClause pats1 _ : _)) = do
     sc_clause_rhs (DClause pats exp) = DClause pats <$> scExp exp
 scLetDec (DValD pat exp) = DValD pat <$> scExp exp
 scLetDec (DPragmaD prag) = DPragmaD <$> scLetPragma prag
-scLetDec dec = return dec
+scLetDec dec@(DSigD {}) = return dec
+scLetDec dec@(DInfixD {}) = return dec
+scLetDec dec@(DFunD _ []) = return dec
 
 scLetPragma :: DsMonad q => DPragma -> q DPragma
 scLetPragma = topEverywhereM scExp -- Only topEverywhereM because scExp already recurses on its own
