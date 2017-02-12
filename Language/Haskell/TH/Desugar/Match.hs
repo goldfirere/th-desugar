@@ -69,7 +69,11 @@ scLetDec (DFunD name clauses@(DClause pats1 _ : _)) = do
   where
     sc_clause_rhs (DClause pats exp) = DClause pats <$> scExp exp
 scLetDec (DValD pat exp) = DValD pat <$> scExp exp
+scLetDec (DPragmaD prag) = DPragmaD <$> scLetPragma prag
 scLetDec dec = return dec
+
+scLetPragma :: DsMonad q => DPragma -> q DPragma
+scLetPragma = topEverywhereM scExp -- Only topEverywhereM because scExp already recurses on its own
 
 type MatchResult = DExp -> DExp
 

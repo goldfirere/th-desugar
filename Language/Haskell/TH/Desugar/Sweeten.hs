@@ -42,7 +42,7 @@ import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 
-import Data.Maybe ( maybeToList )
+import Data.Maybe ( maybeToList, mapMaybe )
 
 expToTH :: DExp -> Exp
 expToTH (DVarE n)            = VarE n
@@ -51,7 +51,10 @@ expToTH (DLitE l)            = LitE l
 expToTH (DAppE e1 e2)        = AppE (expToTH e1) (expToTH e2)
 expToTH (DLamE names exp)    = LamE (map VarP names) (expToTH exp)
 expToTH (DCaseE exp matches) = CaseE (expToTH exp) (map matchToTH matches)
-expToTH (DLetE decs exp)     = LetE (map letDecToTH decs) (expToTH exp)
+expToTH (DLetE decs exp)     = case mapMaybe letDecToTH decs of
+                                  -- This can only happen if we somehow have a DLetE containing only pragmas
+                                  [] -> expToTH exp
+                                  decs' -> LetE decs' (expToTH exp)
 expToTH (DSigE exp ty)       = SigE (expToTH exp) (typeToTH ty)
 #if __GLASGOW_HASKELL__ < 709
 expToTH (DStaticE _)         = error "Static expressions supported only in GHC 7.10+"
@@ -84,7 +87,7 @@ decsToTH = concatMap decToTH
 -- | This returns a list of @Dec@s because GHC 7.6.3 does not have
 -- a one-to-one mapping between 'DDec' and @Dec@.
 decToTH :: DDec -> [Dec]
-decToTH (DLetDec d) = [letDecToTH d]
+decToTH (DLetDec d) = maybeToList (letDecToTH d)
 decToTH (DDataD Data cxt n tvbs cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
   [DataD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (map conToTH cons)
@@ -112,7 +115,6 @@ decToTH (DInstanceD _ cxt ty decs) =
   [InstanceD (cxtToTH cxt) (typeToTH ty) (decsToTH decs)]
 #endif
 decToTH (DForeignD f) = [ForeignD (foreignToTH f)]
-decToTH (DPragmaD prag) = maybeToList $ fmap PragmaD (pragmaToTH prag)
 #if __GLASGOW_HASKELL__ > 710
 decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs ann)) =
   [OpenTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)]
@@ -207,11 +209,14 @@ derivingToTH p =
   error ("Template Haskell in GHC < 8.0 only allows simple derivings: " ++ show p)
 #endif
 
-letDecToTH :: DLetDec -> Dec
-letDecToTH (DFunD name clauses) = FunD name (map clauseToTH clauses)
-letDecToTH (DValD pat exp)      = ValD (patToTH pat) (NormalB (expToTH exp)) []
-letDecToTH (DSigD name ty)      = SigD name (typeToTH ty)
-letDecToTH (DInfixD f name)     = InfixD f name
+-- | Note: This can currently only return a 'Nothing' if the 'DLetDec' is a pragma which
+-- is not supported by the GHC version being used.
+letDecToTH :: DLetDec -> Maybe Dec
+letDecToTH (DFunD name clauses) = Just $ FunD name (map clauseToTH clauses)
+letDecToTH (DValD pat exp)      = Just $ ValD (patToTH pat) (NormalB (expToTH exp)) []
+letDecToTH (DSigD name ty)      = Just $ SigD name (typeToTH ty)
+letDecToTH (DInfixD f name)     = Just $ InfixD f name
+letDecToTH (DPragmaD prag)      = fmap PragmaD (pragmaToTH prag)
 
 conToTH :: DCon -> Con
 #if __GLASGOW_HASKELL__ > 710

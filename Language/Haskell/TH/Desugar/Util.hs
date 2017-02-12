@@ -20,7 +20,8 @@ module Language.Haskell.TH.Desugar.Util (
   tvbName, tvbToType, nameMatches, freeNamesOfTypes, thdOf3, firstMatch,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
-  unboxedTupleNameDegree_maybe, splitTuple_maybe
+  unboxedTupleNameDegree_maybe, splitTuple_maybe,
+  topEverywhereM
   ) where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
@@ -278,3 +279,14 @@ expectJustM err Nothing  = fail err
 
 firstMatch :: (a -> Maybe b) -> [a] -> Maybe b
 firstMatch f xs = listToMaybe $ mapMaybe f xs
+
+-- | Semi-shallow version of 'everywhereM' - does not recurse into children of nodes of type @a@ (only applies the handler to them).
+--
+-- >>> topEverywhereM (pure . fmap (*10) :: [Integer] -> Identity [Integer]) ([1,2,3] :: [Integer], "foo" :: String)
+-- Identity ([10,20,30],"foo")
+--
+-- >>> everywhereM (mkM (pure . fmap (*10) :: [Integer] -> Identity [Integer])) ([1,2,3] :: [Integer], "foo" :: String)
+-- Identity ([10,200,3000],"foo")
+topEverywhereM :: (Typeable a, Data b, Monad m) => (a -> m a) -> b -> m b
+topEverywhereM handler =
+  gmapM (topEverywhereM handler) `extM` handler

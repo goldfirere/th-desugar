@@ -104,6 +104,7 @@ data DLetDec = DFunD Name [DClause]
              | DValD DPat DExp
              | DSigD Name DType
              | DInfixD Fixity Name
+             | DPragmaD DPragma
              deriving (Show, Typeable, Data, Generic)
 
 -- | Is it a @newtype@ or a @data@ type?
@@ -118,7 +119,6 @@ data DDec = DLetDec DLetDec
           | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
           | DInstanceD (Maybe Overlap) DCxt DType [DDec]
           | DForeignD DForeign
-          | DPragmaD DPragma
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
           | DDataFamilyD Name [DTyVarBndr]
@@ -795,7 +795,7 @@ dsDec (InstanceD cxt ty decs) =
 dsDec d@(SigD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
 dsDec d@(InfixD {}) = (fmap . map) DLetDec $ dsLetDec d
-dsDec (PragmaD prag) = (:[]) <$> (DPragmaD <$> dsPragma prag)
+dsDec d@(PragmaD {}) = (fmap . map) DLetDec $ dsLetDec d
 #if __GLASGOW_HASKELL__ > 710
 dsDec (OpenTypeFamilyD tfHead) =
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead tfHead)
@@ -943,6 +943,7 @@ dsLetDec (SigD name ty) = do
   ty' <- dsType ty
   return [DSigD name ty']
 dsLetDec (InfixD fixity name) = return [DInfixD fixity name]
+dsLetDec (PragmaD prag) = (:[]) <$> (DPragmaD <$> dsPragma prag)
 dsLetDec _dec = impossible "Illegal declaration in let expression."
 
 -- | Desugar a single @Con@.

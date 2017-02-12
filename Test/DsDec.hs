@@ -32,6 +32,7 @@ import Language.Haskell.TH  ( reportError )
 import Language.Haskell.TH.Desugar
 
 import Control.Monad
+import Data.Maybe( mapMaybe )
 
 $(dsDecSplice S.dectest1)
 $(dsDecSplice S.dectest2)
@@ -84,4 +85,4 @@ $(do decs <- S.rec_sel_test
            in
            DCon tvbs cxt con_name (DNormalC fields') rty
          plaindata = [DDataD nd [] name [DPlainTV tvbName] (map unrecord cons) []]
-     return (decsToTH plaindata ++ map letDecToTH recsels))
+     return (decsToTH plaindata ++ mapMaybe letDecToTH recsels))
