@@ -238,6 +238,12 @@ test43_ubx_sums = [| let f :: (# Bool | String #) -> Bool
                      f (# | "a" #) |]
 #endif
 
+test44_let_pragma = [| let x :: Int
+                           x = 1
+                           {-# INLINE x #-}
+                       in x |]
+
+
 type family TFExpand x
 type instance TFExpand Int = Bool
 type instance TFExpand (Maybe a) = [a]
@@ -571,4 +577,5 @@ test_exprs = [ test1_sections
              , test42_scoped_tvs
              , test43_ubx_sums
 #endif
+             , test44_let_pragma
              ]
