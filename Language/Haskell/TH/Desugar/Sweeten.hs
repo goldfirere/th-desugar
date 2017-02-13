@@ -51,10 +51,7 @@ expToTH (DLitE l)            = LitE l
 expToTH (DAppE e1 e2)        = AppE (expToTH e1) (expToTH e2)
 expToTH (DLamE names exp)    = LamE (map VarP names) (expToTH exp)
 expToTH (DCaseE exp matches) = CaseE (expToTH exp) (map matchToTH matches)
-expToTH (DLetE decs exp)     = case mapMaybe letDecToTH decs of
-                                  -- This can only happen if we somehow have a DLetE containing only pragmas
-                                  [] -> expToTH exp
-                                  decs' -> LetE decs' (expToTH exp)
+expToTH (DLetE decs exp)     = LetE (mapMaybe letDecToTH decs) (expToTH exp)
 expToTH (DSigE exp ty)       = SigE (expToTH exp) (typeToTH ty)
 #if __GLASGOW_HASKELL__ < 709
 expToTH (DStaticE _)         = error "Static expressions supported only in GHC 7.10+"
