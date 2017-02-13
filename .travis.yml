@@ -46,6 +46,8 @@ matrix:
 
   allow_failures:
     - env: CABALVER=head GHCVER=head
+    - env: CABALVER=1.22 GHCVER=7.10.1
+    # https://github.com/ndmitchell/safe/issues/20#issuecomment-278955186
 
 before_install:
  - unset CC
