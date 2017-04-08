@@ -214,7 +214,7 @@ getRecordSelectors :: Quasi q
                    => DType        -- ^ the type of the argument
                    -> [DCon]
                    -> q [DLetDec]
-getRecordSelectors arg_ty cons = merge_let_decs <$> concatMapM get_record_sels cons
+getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sels cons
   where
     get_record_sels (DCon _ _ con_name con _) = case con of
       DRecC fields -> go fields
