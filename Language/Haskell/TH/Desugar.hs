@@ -5,7 +5,7 @@ eir@cis.upenn.edu
 -}
 
 {-# LANGUAGE CPP, MultiParamTypeClasses, FunctionalDependencies,
-             TypeSynonymInstances, FlexibleInstances #-}
+             TypeSynonymInstances, FlexibleInstances, LambdaCase #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -188,30 +188,74 @@ dtvbName (DPlainTV n)    = S.singleton n
 dtvbName (DKindedTV n _) = S.singleton n
 
 -- | Produces 'DLetDec's representing the record selector functions from
--- the provided 'DCon'.
+-- the provided 'DCon's.
+--
+-- Note that if the same record selector appears in multiple constructors,
+-- 'getRecordSelectors' will return only one binding for that selector.
+-- For example, if you had:
+--
+-- @
+-- data X = X1 {y :: Symbol} | X2 {y :: Symbol}
+-- @
+--
+-- Then calling 'getRecordSelectors' on @[X1, X2]@ will return:
+--
+-- @
+-- [ DSigD y (DAppT (DAppT DArrowT (DConT X)) (DConT Symbol))
+-- , DFunD y [ DClause [DConPa X1 [DVarPa field]] (DVarE field)
+--           , DClause [DConPa X2 [DVarPa field]] (DVarE field) ] ]
+-- @
+--
+-- instead of returning one binding for @X1@ and another binding for @X2@.
+
+-- See https://github.com/goldfirere/singletons/issues/180 for an example where
+-- the latter behavior can bite you.
 getRecordSelectors :: Quasi q
                    => DType        -- ^ the type of the argument
-                   -> DCon
+                   -> [DCon]
                    -> q [DLetDec]
-getRecordSelectors arg_ty (DCon _ _ con_name con _) = case con of
-    DRecC fields -> go fields
-    _ -> return []
+getRecordSelectors arg_ty cons = merge_let_decs <$> concatMapM get_record_sels cons
   where
-    go fields = do
-      varName <- qNewName "field"
-      let tvbs = fvDType arg_ty
-          maybe_forall
-            | S.null tvbs = id
-            | otherwise   = DForallT (map DPlainTV $ S.toList tvbs) []
-          num_pats = length fields
-      return $ concat
-        [ [ DSigD name (maybe_forall $ DArrowT `DAppT` arg_ty `DAppT` res_ty)
-          , DFunD name [DClause [DConPa con_name (mk_field_pats n num_pats varName)]
-                                (DVarE varName)] ]
-        | ((name, _strict, res_ty), n) <- zip fields [0..]
-        , fvDType res_ty `S.isSubsetOf` tvbs   -- exclude "naughty" selectors
-        ]
+    get_record_sels (DCon _ _ con_name con _) = case con of
+      DRecC fields -> go fields
+      _ -> return []
+      where
+        go fields = do
+          varName <- qNewName "field"
+          let tvbs = fvDType arg_ty
+              maybe_forall
+                | S.null tvbs = id
+                | otherwise   = DForallT (map DPlainTV $ S.toList tvbs) []
+              num_pats = length fields
+          return $ concat
+            [ [ DSigD name (maybe_forall $ DArrowT `DAppT` arg_ty `DAppT` res_ty)
+              , DFunD name [DClause [DConPa con_name (mk_field_pats n num_pats varName)]
+                                    (DVarE varName)] ]
+            | ((name, _strict, res_ty), n) <- zip fields [0..]
+            , fvDType res_ty `S.isSubsetOf` tvbs   -- exclude "naughty" selectors
+            ]
 
     mk_field_pats :: Int -> Int -> Name -> [DPat]
     mk_field_pats 0 total name = DVarPa name : (replicate (total-1) DWildPa)
     mk_field_pats n total name = DWildPa : mk_field_pats (n-1) (total-1) name
+
+    merge_let_decs [] = []
+    merge_let_decs (x:xs)
+      -- If we encounter a function declaration, looks for all other function
+      -- declarations in the rest of the list with the same name, and concat
+      -- their clauses.
+      | DFunD n clauses <- x
+      = let (other_clauses, neq_n)
+              = partitionWith (\case DFunD n2 cls | n == n2 -> Left cls
+                                     d -> Right d) xs
+            merged_clauses = concat $ clauses:other_clauses
+            merged_x       = DFunD n merged_clauses
+         in merged_x:merge_let_decs neq_n
+      -- If we encounter a type signature, simply delete all other type signatures
+      -- in the rest of the list with the same name, as they are guaranteed to
+      -- have the same type signature.
+      | DSigD n _ <- x
+      = let neq_n = filter (\case DSigD n2 _ -> n /= n2; _ -> True) xs
+         in x:merge_let_decs neq_n
+
+      | otherwise = x:merge_let_decs xs
