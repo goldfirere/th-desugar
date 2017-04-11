@@ -271,13 +271,13 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
         gather_decs name_clause_map type_sig_names (x:xs)
           -- 1.
           | DFunD n clauses <- x
-          = if n `M.member` name_clause_map
-            then gather_decs (M.insertWith (\new old -> old ++ new)
-                                           n clauses name_clause_map)
-                             type_sig_names xs
-            else let (map', decs') = gather_decs (M.insert n clauses name_clause_map)
-                                                 type_sig_names xs
-                  in (map', x:decs')
+          = let name_clause_map' = M.insertWith (\new old -> old ++ new)
+                                                n clauses name_clause_map
+             in if n `M.member` name_clause_map
+                then gather_decs name_clause_map' type_sig_names xs
+                else let (map', decs') = gather_decs name_clause_map'
+                                           type_sig_names xs
+                      in (map', x:decs')
 
           -- 2.
           | DSigD n _ <- x
