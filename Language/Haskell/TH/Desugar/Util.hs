@@ -13,7 +13,7 @@ module Language.Haskell.TH.Desugar.Util (
   impossible,
   nameOccursIn, allNamesIn, mkTypeName, mkDataName, isDataName,
   stripVarP_maybe, extractBoundNamesStmt,
-  concatMapM, mapMaybeM, partitionWith, expectJustM,
+  concatMapM, mapMaybeM, expectJustM,
   stripPlainTV_maybe,
   thirdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat,
@@ -272,15 +272,6 @@ mapMaybeM f (x:xs) = do
   return $ case y of
     Nothing -> ys
     Just z  -> z : ys
-
--- like GHC's
-partitionWith :: (a -> Either b c) -> [a] -> ([b], [c])
--- ^ Uses a function to determine which of two output lists an input element should join
-partitionWith _ [] = ([],[])
-partitionWith f (x:xs) = case f x of
-                         Left  b -> (b:bs, cs)
-                         Right c -> (bs, c:cs)
-    where (bs,cs) = partitionWith f xs
 
 expectJustM :: Monad m => String -> Maybe a -> m a
 expectJustM _   (Just x) = return x
