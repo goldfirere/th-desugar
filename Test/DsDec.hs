@@ -72,7 +72,7 @@ $(dsDecSplice S.dectest13)
 $(do decs <- S.rec_sel_test
      [DDataD nd [] name [DPlainTV tvbName] cons []] <- dsDecs decs
      let arg_ty = (DConT name) `DAppT` (DVarT tvbName)
-     recsels <- fmap concat $ mapM (getRecordSelectors arg_ty) cons
+     recsels <- getRecordSelectors arg_ty cons
      let num_sels = length recsels `div` 2 -- ignore type sigs
      when (num_sels /= S.rec_sel_test_num_sels) $
        reportError $ "Wrong number of record selectors extracted.\n"
