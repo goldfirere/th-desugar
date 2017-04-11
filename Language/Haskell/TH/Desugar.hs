@@ -96,6 +96,7 @@ import Language.Haskell.TH.Desugar.Reify
 import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Match
 
+import qualified Data.Map as M
 import qualified Data.Set as S
 #if __GLASGOW_HASKELL__ < 709
 import Data.Foldable ( foldMap )
@@ -222,13 +223,11 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
       where
         go fields = do
           varName <- qNewName "field"
-          let tvbs = fvDType arg_ty
-              maybe_forall
-                | S.null tvbs = id
-                | otherwise   = DForallT (map DPlainTV $ S.toList tvbs) []
+          let tvbs     = fvDType arg_ty
+              forall'  = DForallT (map DPlainTV $ S.toList tvbs) []
               num_pats = length fields
           return $ concat
-            [ [ DSigD name (maybe_forall $ DArrowT `DAppT` arg_ty `DAppT` res_ty)
+            [ [ DSigD name (forall' $ DArrowT `DAppT` arg_ty `DAppT` res_ty)
               , DFunD name [DClause [DConPa con_name (mk_field_pats n num_pats varName)]
                                     (DVarE varName)] ]
             | ((name, _strict, res_ty), n) <- zip fields [0..]
@@ -239,23 +238,63 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
     mk_field_pats 0 total name = DVarPa name : (replicate (total-1) DWildPa)
     mk_field_pats n total name = DWildPa : mk_field_pats (n-1) (total-1) name
 
-    merge_let_decs [] = []
-    merge_let_decs (x:xs)
-      -- If we encounter a function declaration, looks for all other function
-      -- declarations in the rest of the list with the same name, and concat
-      -- their clauses.
-      | DFunD n clauses <- x
-      = let (other_clauses, neq_n)
-              = partitionWith (\case DFunD n2 cls | n == n2 -> Left cls
-                                     d -> Right d) xs
-            merged_clauses = concat $ clauses:other_clauses
-            merged_x       = DFunD n merged_clauses
-         in merged_x:merge_let_decs neq_n
-      -- If we encounter a type signature, simply delete all other type signatures
-      -- in the rest of the list with the same name, as they are guaranteed to
-      -- have the same type signature.
-      | DSigD n _ <- x
-      = let neq_n = filter (\case DSigD n2 _ -> n /= n2; _ -> True) xs
-         in x:merge_let_decs neq_n
+    merge_let_decs :: [DLetDec] -> [DLetDec]
+    merge_let_decs decs =
+      let (name_clause_map, decs') = gather_decs M.empty S.empty decs
+       in augment_clauses name_clause_map decs'
+        -- First, for each record selector-related declarations, do the following:
+        --
+        -- 1. If it's a DFunD...
+        --   a. If we haven't encountered it before, add a mapping from its Name
+        --      to its associated DClauses, and continue.
+        --   b. If we have encountered it before, augment the existing Name's
+        --      mapping with the new clauses. Then remove the DFunD from the list
+        --      and continue.
+        -- 2. If it's a DSigD...
+        --   a. If we haven't encountered it before, remember its Name and continue.
+        --   b. If we have encountered it before, remove the DSigD from the list
+        --      and continue.
+        -- 3. Otherwise, continue.
+        --
+        -- After this, scan over the resulting list once more with the mapping
+        -- that we accumulated. For every DFunD, replace its DClauses with the
+        -- ones corresponding to its Name in the mapping.
+        --
+        -- Note that this algorithm combines all of the DClauses for each unique
+        -- Name, while preserving the order in which the DFunDs were originally
+        -- found. Moreover, it removes duplicate DSigD entries. Using Maps and
+        -- Sets avoid quadratic blowup for data types with many record selectors.
+      where
+        gather_decs :: M.Map Name [DClause] -> S.Set Name -> [DLetDec]
+                    -> (M.Map Name [DClause], [DLetDec])
+        gather_decs name_clause_map _ [] = (name_clause_map, [])
+        gather_decs name_clause_map type_sig_names (x:xs)
+          -- 1.
+          | DFunD n clauses <- x
+          = if n `M.member` name_clause_map
+            then gather_decs (M.insertWith (\new old -> old ++ new)
+                                           n clauses name_clause_map)
+                             type_sig_names xs
+            else let (map', decs') = gather_decs (M.insert n clauses name_clause_map)
+                                                 type_sig_names xs
+                  in (map', x:decs')
 
-      | otherwise = x:merge_let_decs xs
+          -- 2.
+          | DSigD n _ <- x
+          = if n `S.member` type_sig_names
+            then gather_decs name_clause_map type_sig_names xs
+            else let (map', decs') = gather_decs name_clause_map
+                                       (n `S.insert` type_sig_names) xs
+                  in (map', x:decs')
+
+          -- 3.
+          | otherwise =
+              let (map', decs') = gather_decs name_clause_map type_sig_names xs
+               in (map', x:decs')
+
+        augment_clauses :: M.Map Name [DClause] -> [DLetDec] -> [DLetDec]
+        augment_clauses _ [] = []
+        augment_clauses name_clause_map (x:xs)
+          | DFunD n _ <- x, Just merged_clauses <- n `M.lookup` name_clause_map
+          = DFunD n merged_clauses:augment_clauses name_clause_map xs
+          | otherwise = x:augment_clauses name_clause_map xs
