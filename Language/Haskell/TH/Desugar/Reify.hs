@@ -1,7 +1,7 @@
 {- Language/Haskell/TH/Desugar/Reify.hs
 
 (c) Richard Eisenberg 2014
-eir@cis.upenn.edu
+rae@cs.brynmawr.edu
 
 Allows for reification from a list of declarations, without looking a name
 up in the environment.

@@ -1,7 +1,7 @@
 {- Language/Haskell/TH/Desugar/Match.hs
 
 (c) Richard Eisenberg 2013
-eir@cis.upenn.edu
+rae@cs.brynmawr.edu
 
 Simplifies case statements in desugared TH. After this pass, there are no
 more nested patterns.

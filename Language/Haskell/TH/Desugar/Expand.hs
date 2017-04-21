@@ -1,7 +1,7 @@
 {- Language/Haskell/TH/Desugar/Expand.hs
 
 (c) Richard Eisenberg 2013
-eir@cis.upenn.edu
+rae@cs.brynmawr.edu
 -}
 
 {-# LANGUAGE CPP, NoMonomorphismRestriction #-}
@@ -11,7 +11,7 @@ eir@cis.upenn.edu
 -- Module      :  Language.Haskell.TH.Desugar.Expand
 -- Copyright   :  (C) 2014 Richard Eisenberg
 -- License     :  BSD-style (see LICENSE)
--- Maintainer  :  Richard Eisenberg (eir@cis.upenn.edu)
+-- Maintainer  :  Richard Eisenberg (rae@cs.brynmawr.edu)
 -- Stability   :  experimental
 -- Portability :  non-portable
 --

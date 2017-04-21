@@ -1,7 +1,7 @@
 {- Tests for the th-desugar package
 
 (c) Richard Eisenberg 2013
-eir@cis.upenn.edu
+rae@cs.brynmawr.edu
 -}
 
 {-# LANGUAGE TemplateHaskell, GADTs, PolyKinds, TypeFamilies,

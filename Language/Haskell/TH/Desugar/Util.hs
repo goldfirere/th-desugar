@@ -1,7 +1,7 @@
 {- Language/Haskell/TH/Desugar/Util.hs
 
 (c) Richard Eisenberg 2013
-eir@cis.upenn.edu
+rae@cs.brynmawr.edu
 
 Utility functions for th-desugar package.
 -}
@@ -87,7 +87,7 @@ stripPlainTV_maybe _           = Nothing
 
 -- | Report that a certain TH construct is impossible
 impossible :: Monad q => String -> q a
-impossible err = fail (err ++ "\n    This should not happen in Haskell.\n    Please email eir@cis.upenn.edu with your code if you see this.")
+impossible err = fail (err ++ "\n    This should not happen in Haskell.\n    Please email rae@cs.brynmawr.edu with your code if you see this.")
 
 -- | Extract a 'Name' from a 'TyVarBndr'
 tvbName :: TyVarBndr -> Name
