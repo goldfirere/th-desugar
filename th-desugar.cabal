@@ -53,7 +53,7 @@ library
 
 test-suite spec
   type:               exitcode-stdio-1.0
-  ghc-options:        -Wall -main-is Run
+  ghc-options:        -Wall
   default-language:   Haskell2010
   default-extensions: TemplateHaskell
   hs-source-dirs:     Test

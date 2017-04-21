@@ -19,7 +19,7 @@ eir@cis.upenn.edu
 {-# OPTIONS_GHC -Wno-partial-type-signatures -Wno-redundant-constraints #-}
 #endif
 
-module Run where
+module Main where
 
 import Prelude hiding ( exp )
 
