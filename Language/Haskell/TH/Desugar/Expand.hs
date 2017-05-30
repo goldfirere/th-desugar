@@ -54,7 +54,8 @@ import Language.Haskell.TH.Desugar.Reify
 data IgnoreKinds = YesIgnore | NoIgnore
 
 -- | Expands all type synonyms in a desugared type. Also expands open type family
--- applications, as long as the arguments have no free variables. Attempts to
+-- applications. (In GHCs before 7.10, this part does not work if there are any
+-- variables.) Attempts to
 -- expand closed type family applications, but aborts the moment it spots anything
 -- strange, like a nested type family application or type variable.
 expandType :: DsMonad q => DType -> q DType
@@ -112,7 +113,9 @@ expand_con ign n args = do
 
     DTyConI (DOpenTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann)) _
       |  length args >= length tvbs   -- this should always be true!
+#if __GLASGOW_HASKELL__ < 709
       ,  args_ok
+#endif
       -> do
         let (syn_args, rest_args) = splitAtList tvbs args
         -- need to get the correct instance

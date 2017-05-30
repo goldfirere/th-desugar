@@ -142,6 +142,10 @@ test_e8a = $(test_expand8 >>= dsExp >>= expand >>= return . expToTH)
 #endif
 test_e8b = $(test_expand8 >>= dsExp >>= expandUnsoundly >>= return . expToTH)
 #endif
+#if __GLASGOW_HASKELL__ >= 709
+test_e9a = $test_expand9  -- requires GHC #9262
+test_e9b = $(test_expand9 >>= dsExp >>= expand >>= return . expToTH)
+#endif
 
 hasSameType :: a -> a -> Bool
 hasSameType _ _ = True
@@ -159,6 +163,10 @@ test_expand = and [ hasSameType test35a test35b
 #if __GLASGOW_HASKELL__ < 801
                   , hasSameType test_e8a test_e8a
 #endif
+                  , hasSameType test_e8b test_e8b
+#endif
+#if __GLASGOW_HASKELL__ >= 709
+                  , hasSameType test_e9a test_e9b
 #endif
                   ]
 

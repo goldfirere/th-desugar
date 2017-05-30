@@ -15,6 +15,8 @@ Version 1.7
   [goldfirere/singletons#180](https://github.com/goldfirere/singletons/issues/180)
   for an example of where the old behavior of `getRecordSelectors` went wrong.)
 
+* Better type family expansion (expanding an open type family with variables works now).
+
 Version 1.6
 -----------
 * Work with GHC 8, with thanks to @christiaanb for getting this change going.

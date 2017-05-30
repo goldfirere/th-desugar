@@ -279,6 +279,12 @@ test_expand8 = [| let f :: PolyTF IO -> ()
 #endif
 
 #if __GLASGOW_HASKELL__ >= 709
+test_expand9 = [| let f :: TFExpand (Maybe (IO a)) -> IO ()
+                      f actions = sequence_ actions in
+                  f |]
+#endif
+
+#if __GLASGOW_HASKELL__ >= 709
 test37_pred = [| let f :: (Read a, (Show a, Num a)) => a -> a
                      f x = read (show x) + x in
                  (f 3, f 4.5) |]
