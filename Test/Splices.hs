@@ -365,6 +365,16 @@ dectest13 = [d| data Dec13 :: (* -> Constraint) -> * where
                   MkDec13 :: c a => a -> Dec13 c
               |]
 
+dectest14 = [d| data InfixADT = Int `InfixADT` Int |]
+
+dectest15 = [d| infixl 5 :**:, :&&:, :^^:, `ActuallyPrefix`
+                data InfixGADT a where
+                  (:**:) :: Int -> b -> InfixGADT (Maybe b) -- Only this one is infix
+                  (:&&:) :: { infixGADT1 :: b, infixGADT2 :: Int } -> InfixGADT [b]
+                  ActuallyPrefix :: Char -> Bool -> InfixGADT Double
+                  (:^^:) :: Int -> Int -> Int -> InfixGADT Int
+                  (:!!:) :: Char -> Char -> InfixGADT Char |]
+
 instance_test = [d| instance (Show a, Show b) => Show (a -> b) where
                        show _ = "function" |]
 

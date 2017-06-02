@@ -68,6 +68,8 @@ $(dsDecSplice S.deriv_strat_test)
 
 $(dsDecSplice S.dectest12)
 $(dsDecSplice S.dectest13)
+$(dsDecSplice S.dectest14)
+$(dsDecSplice S.dectest15)
 
 $(do decs <- S.rec_sel_test
      [DDataD nd [] name [DPlainTV tvbName] cons []] <- dsDecs decs
@@ -79,6 +81,7 @@ $(do decs <- S.rec_sel_test
                   ++ "Wanted " ++ show S.rec_sel_test_num_sels
                   ++ ", Got " ++ show num_sels
      let unrecord c@(DCon _ _ _ (DNormalC {}) _) = c
+         unrecord c@(DCon _ _ _ (DInfixC {})  _) = c
          unrecord (DCon tvbs cxt con_name (DRecC fields) rty) =
            let (_names, stricts, types) = unzip3 fields
                fields' = zip stricts types

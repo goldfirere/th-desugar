@@ -175,9 +175,10 @@ data DCon = DCon [DTyVarBndr] DCxt Name DConFields
                  (Maybe DType)  -- ^ A GADT result type, if there is one
           deriving (Show, Typeable, Data, Generic)
 
--- | A list of fields either for a standard data constructor or a record
--- data constructor.
+-- | A list of fields either for a standard data constructor, a data
+-- constructor that is declared infix, or a record data constructor.
 data DConFields = DNormalC [DBangType]
+                | DInfixC DBangType DBangType
                 | DRecC [DVarBangType]
                 deriving (Show, Typeable, Data, Generic)
 
@@ -956,7 +957,7 @@ dsCon (RecC n vstys) =
 dsCon (InfixC sty1 n sty2) = do
   dty1 <- dsBangType sty1
   dty2 <- dsBangType sty2
-  return $ [DCon [] [] n (DNormalC [dty1, dty2]) Nothing]
+  return $ [DCon [] [] n (DInfixC dty1 dty2) Nothing]
 dsCon (ForallC tvbs cxt con) = do
   dtvbs <- mapM dsTvb tvbs
   dcxt <- dsCxt cxt
@@ -967,8 +968,20 @@ dsCon (ForallC tvbs cxt con) = do
 dsCon (GadtC nms btys rty) = do
   dbtys <- mapM dsBangType btys
   drty  <- dsType rty
-  return $ flip map nms $ \nm ->
-    DCon [] [] nm (DNormalC dbtys) (Just drty)
+  sequence $ flip map nms $ \nm -> do
+    mbFi <- reifyFixityWithLocals nm
+    -- A GADT data constructor is declared infix when these three
+    -- properties hold:
+    let con | isInfixDataCon (nameBase nm) -- 1. Its name uses operator syntax
+                                           --    (e.g., (:*:))
+            , length dbtys == 2            -- 2. It has exactly two fields
+            , Just _ <- mbFi               -- 3. It has a programmer-specified
+                                           --    fixity declaration
+            , [dbty1,dbty2] <- dbtys
+            = DInfixC dbty1 dbty2
+            | otherwise
+            = DNormalC dbtys
+    return $ DCon [] [] nm con (Just drty)
 dsCon (RecGadtC nms vbtys rty) = do
   dvbtys <- mapM dsVarBangType vbtys
   drty   <- dsType rty

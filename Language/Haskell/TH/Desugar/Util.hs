@@ -21,7 +21,7 @@ module Language.Haskell.TH.Desugar.Util (
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
-  topEverywhereM
+  topEverywhereM, isInfixDataCon
   ) where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
@@ -290,3 +290,9 @@ firstMatch f xs = listToMaybe $ mapMaybe f xs
 topEverywhereM :: (Typeable a, Data b, Monad m) => (a -> m a) -> b -> m b
 topEverywhereM handler =
   gmapM (topEverywhereM handler) `extM` handler
+
+-- Checks if a String names a valid Haskell infix data constructor
+-- (i.e., does it begin with a colon?).
+isInfixDataCon :: String -> Bool
+isInfixDataCon (':':_) = True
+isInfixDataCon _ = False

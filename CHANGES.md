@@ -1,6 +1,11 @@
 `th-desugar` release notes
 ==========================
 
+next
+----
+* Add `DInfixC` constructor for `DConFields` to represent data constructors
+  that are declard infix.
+
 Version 1.7
 -----------
 * Support for TH's support for `TypeApplications`, thanks to @RyanGlScott.

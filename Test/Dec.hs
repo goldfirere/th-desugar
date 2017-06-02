@@ -39,6 +39,8 @@ $(S.dectest11)
 #endif
 $(S.dectest12)
 $(S.dectest13)
+$(S.dectest14)
+$(S.dectest15)
 
 $(fmap unqualify S.instance_test)
 

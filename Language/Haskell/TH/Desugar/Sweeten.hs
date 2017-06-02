@@ -219,6 +219,8 @@ conToTH :: DCon -> Con
 #if __GLASGOW_HASKELL__ > 710
 conToTH (DCon [] [] n (DNormalC stys) (Just rty)) =
   GadtC [n] (map (second typeToTH) stys) (typeToTH rty)
+conToTH (DCon [] [] n (DInfixC sty1 sty2) (Just rty)) =
+  GadtC [n] (map (second typeToTH) [sty1,sty2]) (typeToTH rty)
 conToTH (DCon [] [] n (DRecC vstys) (Just rty)) =
   RecGadtC [n] (map (thirdOf3 typeToTH) vstys) (typeToTH rty)
 #endif
@@ -227,6 +229,12 @@ conToTH (DCon [] [] n (DNormalC stys) _) =
   NormalC n (map (second typeToTH) stys)
 #else
   NormalC n (map (bangToStrict *** typeToTH) stys)
+#endif
+conToTH (DCon [] [] n (DInfixC sty1 sty2) _) =
+#if __GLASGOW_HASKELL__ > 710
+  InfixC (second typeToTH sty1) n (second typeToTH sty2)
+#else
+  InfixC ((bangToStrict *** typeToTH) sty1) n ((bangToStrict *** typeToTH) sty2)
 #endif
 conToTH (DCon [] [] n (DRecC vstys) _) =
 #if __GLASGOW_HASKELL__ > 710
