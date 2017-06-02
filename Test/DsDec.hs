@@ -68,6 +68,11 @@ $(dsDecSplice S.deriv_strat_test)
 
 $(dsDecSplice S.dectest12)
 $(dsDecSplice S.dectest13)
+$(dsDecSplice S.dectest14)
+
+#if __GLASGOW_HASKELL__ >= 710
+$(dsDecSplice S.dectest15)
+#endif
 
 $(do decs <- S.rec_sel_test
      [DDataD nd [] name [DPlainTV tvbName] cons []] <- dsDecs decs
@@ -83,6 +88,6 @@ $(do decs <- S.rec_sel_test
            let (_names, stricts, types) = unzip3 fields
                fields' = zip stricts types
            in
-           DCon tvbs cxt con_name (DNormalC fields') rty
+           DCon tvbs cxt con_name (DNormalC False fields') rty
          plaindata = [DDataD nd [] name [DPlainTV tvbName] (map unrecord cons) []]
      return (decsToTH plaindata ++ mapMaybe letDecToTH recsels))

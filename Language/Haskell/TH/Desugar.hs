@@ -28,7 +28,7 @@ module Language.Haskell.TH.Desugar (
   DDerivClause(..), DerivStrategy(..), DPatSynDir(..), DPatSynType,
   Overlap(..), PatSynArgs(..), NewOrData(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
-  DCon(..), DConFields(..), DBangType, DVarBangType,
+  DCon(..), DConFields(..), DDeclaredInfix, DBangType, DVarBangType,
   Bang(..), SourceUnpackedness(..), SourceStrictness(..),
   DForeign(..),
   DPragma(..), DRuleBndr(..), DTySynEqn(..), DInfo(..), DInstanceDec,

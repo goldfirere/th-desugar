@@ -1,6 +1,11 @@
 `th-desugar` release notes
 ==========================
 
+next
+----
+* Incorporate a `DDeclaredInfix` field into `DNormalC` to indicate if it is
+  a constructor that was declared infix.
+
 Version 1.7
 -----------
 * Support for TH's support for `TypeApplications`, thanks to @RyanGlScott.
