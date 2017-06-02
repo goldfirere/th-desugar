@@ -40,7 +40,10 @@ $(S.dectest11)
 $(S.dectest12)
 $(S.dectest13)
 $(S.dectest14)
+
+#if __GLASGOW_HASKELL__ >= 710
 $(S.dectest15)
+#endif
 
 $(fmap unqualify S.instance_test)
 

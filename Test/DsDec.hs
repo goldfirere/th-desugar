@@ -69,7 +69,10 @@ $(dsDecSplice S.deriv_strat_test)
 $(dsDecSplice S.dectest12)
 $(dsDecSplice S.dectest13)
 $(dsDecSplice S.dectest14)
+
+#if __GLASGOW_HASKELL__ >= 710
 $(dsDecSplice S.dectest15)
+#endif
 
 $(do decs <- S.rec_sel_test
      [DDataD nd [] name [DPlainTV tvbName] cons []] <- dsDecs decs
