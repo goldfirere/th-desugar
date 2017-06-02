@@ -3,8 +3,8 @@
 
 next
 ----
-* Add `DInfixC` constructor for `DConFields` to represent data constructors
-  that are declard infix.
+* Incorporate a `DDeclaredInfix` field into `DNormalC` to indicate if it is
+  a constructor that was declared infix.
 
 Version 1.7
 -----------

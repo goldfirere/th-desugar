@@ -27,6 +27,9 @@ import Control.Monad.Writer hiding (mapM)
 import Data.Foldable hiding (notElem)
 import Data.Traversable
 import Data.Data hiding (Fixity)
+#if __GLASGOW_HASKELL__ > 710
+import Data.Maybe (isJust)
+#endif
 import GHC.Generics hiding (Fixity)
 
 import qualified Data.Set as S
@@ -175,12 +178,55 @@ data DCon = DCon [DTyVarBndr] DCxt Name DConFields
                  (Maybe DType)  -- ^ A GADT result type, if there is one
           deriving (Show, Typeable, Data, Generic)
 
--- | A list of fields either for a standard data constructor, a data
--- constructor that is declared infix, or a record data constructor.
-data DConFields = DNormalC [DBangType]
-                | DInfixC DBangType DBangType
+-- | A list of fields either for a standard data constructor or a record
+-- data constructor.
+data DConFields = DNormalC DDeclaredInfix [DBangType]
                 | DRecC [DVarBangType]
                 deriving (Show, Typeable, Data, Generic)
+
+-- | 'True' if a constructor is declared infix. For normal ADTs, this means
+-- that is was written in infix style. For example, both of the constructors
+-- below are declared infix.
+--
+-- @
+-- data Infix = Int `Infix` Int | Int :*: Int
+-- @
+--
+-- Whereas neither of these constructors are declared infix:
+--
+-- @
+-- data Prefix = Prefix Int Int | (:+:) Int Int
+-- @
+--
+-- For GADTs, detecting whether a constructor is declared infix is a bit
+-- trickier, as one cannot write a GADT constructor "infix-style" like one
+-- can for normal ADT constructors. GHC considers a GADT constructor to be
+-- declared infix if it meets the following three criteria:
+--
+-- 1. Its name uses operator syntax (e.g., @(:*:)@).
+-- 2. It has exactly two fields (without record syntax).
+-- 3. It has a programmer-specified fixity declaration.
+--
+-- For example, in the following GADT:
+--
+-- @
+-- infixl 5 :**:, :&&:, :^^:, `ActuallyPrefix`
+-- data InfixGADT a where
+--   (:**:) :: Int -> b -> InfixGADT (Maybe b) -- Only this one is infix
+--   ActuallyPrefix :: Char -> Bool -> InfixGADT Double
+--   (:&&:) :: { infixGADT1 :: b, infixGADT2 :: Int } -> InfixGADT [b]
+--   (:^^:) :: Int -> Int -> Int -> InfixGADT Int
+--   (:!!:) :: Char -> Char -> InfixGADT Char
+-- @
+--
+-- Only the @(:**:)@ constructor is declared infix. The other constructors
+-- are not declared infix, because:
+--
+-- * @ActuallyPrefix@ does not use operator syntax (criterion 1).
+-- * @(:&&:)@ uses record syntax (criterion 2).
+-- * @(:^^:)@ does not have exactly two fields (criterion 2).
+-- * @(:!!:)@ does not have a programmer-specified fixity declaration (criterion 3).
+type DDeclaredInfix = Bool
 
 -- | Corresponds to TH's @BangType@ type.
 type DBangType = (Bang, DType)
@@ -951,13 +997,13 @@ dsLetDec _dec = impossible "Illegal declaration in let expression."
 dsCon :: DsMonad q
       => Con -> q [DCon]
 dsCon (NormalC n stys) =
-  (:[]) <$> (DCon [] [] n <$> (DNormalC <$> mapM dsBangType stys) <*> pure Nothing)
+  (:[]) <$> (DCon [] [] n <$> (DNormalC False <$> mapM dsBangType stys) <*> pure Nothing)
 dsCon (RecC n vstys) =
   (:[]) <$> (DCon [] [] n <$> (DRecC <$> mapM dsVarBangType vstys) <*> pure Nothing)
 dsCon (InfixC sty1 n sty2) = do
   dty1 <- dsBangType sty1
   dty2 <- dsBangType sty2
-  return $ [DCon [] [] n (DInfixC dty1 dty2) Nothing]
+  return $ [DCon [] [] n (DNormalC True [dty1, dty2]) Nothing]
 dsCon (ForallC tvbs cxt con) = do
   dtvbs <- mapM dsTvb tvbs
   dcxt <- dsCxt cxt
@@ -972,16 +1018,12 @@ dsCon (GadtC nms btys rty) = do
     mbFi <- reifyFixityWithLocals nm
     -- A GADT data constructor is declared infix when these three
     -- properties hold:
-    let con | isInfixDataCon (nameBase nm) -- 1. Its name uses operator syntax
-                                           --    (e.g., (:*:))
-            , length dbtys == 2            -- 2. It has exactly two fields
-            , Just _ <- mbFi               -- 3. It has a programmer-specified
-                                           --    fixity declaration
-            , [dbty1,dbty2] <- dbtys
-            = DInfixC dbty1 dbty2
-            | otherwise
-            = DNormalC dbtys
-    return $ DCon [] [] nm con (Just drty)
+    let decInfix = isInfixDataCon (nameBase nm) -- 1. Its name uses operator syntax
+                                                --    (e.g., (:*:))
+                || length dbtys == 2            -- 2. It has exactly two fields
+                || isJust mbFi                  -- 3. It has a programmer-specified
+                                                --    fixity declaration
+    return $ DCon [] [] nm (DNormalC decInfix dbtys) (Just drty)
 dsCon (RecGadtC nms vbtys rty) = do
   dvbtys <- mapM dsVarBangType vbtys
   drty   <- dsType rty

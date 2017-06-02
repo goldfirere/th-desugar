@@ -84,11 +84,10 @@ $(do decs <- S.rec_sel_test
                   ++ "Wanted " ++ show S.rec_sel_test_num_sels
                   ++ ", Got " ++ show num_sels
      let unrecord c@(DCon _ _ _ (DNormalC {}) _) = c
-         unrecord c@(DCon _ _ _ (DInfixC {})  _) = c
          unrecord (DCon tvbs cxt con_name (DRecC fields) rty) =
            let (_names, stricts, types) = unzip3 fields
                fields' = zip stricts types
            in
-           DCon tvbs cxt con_name (DNormalC fields') rty
+           DCon tvbs cxt con_name (DNormalC False fields') rty
          plaindata = [DDataD nd [] name [DPlainTV tvbName] (map unrecord cons) []]
      return (decsToTH plaindata ++ mapMaybe letDecToTH recsels))
