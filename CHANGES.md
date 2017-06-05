@@ -1,8 +1,8 @@
 `th-desugar` release notes
 ==========================
 
-next
-----
+Version 1.8
+-----------
 * Incorporate a `DDeclaredInfix` field into `DNormalC` to indicate if it is
   a constructor that was declared infix.
 
