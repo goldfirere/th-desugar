@@ -65,7 +65,8 @@ module Language.Haskell.TH.Desugar (
 
   -- | The following definitions allow you to register a list of
   -- @Dec@s to be used in reification queries.
-  withLocalDeclarations, dsReify, reifyWithLocals_maybe, reifyWithLocals,
+  withLocalDeclarations, dsReify,
+  reifyWithLocals_maybe, reifyWithLocals, reifyFixityWithLocals,
   DsMonad(..), DsM,
 
   -- * Nested pattern flattening
