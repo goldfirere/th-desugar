@@ -6,6 +6,8 @@ Version 1.8
 * Incorporate a `DDeclaredInfix` field into `DNormalC` to indicate if it is
   a constructor that was declared infix.
 
+* Export `reifyFixityWithLocals` from `Language.Haskell.TH.Desugar`.
+
 Version 1.7
 -----------
 * Support for TH's support for `TypeApplications`, thanks to @RyanGlScott.
