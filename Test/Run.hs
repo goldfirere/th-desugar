@@ -228,6 +228,16 @@ test_deriving_strategies = compare (MkBlarggie 5 'x') (MkBlarggie 5 'x') == EQ
 test_deriving_strategies = True
 #endif
 
+test_local_tyfam_expansion :: Bool
+test_local_tyfam_expansion =
+  $(do fam_name <- newName "Fam"
+       let orig_ty = DConT fam_name
+       exp_ty <- withLocalDeclarations
+                   (decsToTH [ DOpenTypeFamilyD (DTypeFamilyHead fam_name [] DNoSig Nothing)
+                             , DTySynInstD fam_name (DTySynEqn [] (DConT ''Int)) ])
+                   (expandType orig_ty)
+       orig_ty `eqTHSplice` exp_ty)
+
 local_reifications :: [String]
 local_reifications = $(do decs <- reifyDecs
                           m_infos <- withLocalDeclarations decs $
@@ -295,7 +305,9 @@ main = hspec $ do
 
     it "works with standalone deriving" $ test_standalone_deriving
 
-    it "workds with deriving strategies" $ test_deriving_strategies
+    it "works with deriving strategies" $ test_deriving_strategies
+
+    it "doesn't expand local type families" $ test_local_tyfam_expansion
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')

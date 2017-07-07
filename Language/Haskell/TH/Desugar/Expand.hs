@@ -118,8 +118,11 @@ expand_con ign n args = do
 #endif
       -> do
         let (syn_args, rest_args) = splitAtList tvbs args
-        -- need to get the correct instance
-        insts <- qReifyInstances n (map typeToTH syn_args)
+        -- We need to get the correct instance. If we fail to reify anything
+        -- (e.g., if a type family is quasiquoted), then fall back by
+        -- pretending that there are no instances in scope.
+        insts <- qRecover (return []) $
+                 qReifyInstances n (map typeToTH syn_args)
         dinsts <- dsDecs insts
         case dinsts of
           [DTySynInstD _n (DTySynEqn lhs rhs)] -> do
