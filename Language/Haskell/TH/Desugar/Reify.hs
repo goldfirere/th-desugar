@@ -462,9 +462,12 @@ findCon n = find match_con
 findRecSelector :: Name -> [Con] -> Maybe Type
 findRecSelector n = firstMatch match_con
   where
-    match_con (RecC _ vstys)  = firstMatch match_rec_sel vstys
-    match_con (ForallC _ _ c) = match_con c
-    match_con _               = Nothing
+    match_con (RecC _ vstys)       = firstMatch match_rec_sel vstys
+#if __GLASGOW_HASKELL__ >= 800
+    match_con (RecGadtC _ vstys _) = firstMatch match_rec_sel vstys
+#endif
+    match_con (ForallC _ _ c)      = match_con c
+    match_con _                    = Nothing
 
     match_rec_sel (n', _, ty) | n `nameMatches` n' = Just ty
     match_rec_sel _                     = Nothing
