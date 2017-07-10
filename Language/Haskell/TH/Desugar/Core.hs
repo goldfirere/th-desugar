@@ -378,12 +378,35 @@ dsExp (ListE exps) = go exps
 dsExp (SigE exp ty) = DSigE <$> dsExp exp <*> dsType ty
 dsExp (RecConE con_name field_exps) = do
   con <- dataConNameToCon con_name
-  reordered <- case con of
-                 RecC _name fields -> reorderFields fields field_exps
-                                                    (repeat $ DVarE 'undefined)
-                 _ -> impossible $ "Record syntax used with non-record constructor "
-                                   ++ (show con_name) ++ "."
+  reordered <- reorder con
   return $ foldl DAppE (DConE con_name) reordered
+  where
+    reorder con = case con of
+                    NormalC _name fields -> non_record fields
+                    InfixC field1 _name field2 -> non_record [field1, field2]
+                    RecC _name fields -> reorder_fields fields
+                    ForallC _ _ c -> reorder c
+#if __GLASGOW_HASKELL__ >= 800
+                    GadtC _names fields _ret_ty -> non_record fields
+                    RecGadtC _names fields _ret_ty -> reorder_fields fields
+#endif
+
+    reorder_fields fields = reorderFields fields field_exps
+                                          (repeat $ DVarE 'undefined)
+
+    non_record fields | null field_exps
+                        -- Special case: record construction is allowed for any
+                        -- constructor, regardless of whether the constructor
+                        -- actually was declared with records, provided that no
+                        -- records are given in the expression itself. (See #59).
+                        --
+                        -- Con{} desugars down to Con undefined ... undefined.
+                      = return $ replicate (length fields) $ DVarE 'undefined
+
+                      | otherwise =
+                          impossible $ "Record syntax used with non-record constructor "
+                                       ++ (show con_name) ++ "."
+
 dsExp (RecUpdE exp field_exps) = do
   -- here, we need to use one of the field names to find the tycon, somewhat dodgily
   first_name <- case field_exps of
@@ -422,19 +445,33 @@ dsExp (RecUpdE exp field_exps) = do
     filter_cons_with_names cons field_names =
       filter has_names cons
       where
-        has_names (RecC _con_name args) =
+        args_contain_names args =
           let con_field_names = map fst_of_3 args in
           all (`elem` con_field_names) field_names
+
+        has_names (RecC _con_name args) =
+          args_contain_names args
+#if __GLASGOW_HASKELL__ >= 800
+        has_names (RecGadtC _con_name args _ret_ty) =
+          args_contain_names args
+#endif
         has_names (ForallC _ _ c) = has_names c
         has_names _               = False
 
-    con_to_dmatch :: DsMonad q => Con -> q DMatch
-    con_to_dmatch (RecC con_name args) = do
+    rec_con_to_dmatch con_name args = do
       let con_field_names = map fst_of_3 args
       field_var_names <- mapM (newUniqueName . nameBase) con_field_names
       DMatch (DConPa con_name (map DVarPa field_var_names)) <$>
              (foldl DAppE (DConE con_name) <$>
                     (reorderFields args field_exps (map DVarE field_var_names)))
+
+    con_to_dmatch :: DsMonad q => Con -> q DMatch
+    con_to_dmatch (RecC con_name args) = rec_con_to_dmatch con_name args
+#if __GLASGOW_HASKELL__ >= 800
+    -- We're assuming the GADT constructor has only one Name here, but since
+    -- this constructor was reified, this assumption should always hold true.
+    con_to_dmatch (RecGadtC [con_name] args _ret_ty) = rec_con_to_dmatch con_name args
+#endif
     con_to_dmatch (ForallC _ _ c) = con_to_dmatch c
     con_to_dmatch _ = impossible "Internal error within th-desugar."
 
@@ -658,11 +695,33 @@ dsPat (AsP name pat) = do
 dsPat WildP = return DWildPa
 dsPat (RecP con_name field_pats) = do
   con <- lift $ dataConNameToCon con_name
-  reordered <- case con of
-    RecC _name fields -> reorderFieldsPat fields field_pats
-    _ -> lift $ impossible $ "Record syntax used with non-record constructor "
-                             ++ (show con_name) ++ "."
+  reordered <- reorder con
   return $ DConPa con_name reordered
+  where
+    reorder con = case con of
+                     NormalC _name fields -> non_record fields
+                     InfixC field1 _name field2 -> non_record [field1, field2]
+                     RecC _name fields -> reorder_fields_pat fields
+                     ForallC _ _ c -> reorder c
+#if __GLASGOW_HASKELL__ >= 800
+                     GadtC _names fields _ret_ty -> non_record fields
+                     RecGadtC _names fields _ret_ty -> reorder_fields_pat fields
+#endif
+
+    reorder_fields_pat fields = reorderFieldsPat fields field_pats
+
+    non_record fields | null field_pats
+                        -- Special case: record patterns are allowed for any
+                        -- constructor, regardless of whether the constructor
+                        -- actually was declared with records, provided that
+                        -- no records are given in the pattern itself. (See #59).
+                        --
+                        -- Con{} desugars down to Con _ ... _.
+                      = return $ replicate (length fields) DWildPa
+                      | otherwise = lift $ impossible
+                                         $ "Record syntax used with non-record constructor "
+                                           ++ (show con_name) ++ "."
+
 dsPat (ListP pats) = go pats
   where go [] = return $ DConPa '[] []
         go (h : t) = do

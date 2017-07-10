@@ -243,6 +243,11 @@ test44_let_pragma = [| let x :: Int
                            {-# INLINE x #-}
                        in x |]
 
+test45_empty_record_con = [| let j :: Maybe Int
+                                 j = Just{}
+                             in case j of
+                                Nothing -> j
+                                Just{}  -> j |]
 
 type family TFExpand x
 type instance TFExpand Int = Bool
@@ -594,4 +599,5 @@ test_exprs = [ test1_sections
              , test43_ubx_sums
 #endif
              , test44_let_pragma
+             , test45_empty_record_con
              ]
