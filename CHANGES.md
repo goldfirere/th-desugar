@@ -6,9 +6,10 @@ Version 1.8
 * Incorporate a `DDeclaredInfix` field into `DNormalC` to indicate if it is
   a constructor that was declared infix.
 
-* Implement `lookupValueNameWithLocals` and `lookupTypeNameWithLocals`, the
-  counterparts to `lookupValeName` and `lookupTypeName` which have access to
-  local Template Haskell declarations.
+* Implement `lookupValueNameWithLocals`, `lookupTypeNameWithLocals`,
+  `mkDataNameWithLocals`, and `mkTypeNameWithLocals`, counterparts to
+  `lookupValueName`, `lookupTypeName`, `mkDataName`, and `mkTypeName` which
+  have access to local Template Haskell declarations.
 
 * Export `reifyFixityWithLocals` from `Language.Haskell.TH.Desugar`.
 

@@ -21,6 +21,7 @@ module Language.Haskell.TH.Desugar.Reify (
 
   -- * Value and type lookup
   lookupValueNameWithLocals, lookupTypeNameWithLocals,
+  mkDataNameWithLocals, mkTypeNameWithLocals,
 
   -- * Monad support
   DsMonad(..), DsM, withLocalDeclarations
@@ -598,3 +599,19 @@ lookupNameWithLocals ns s = do
         PatSynI{}  -> Just n
 #endif
         _          -> Nothing
+
+-- | Like TH's @lookupValueName@, but if this name is not bound, then we assume
+-- it is declared in the current module.
+--
+-- Unlike 'mkDataName', this also consults the local declarations in scope when
+-- determining if the name is currently bound.
+mkDataNameWithLocals :: DsMonad q => String -> q Name
+mkDataNameWithLocals = mkNameWith lookupValueNameWithLocals mkNameG_d
+
+-- | Like TH's @lookupTypeName@, but if this name is not bound, then we assume
+-- it is declared in the current module.
+--
+-- Unlike 'mkTypeName', this also consults the local declarations in scope when
+-- determining if the name is currently bound.
+mkTypeNameWithLocals :: DsMonad q => String -> q Name
+mkTypeNameWithLocals = mkNameWith lookupTypeNameWithLocals mkNameG_tc
