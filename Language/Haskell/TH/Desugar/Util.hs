@@ -48,6 +48,11 @@ newUniqueName str = do
   n <- qNewName str
   qNewName $ show n
 
+-- | @mkNameWith lookup_fun mkName_fun str@ looks up the exact 'Name' of @str@
+-- using the function @lookup_fun@. If it finds 'Just' the 'Name', meaning
+-- that it is bound in the current scope, then it is returned. If it finds
+-- 'Nothing', it assumes that @str@ is declared in the current module, and
+-- uses @mkName_fun@ to construct the appropriate 'Name' to return.
 mkNameWith :: Quasi q => (String -> q (Maybe Name))
                       -> (String -> String -> String -> Name)
                       -> String -> q Name
