@@ -238,6 +238,25 @@ test_local_tyfam_expansion =
                    (expandType orig_ty)
        orig_ty `eqTHSplice` exp_ty)
 
+test_lookup_value_type_names :: [Bool]
+test_lookup_value_type_names =
+  $(do let nameStr = "***"
+       valName  <- newName nameStr
+       typeName <- newName nameStr
+       let tyDec = DTySynD typeName [] (DConT ''Bool)
+           decs  = decsToTH [ DLetDec (DSigD valName (DConT ''Bool))
+                            , DLetDec (DValD (DVarPa valName) (DConE 'False))
+                            , tyDec ]
+           lookupReify lookup_fun = withLocalDeclarations decs $ do
+                                      Just n <- lookup_fun nameStr
+                                      Just i <- dsReify n
+                                      return i
+       reifiedVal  <- lookupReify lookupValueNameWithLocals
+       reifiedType <- lookupReify lookupTypeNameWithLocals
+       let b1 = reifiedVal  `eqTH` DVarI valName (DConT ''Bool) Nothing
+       let b2 = reifiedType `eqTH` DTyConI tyDec Nothing
+       [| [b1, b2] |])
+
 local_reifications :: [String]
 local_reifications = $(do decs <- reifyDecs
                           m_infos <- withLocalDeclarations decs $
@@ -322,5 +341,8 @@ main = hspec $ do
     zipWithM (\b n -> it ("works on simplCase test " ++ show n) b) simplCase [1..]
 
     zipWithM (\b n -> it ("round-trip successfully on case " ++ show n) b) test_roundtrip [1..]
+
+    zipWithM (\b n -> it ("lookups up local value and type names " ++ show n) b)
+      test_lookup_value_type_names [1..]
 
     fromHUnitTest tests

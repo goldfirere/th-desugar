@@ -19,6 +19,10 @@ module Language.Haskell.TH.Desugar.Reify (
   -- * Datatype lookup
   getDataD, dataConNameToCon, dataConNameToDataName,
 
+  -- * Value and type lookup
+  lookupValueNameWithLocals, lookupTypeNameWithLocals,
+  mkDataNameWithLocals, mkTypeNameWithLocals,
+
   -- * Monad support
   DsMonad(..), DsM, withLocalDeclarations
   ) where
@@ -197,7 +201,7 @@ withLocalDeclarations new_decs (DsM x) = do
 
 -- | Look through a list of declarations and possibly return a relevant 'Info'
 reifyInDecs :: Name -> [Dec] -> Maybe Info
-reifyInDecs n decs = firstMatch (reifyInDec n decs) decs
+reifyInDecs n decs = snd `fmap` firstMatch (reifyInDec n decs) decs
 
 -- | Look through a list of declarations and possibly return a fixity.
 reifyFixityInDecs :: Name -> [Dec] -> Maybe Fixity
@@ -206,43 +210,45 @@ reifyFixityInDecs n = firstMatch match_fixity
     match_fixity (InfixD fixity n') | n `nameMatches` n' = Just fixity
     match_fixity _                                       = Nothing
 
+-- | A reified thing along with the name of that thing.
+type Named a = (Name, a)
 
-reifyInDec :: Name -> [Dec] -> Dec -> Maybe Info
-reifyInDec n decs (FunD n' _) | n `nameMatches` n' = Just $ mkVarI n decs
+reifyInDec :: Name -> [Dec] -> Dec -> Maybe (Named Info)
+reifyInDec n decs (FunD n' _) | n `nameMatches` n' = Just (n', mkVarI n decs)
 reifyInDec n decs (ValD pat _ _)
-  | any (nameMatches n) (S.elems (extractBoundNamesPat pat)) = Just $ mkVarI n decs
+  | Just n' <- find (nameMatches n) (S.elems (extractBoundNamesPat pat)) = Just (n', mkVarI n decs)
 #if __GLASGOW_HASKELL__ > 710
-reifyInDec n _    dec@(DataD    _ n' _ _ _ _) | n `nameMatches` n' = Just $ TyConI dec
-reifyInDec n _    dec@(NewtypeD _ n' _ _ _ _) | n `nameMatches` n' = Just $ TyConI dec
+reifyInDec n _    dec@(DataD    _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
+reifyInDec n _    dec@(NewtypeD _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
 #else
-reifyInDec n _    dec@(DataD    _ n' _ _ _) | n `nameMatches` n' = Just $ TyConI dec
-reifyInDec n _    dec@(NewtypeD _ n' _ _ _) | n `nameMatches` n' = Just $ TyConI dec
+reifyInDec n _    dec@(DataD    _ n' _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
+reifyInDec n _    dec@(NewtypeD _ n' _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
 #endif
-reifyInDec n _    dec@(TySynD n' _ _)       | n `nameMatches` n' = Just $ TyConI dec
+reifyInDec n _    dec@(TySynD n' _ _)       | n `nameMatches` n' = Just (n', TyConI dec)
 reifyInDec n decs dec@(ClassD _ n' _ _ _)   | n `nameMatches` n'
-  = Just $ ClassI (stripClassDec dec) (findInstances n decs)
+  = Just (n', ClassI (stripClassDec dec) (findInstances n decs))
 reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `nameMatches` n'
-  = Just $ mkVarITy n decs ty
+  = Just (n', mkVarITy n decs ty)
 reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `nameMatches` n'
-  = Just $ mkVarITy n decs ty
+  = Just (n', mkVarITy n decs ty)
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n decs dec@(OpenTypeFamilyD (TypeFamilyHead n' _ _ _)) | n `nameMatches` n'
-  = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
+  = Just (n', FamilyI (handleBug8884 dec) (findInstances n decs))
 reifyInDec n decs dec@(DataFamilyD n' _ _) | n `nameMatches` n'
-  = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
+  = Just (n', FamilyI (handleBug8884 dec) (findInstances n decs))
 reifyInDec n _    dec@(ClosedTypeFamilyD (TypeFamilyHead n' _ _ _) _) | n `nameMatches` n'
-  = Just $ FamilyI dec []
+  = Just (n', FamilyI dec [])
 #else
 reifyInDec n decs dec@(FamilyD _ n' _ _) | n `nameMatches` n'
-  = Just $ FamilyI (handleBug8884 dec) (findInstances n decs)
+  = Just (n', FamilyI (handleBug8884 dec) (findInstances n decs))
 #if __GLASGOW_HASKELL__ >= 707
 reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `nameMatches` n'
-  = Just $ FamilyI dec []
+  = Just (n', FamilyI dec [])
 #endif
 #endif
 #if __GLASGOW_HASKELL__ >= 801
 reifyInDec n decs (PatSynD n' _ _ _) | n `nameMatches` n'
-  = Just $ mkPatSynI n decs
+  = Just (n', mkPatSynI n decs)
 #endif
 
 #if __GLASGOW_HASKELL__ > 710
@@ -262,14 +268,14 @@ reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
 #endif
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n _decs (ClassD _ ty_name tvbs _ sub_decs)
-  | Just ty <- findType n sub_decs
-  = Just $ ClassOpI n (addClassCxt ty_name tvbs ty) ty_name
+  | Just (n', ty) <- findType n sub_decs
+  = Just (n', ClassOpI n (addClassCxt ty_name tvbs ty) ty_name)
 #else
 reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
-  | Just ty <- findType n sub_decs
-  = Just $ ClassOpI n (addClassCxt ty_name tvbs ty)
-                    ty_name (fromMaybe defaultFixity $
-                             reifyFixityInDecs n $ sub_decs ++ decs)
+  | Just (n', ty) <- findType n sub_decs
+  = Just (n', ClassOpI n (addClassCxt ty_name tvbs ty)
+                       ty_name (fromMaybe defaultFixity $
+                                reifyFixityInDecs n $ sub_decs ++ decs))
 #endif
 reifyInDec n decs (ClassD _ _ _ _ sub_decs)
   | Just info <- firstMatch (reifyInDec n (sub_decs ++ decs)) sub_decs
@@ -303,24 +309,24 @@ reifyInDec n decs (NewtypeInstD _ ty_name tys con _)
 
 reifyInDec _ _ _ = Nothing
 
-maybeReifyCon :: Name -> [Dec] -> Name -> [Type] -> [Con] -> Maybe Info
+maybeReifyCon :: Name -> [Dec] -> Name -> [Type] -> [Con] -> Maybe (Named Info)
 #if __GLASGOW_HASKELL__ > 710
 maybeReifyCon n _decs ty_name ty_args cons
-  | Just con <- findCon n cons
-  = Just $ DataConI n (maybeForallT tvbs [] $ con_to_type con) ty_name
+  | Just (n', con) <- findCon n cons
+  = Just (n', DataConI n (maybeForallT tvbs [] $ con_to_type con) ty_name)
 #else
 maybeReifyCon n decs ty_name ty_args cons
-  | Just con <- findCon n cons
-  = Just $ DataConI n (maybeForallT tvbs [] $ con_to_type con)
-                    ty_name fixity
+  | Just (n', con) <- findCon n cons
+  = Just (n', DataConI n (maybeForallT tvbs [] $ con_to_type con)
+                         ty_name fixity)
 #endif
 
-  | Just ty <- findRecSelector n cons
+  | Just (n', ty) <- findRecSelector n cons
       -- we don't try to ferret out naughty record selectors.
 #if __GLASGOW_HASKELL__ > 710
-  = Just $ VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing
+  = Just (n', VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing)
 #else
-  = Just $ VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing fixity
+  = Just (n', VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing fixity)
 #endif
   where
     result_ty = foldl AppT (ConT ty_name) ty_args
@@ -340,7 +346,7 @@ maybeReifyCon n decs ty_name ty_args cons
 maybeReifyCon _ _ _ _ _ = Nothing
 
 mkVarI :: Name -> [Dec] -> Info
-mkVarI n decs = mkVarITy n decs (fromMaybe (no_type n) $ findType n decs)
+mkVarI n decs = mkVarITy n decs (maybe (no_type n) snd $ findType n decs)
 
 mkVarITy :: Name -> [Dec] -> Type -> Info
 #if __GLASGOW_HASKELL__ > 710
@@ -350,11 +356,11 @@ mkVarITy n decs ty = VarI n ty Nothing (fromMaybe defaultFixity $
                                         reifyFixityInDecs n decs)
 #endif
 
-findType :: Name -> [Dec] -> Maybe Type
+findType :: Name -> [Dec] -> Maybe (Named Type)
 findType n = firstMatch match_type
   where
-    match_type (SigD n' ty) | n `nameMatches` n' = Just ty
-    match_type _                             = Nothing
+    match_type (SigD n' ty) | n `nameMatches` n' = Just (n', ty)
+    match_type _                                 = Nothing
 
 #if __GLASGOW_HASKELL__ >= 801
 mkPatSynI :: Name -> [Dec] -> Info
@@ -447,19 +453,32 @@ maybeForallT tvbs cxt ty
   | ForallT tvbs2 cxt2 ty2 <- ty = ForallT (tvbs ++ tvbs2) (cxt ++ cxt2) ty2
   | otherwise                    = ForallT tvbs cxt ty
 
-findCon :: Name -> [Con] -> Maybe Con
-findCon n = find match_con
+findCon :: Name -> [Con] -> Maybe (Named Con)
+findCon n = firstMatch match_con
   where
-    match_con (NormalC n' _)  = n `nameMatches` n'
-    match_con (RecC n' _)     = n `nameMatches` n'
-    match_con (InfixC _ n' _) = n `nameMatches` n'
-    match_con (ForallC _ _ c) = match_con c
+    match_con :: Con -> Maybe (Named Con)
+    match_con con =
+      case con of
+        NormalC n' _  | n `nameMatches` n' -> Just (n', con)
+        RecC n' _     | n `nameMatches` n' -> Just (n', con)
+        InfixC _ n' _ | n `nameMatches` n' -> Just (n', con)
+        ForallC _ _ c -> case match_con c of
+                           Just (n', _) -> Just (n', con)
+                           Nothing      -> Nothing
 #if __GLASGOW_HASKELL__ > 710
-    match_con (GadtC nms _ _)    = any (n `nameMatches`) nms
-    match_con (RecGadtC nms _ _) = any (n `nameMatches`) nms
+        GadtC nms _ _    -> gadt_case con nms
+        RecGadtC nms _ _ -> gadt_case con nms
+#endif
+        _                -> Nothing
+
+#if __GLASGOW_HASKELL__ > 710
+    gadt_case :: Con -> [Name] -> Maybe (Named Con)
+    gadt_case con nms = case find (n `nameMatches`) nms of
+                          Just n' -> Just (n', con)
+                          Nothing -> Nothing
 #endif
 
-findRecSelector :: Name -> [Con] -> Maybe Type
+findRecSelector :: Name -> [Con] -> Maybe (Named Type)
 findRecSelector n = firstMatch match_con
   where
     match_con (RecC _ vstys)       = firstMatch match_rec_sel vstys
@@ -469,8 +488,8 @@ findRecSelector n = firstMatch match_con
     match_con (ForallC _ _ c)      = match_con c
     match_con _                    = Nothing
 
-    match_rec_sel (n', _, ty) | n `nameMatches` n' = Just ty
-    match_rec_sel _                     = Nothing
+    match_rec_sel (n', _, ty) | n `nameMatches` n' = Just (n', ty)
+    match_rec_sel _                                = Nothing
 
 handleBug8884 :: Dec -> Dec
 #if __GLASGOW_HASKELL__ >= 707
@@ -524,3 +543,75 @@ reifyFixityWithLocals :: DsMonad q => Name -> q (Maybe Fixity)
 reifyFixityWithLocals name = qRecover
   (return . reifyFixityInDecs name =<< localDeclarations)
   (qReifyFixity name)
+
+--------------------------------------
+-- Lookuping name value and type names
+--------------------------------------
+
+-- | Like 'lookupValueName' from Template Haskell, but looks also in 'Names' of
+-- not-yet-typechecked declarations. To establish this list of not-yet-typechecked
+-- declarations, use 'withLocalDeclarations'. Returns 'Nothing' if no value
+-- with the same name can be found.
+lookupValueNameWithLocals :: DsMonad q => String -> q (Maybe Name)
+lookupValueNameWithLocals = lookupNameWithLocals False
+
+-- | Like 'lookupTypeName' from Template Haskell, but looks also in 'Names' of
+-- not-yet-typechecked declarations. To establish this list of not-yet-typechecked
+-- declarations, use 'withLocalDeclarations'. Returns 'Nothing' if no type
+-- with the same name can be found.
+lookupTypeNameWithLocals :: DsMonad q => String -> q (Maybe Name)
+lookupTypeNameWithLocals = lookupNameWithLocals True
+
+lookupNameWithLocals :: DsMonad q => Bool -> String -> q (Maybe Name)
+lookupNameWithLocals ns s = do
+    mb_name <- qLookupName ns s
+    case mb_name of
+      j_name@(Just{}) -> return j_name
+      Nothing         -> consult_locals
+  where
+    built_name = mkName s
+
+    consult_locals = do
+      decs <- localDeclarations
+      let mb_infos = map (reifyInDec built_name decs) decs
+          infos = catMaybes mb_infos
+      return $ firstMatch (if ns then find_type_name
+                                 else find_value_name) infos
+
+    -- These functions work over Named Infos so we can avoid performing
+    -- tiresome pattern-matching to retrieve the name associated with each Info.
+    find_type_name, find_value_name :: Named Info -> Maybe Name
+    find_type_name (n, info) =
+      case info of
+        ClassI{}     -> Just n
+        TyConI{}     -> Just n
+        FamilyI{}    -> Just n
+        PrimTyConI{} -> Just n
+        TyVarI{}     -> Just n
+        _            -> Nothing
+
+    find_value_name (n, info) =
+      case info of
+        ClassOpI{} -> Just n
+        DataConI{} -> Just n
+        VarI{}     -> Just n
+#if __GLASGOW_HASKELL__ >= 801
+        PatSynI{}  -> Just n
+#endif
+        _          -> Nothing
+
+-- | Like TH's @lookupValueName@, but if this name is not bound, then we assume
+-- it is declared in the current module.
+--
+-- Unlike 'mkDataName', this also consults the local declarations in scope when
+-- determining if the name is currently bound.
+mkDataNameWithLocals :: DsMonad q => String -> q Name
+mkDataNameWithLocals = mkNameWith lookupValueNameWithLocals mkNameG_d
+
+-- | Like TH's @lookupTypeName@, but if this name is not bound, then we assume
+-- it is declared in the current module.
+--
+-- Unlike 'mkTypeName', this also consults the local declarations in scope when
+-- determining if the name is currently bound.
+mkTypeNameWithLocals :: DsMonad q => String -> q Name
+mkTypeNameWithLocals = mkNameWith lookupTypeNameWithLocals mkNameG_tc

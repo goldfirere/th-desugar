@@ -11,7 +11,7 @@ Utility functions for th-desugar package.
 module Language.Haskell.TH.Desugar.Util (
   newUniqueName,
   impossible,
-  nameOccursIn, allNamesIn, mkTypeName, mkDataName, isDataName,
+  nameOccursIn, allNamesIn, mkTypeName, mkDataName, mkNameWith, isDataName,
   stripVarP_maybe, extractBoundNamesStmt,
   concatMapM, mapMaybeM, expectJustM,
   stripPlainTV_maybe,
@@ -48,27 +48,31 @@ newUniqueName str = do
   n <- qNewName str
   qNewName $ show n
 
--- | Like TH's @lookupTypeName@, but if this name is not bound, then we assume
--- it is declared in the current module.
-mkTypeName :: Quasi q => String -> q Name
-mkTypeName str = do
-  m_name <- qLookupName True str
+-- | @mkNameWith lookup_fun mkName_fun str@ looks up the exact 'Name' of @str@
+-- using the function @lookup_fun@. If it finds 'Just' the 'Name', meaning
+-- that it is bound in the current scope, then it is returned. If it finds
+-- 'Nothing', it assumes that @str@ is declared in the current module, and
+-- uses @mkName_fun@ to construct the appropriate 'Name' to return.
+mkNameWith :: Quasi q => (String -> q (Maybe Name))
+                      -> (String -> String -> String -> Name)
+                      -> String -> q Name
+mkNameWith lookup_fun mkName_fun str = do
+  m_name <- lookup_fun str
   case m_name of
     Just name -> return name
     Nothing -> do
       Loc { loc_package = pkg, loc_module = modu } <- qLocation
-      return $ mkNameG_tc pkg modu str
+      return $ mkName_fun pkg modu str
+
+-- | Like TH's @lookupTypeName@, but if this name is not bound, then we assume
+-- it is declared in the current module.
+mkTypeName :: Quasi q => String -> q Name
+mkTypeName = mkNameWith (qLookupName True) mkNameG_tc
 
 -- | Like TH's @lookupDataName@, but if this name is not bound, then we assume
 -- it is declared in the current module.
 mkDataName :: Quasi q => String -> q Name
-mkDataName str = do
-  m_name <- qLookupName False str
-  case m_name of
-    Just name -> return name
-    Nothing -> do
-      Loc { loc_package = pkg, loc_module = modu } <- qLocation
-      return $ mkNameG_d pkg modu str
+mkDataName = mkNameWith (qLookupName False) mkNameG_d
 
 -- | Is this name a data constructor name? A 'False' answer means "unsure".
 isDataName :: Name -> Bool

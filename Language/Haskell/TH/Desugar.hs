@@ -67,6 +67,8 @@ module Language.Haskell.TH.Desugar (
   -- @Dec@s to be used in reification queries.
   withLocalDeclarations, dsReify,
   reifyWithLocals_maybe, reifyWithLocals, reifyFixityWithLocals,
+  lookupValueNameWithLocals, lookupTypeNameWithLocals,
+  mkDataNameWithLocals, mkTypeNameWithLocals,
   DsMonad(..), DsM,
 
   -- * Nested pattern flattening
