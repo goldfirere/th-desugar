@@ -1,7 +1,8 @@
 `th-desugar` Package
 ====================
 
-[![Build Status](https://travis-ci.org/goldfirere/th-desugar.png?branch=master)](https://travis-ci.org/goldfirere/th-desugar)
+[![Hackage](https://img.shields.io/hackage/v/th-desugar.svg)](http://hackage.haskell.org/package/th-desugar)
+[![Build Status](https://travis-ci.org/goldfirere/th-desugar.svg?branch=master)](https://travis-ci.org/goldfirere/th-desugar)
 
 This package provides the `Language.Haskell.TH.Desugar` module, which desugars
 Template Haskell's rich encoding of Haskell syntax into a simpler encoding.
