@@ -22,6 +22,7 @@ module Language.Haskell.TH.Desugar.Reify (
   -- * Value and type lookup
   lookupValueNameWithLocals, lookupTypeNameWithLocals,
   mkDataNameWithLocals, mkTypeNameWithLocals,
+  reifyNameSpace,
 
   -- * Monad support
   DsMonad(..), DsM, withLocalDeclarations
@@ -582,23 +583,16 @@ lookupNameWithLocals ns s = do
     -- tiresome pattern-matching to retrieve the name associated with each Info.
     find_type_name, find_value_name :: Named Info -> Maybe Name
     find_type_name (n, info) =
-      case info of
-        ClassI{}     -> Just n
-        TyConI{}     -> Just n
-        FamilyI{}    -> Just n
-        PrimTyConI{} -> Just n
-        TyVarI{}     -> Just n
-        _            -> Nothing
+      case infoNameSpace info of
+        TcClsName -> Just n
+        VarName   -> Nothing
+        DataName  -> Nothing
 
     find_value_name (n, info) =
-      case info of
-        ClassOpI{} -> Just n
-        DataConI{} -> Just n
-        VarI{}     -> Just n
-#if __GLASGOW_HASKELL__ >= 801
-        PatSynI{}  -> Just n
-#endif
-        _          -> Nothing
+      case infoNameSpace info of
+        VarName   -> Just n
+        DataName  -> Just n
+        TcClsName -> Nothing
 
 -- | Like TH's @lookupValueName@, but if this name is not bound, then we assume
 -- it is declared in the current module.
@@ -615,3 +609,32 @@ mkDataNameWithLocals = mkNameWith lookupValueNameWithLocals mkNameG_d
 -- determining if the name is currently bound.
 mkTypeNameWithLocals :: DsMonad q => String -> q Name
 mkTypeNameWithLocals = mkNameWith lookupTypeNameWithLocals mkNameG_tc
+
+reifyNameSpace :: DsMonad q => Name -> q (Maybe NameSpace)
+reifyNameSpace n@(Name _ nf) =
+  case nf of
+    -- NameGs are simple, as they have a NameSpace attached.
+    NameG ns _ _ -> pure $ Just ns
+
+    -- For other names, we must use reification to determine what NameSpace
+    -- it lives in (if any).
+    _ -> do mb_info <- reifyWithLocals_maybe n
+            pure $ fmap infoNameSpace mb_info
+
+-- | Determine a name's 'NameSpace' from its 'Info'.
+infoNameSpace :: Info -> NameSpace
+infoNameSpace info =
+  case info of
+    ClassI{}     -> TcClsName
+    TyConI{}     -> TcClsName
+    FamilyI{}    -> TcClsName
+    PrimTyConI{} -> TcClsName
+    TyVarI{}     -> TcClsName
+
+    ClassOpI{}   -> VarName
+    VarI{}       -> VarName
+
+    DataConI{}   -> DataName
+#if __GLASGOW_HASKELL__ >= 801
+    PatSynI{}    -> DataName
+#endif
