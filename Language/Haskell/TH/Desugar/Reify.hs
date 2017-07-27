@@ -610,6 +610,17 @@ mkDataNameWithLocals = mkNameWith lookupValueNameWithLocals mkNameG_d
 mkTypeNameWithLocals :: DsMonad q => String -> q Name
 mkTypeNameWithLocals = mkNameWith lookupTypeNameWithLocals mkNameG_tc
 
+-- | Determines a `Name`'s 'NameSpace'. If the 'NameSpace' is attached to
+-- the 'Name' itself (i.e., it is unambiguous), then that 'NameSpace' is
+-- immediately returned. Otherwise, reification is used to lookup up the
+-- 'NameSpace' (consulting local declarations if necessary).
+--
+-- Note that if a 'Name' lives in two different 'NameSpaces' (which can
+-- genuinely happen--for instance, @'mkName' \"==\"@, where @==@ is both
+-- a function and a type family), then this function will simply return
+-- whichever 'NameSpace' is discovered first via reification. If you wish
+-- to find a 'Name' in a particular 'NameSpace', use the
+-- 'lookupValueNameWithLocals' or 'lookupTypeNameWithLocals' functions.
 reifyNameSpace :: DsMonad q => Name -> q (Maybe NameSpace)
 reifyNameSpace n@(Name _ nf) =
   case nf of
