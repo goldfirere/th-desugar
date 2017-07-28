@@ -69,6 +69,7 @@ module Language.Haskell.TH.Desugar (
   reifyWithLocals_maybe, reifyWithLocals, reifyFixityWithLocals,
   lookupValueNameWithLocals, lookupTypeNameWithLocals,
   mkDataNameWithLocals, mkTypeNameWithLocals,
+  reifyNameSpace,
   DsMonad(..), DsM,
 
   -- * Nested pattern flattening

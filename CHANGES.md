@@ -11,6 +11,8 @@ Version 1.8
   `lookupValueName`, `lookupTypeName`, `mkDataName`, and `mkTypeName` which
   have access to local Template Haskell declarations.
 
+* Implement `reifyNameSpace` to determine a `Name`'s `NameSpace`.
+
 * Export `reifyFixityWithLocals` from `Language.Haskell.TH.Desugar`.
 
 Version 1.7
