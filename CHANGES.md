@@ -6,6 +6,10 @@ Version 1.8
 * Incorporate a `DDeclaredInfix` field into `DNormalC` to indicate if it is
   a constructor that was declared infix.
 
+* Incorporate a `Maybe DKind` field into `DDataD`, `DDataFamilyD`, and
+  `DDataInstD` to reflect the return kind of a datatype or data family (if it
+  was declared with an explicit one).
+
 * Implement `lookupValueNameWithLocals`, `lookupTypeNameWithLocals`,
   `mkDataNameWithLocals`, and `mkTypeNameWithLocals`, counterparts to
   `lookupValueName`, `lookupTypeName`, `mkDataName`, and `mkTypeName` which
