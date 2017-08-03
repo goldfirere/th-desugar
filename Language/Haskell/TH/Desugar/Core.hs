@@ -16,7 +16,6 @@ import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
 import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (lift)
-import Language.Haskell.TH.ExpandSyns ( expandSyns )
 
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
@@ -117,15 +116,15 @@ data NewOrData = Newtype
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
-          | DDataD NewOrData DCxt Name [DTyVarBndr] [DCon] [DDerivClause]
+          | DDataD NewOrData DCxt Name [DTyVarBndr] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynD Name [DTyVarBndr] DType
           | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
           | DInstanceD (Maybe Overlap) DCxt DType [DDec]
           | DForeignD DForeign
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
-          | DDataFamilyD Name [DTyVarBndr]
-          | DDataInstD NewOrData DCxt Name [DType] [DCon] [DDerivClause]
+          | DDataFamilyD Name [DTyVarBndr] (Maybe DKind)
+          | DDataInstD NewOrData DCxt Name [DType] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynInstD Name DTySynEqn
           | DRoleAnnotD Name [Role]
           | DStandaloneDerivD (Maybe DerivStrategy) DCxt DType
@@ -820,7 +819,7 @@ fixBug8884ForFamilies (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs ann) eq
       eqns' = map (fixBug8884ForEqn num_args) eqns
   frs' <- remove_arrows num_args frs
   return (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs' ann) eqns', num_args)
-fixBug8884ForFamilies dec@(DDataFamilyD _ _)
+fixBug8884ForFamilies dec@(DDataFamilyD{})
   = return (dec, 0)   -- the num_args is ignored for data families
 fixBug8884ForFamilies dec =
   impossible $ "Reifying yielded a FamilyI with a non-family Dec: " ++ show dec
@@ -864,26 +863,26 @@ dsDec :: DsMonad q => Dec -> q [DDec]
 dsDec d@(FunD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec d@(ValD {}) = (fmap . map) DLetDec $ dsLetDec d
 #if __GLASGOW_HASKELL__ > 710
-dsDec (DataD cxt n tvbs mk cons derivings) = do
-  extra_tvbs <- mkExtraTvbs tvbs mk
+dsDec (DataD cxt n tvbs mk cons derivings) =
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
+                         <*> mapM dsTvb tvbs
+                         <*> mapM dsType mk
                          <*> concatMapM dsCon cons
                          <*> mapM dsDerivClause derivings)
-dsDec (NewtypeD cxt n tvbs mk con derivings) = do
-  extra_tvbs <- mkExtraTvbs tvbs mk
+dsDec (NewtypeD cxt n tvbs mk con derivings) =
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
+                            <*> mapM dsTvb tvbs
+                            <*> mapM dsType mk
                             <*> dsCon con
                             <*> mapM dsDerivClause derivings)
 #else
 dsDec (DataD cxt n tvbs cons derivings) =
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> mapM dsTvb tvbs <*> concatMapM dsCon cons
+                         <*> mapM dsTvb tvbs <*> pure Nothing <*> concatMapM dsCon cons
                          <*> mapM dsDerivClause derivings)
 dsDec (NewtypeD cxt n tvbs con derivings) =
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> mapM dsTvb tvbs <*> dsCon con
+                            <*> mapM dsTvb tvbs <*> pure Nothing <*> dsCon con
                             <*> mapM dsDerivClause derivings)
 #endif
 dsDec (TySynD n tvbs ty) =
@@ -905,36 +904,34 @@ dsDec d@(PragmaD {}) = (fmap . map) DLetDec $ dsLetDec d
 #if __GLASGOW_HASKELL__ > 710
 dsDec (OpenTypeFamilyD tfHead) =
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead tfHead)
-dsDec (DataFamilyD n tvbs m_k) = do
-  extra_tvbs <- mkExtraTvbs tvbs m_k
-  (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs))
+dsDec (DataFamilyD n tvbs m_k) =
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsType m_k)
 #else
 dsDec (FamilyD TypeFam n tvbs m_k) = do
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead n tvbs m_k)
-dsDec (FamilyD DataFam n tvbs m_k) = do
-  extra_tvbs <- mkExtraTvbs tvbs m_k
-  (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs))
+dsDec (FamilyD DataFam n tvbs m_k) =
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsType m_k)
 #endif
 #if __GLASGOW_HASKELL__ > 710
-dsDec (DataInstD cxt n tys mk cons derivings) = do
-  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs [] mk
+dsDec (DataInstD cxt n tys mk cons derivings) =
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n
-                             <*> ((++ extra_tvbs) <$> mapM dsType tys)
+                             <*> mapM dsType tys
+                             <*> mapM dsType mk
                              <*> concatMapM dsCon cons
                              <*> mapM dsDerivClause derivings)
-dsDec (NewtypeInstD cxt n tys mk con derivings) = do
-  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs [] mk
+dsDec (NewtypeInstD cxt n tys mk con derivings) =
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n
-                                <*> ((++ extra_tvbs) <$> mapM dsType tys)
+                                <*> mapM dsType tys
+                                <*> mapM dsType mk
                                 <*> dsCon con
                                 <*> mapM dsDerivClause derivings)
 #else
 dsDec (DataInstD cxt n tys cons derivings) = do
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                             <*> concatMapM dsCon cons
+                             <*> pure Nothing <*> concatMapM dsCon cons
                              <*> mapM dsDerivClause derivings)
 dsDec (NewtypeInstD cxt n tys con derivings) = do
-  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
+  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys <*> pure Nothing
                                 <*> dsCon con <*> mapM dsDerivClause derivings)
 #endif
 #if __GLASGOW_HASKELL__ < 707
@@ -971,36 +968,6 @@ dsDec (StandaloneDerivD cxt ty) =
 #endif
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
-
-mkExtraTvbs :: DsMonad q => [TyVarBndr] -> Maybe Kind -> q [DTyVarBndr]
-mkExtraTvbs _         Nothing = return []
-mkExtraTvbs orig_tvbs (Just k) = do
-  k' <- runQ (expandSyns k)  -- just in case
-  dk <- dsType k'
-  let args = split_funs [] dk
-      -- christiaanb: I have no idea how GHC normally picks fresh
-      -- tyvars, this looks like something GHC might do. Though probably in a
-      -- nicer/safer way.
-      --
-      -- RAE: It's actually not terribly far off from what GHC does. This is
-      -- terrible. But I don't see another way to do this. <shudder>
-      --
-      -- All of this is needed so that "dec test 9" passes.
-      orig_names = map (nameBase . tvbName) orig_tvbs
-      all_names  =
-#if __GLASGOW_HASKELL__ <= 708
-                    map ('$':) $
-#endif
-                    take (length args + length orig_tvbs)
-                        (map (:[]) ['a' .. 'z'] ++
-                         concatMap (zipWith (:) ['a' .. 'z'] . repeat . show)
-                                   [(0::Int)..])
-      new_names  = filter (`notElem` orig_names) all_names
-  names <- zipWithM (\n _ -> qNewName n) new_names args
-  return (zipWith DKindedTV names args)
-  where
-    split_funs args (DAppT (DAppT DArrowT arg) res) = split_funs (arg:args) res
-    split_funs args _other                          = reverse args
 
 #if __GLASGOW_HASKELL__ > 710
 -- | Desugar a @FamilyResultSig@

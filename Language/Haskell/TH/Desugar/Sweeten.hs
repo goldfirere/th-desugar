@@ -85,17 +85,17 @@ decsToTH = concatMap decToTH
 -- a one-to-one mapping between 'DDec' and @Dec@.
 decToTH :: DDec -> [Dec]
 decToTH (DLetDec d) = maybeToList (letDecToTH d)
-decToTH (DDataD Data cxt n tvbs cons derivings) =
+decToTH (DDataD Data cxt n tvbs _mk cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (map conToTH cons)
+  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap typeToTH _mk) (map conToTH cons)
          (concatMap derivClauseToTH derivings)]
 #else
   [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons)
          (map derivingToTH derivings)]
 #endif
-decToTH (DDataD Newtype cxt n tvbs [con] derivings) =
+decToTH (DDataD Newtype cxt n tvbs _mk [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (conToTH con)
+  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap typeToTH _mk) (conToTH con)
             (concatMap derivClauseToTH derivings)]
 #else
   [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con)
@@ -119,23 +119,23 @@ decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs ann)) =
 decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs _ann)) =
   [FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)]
 #endif
-decToTH (DDataFamilyD n tvbs) =
+decToTH (DDataFamilyD n tvbs mk) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataFamilyD n (map tvbToTH tvbs) Nothing]
+  [DataFamilyD n (map tvbToTH tvbs) (fmap typeToTH mk)]
 #else
-  [FamilyD DataFam n (map tvbToTH tvbs) Nothing]
+  [FamilyD DataFam n (map tvbToTH tvbs) (fmap typeToTH mk)]
 #endif
-decToTH (DDataInstD Data cxt n tys cons derivings) =
+decToTH (DDataInstD Data cxt n tys _mk cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (map conToTH cons)
+  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (fmap typeToTH _mk) (map conToTH cons)
              (concatMap derivClauseToTH derivings)]
 #else
   [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons)
              (map derivingToTH derivings)]
 #endif
-decToTH (DDataInstD Newtype cxt n tys [con] derivings) =
+decToTH (DDataInstD Newtype cxt n tys _mk [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (conToTH con)
+  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (fmap typeToTH _mk) (conToTH con)
                 (concatMap derivClauseToTH derivings)]
 #else
   [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con)
