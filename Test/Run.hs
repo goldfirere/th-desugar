@@ -43,6 +43,8 @@ import Control.Monad
 import Control.Applicative
 #endif
 
+import qualified Data.Map as M
+import qualified Data.Set as S
 #if __GLASGOW_HASKELL__ >= 707
 import Data.Proxy
 #endif
@@ -238,6 +240,33 @@ test_local_tyfam_expansion =
                    (expandType orig_ty)
        orig_ty `eqTHSplice` exp_ty)
 
+test_kind_substitution :: [Bool]
+test_kind_substitution =
+  $(do a <- newName "a"
+       b <- newName "b"
+       c <- newName "c"
+       let subst = M.singleton a (DVarT b)
+
+                 -- (Nothing :: Maybe a)
+           ty1 = DSigT (DConT 'Nothing) (DConT ''Maybe `DAppT` DVarT a)
+                 -- forall (c :: a). c
+           ty2 = DForallT [DKindedTV c (DVarT a)] [] (DVarT c)
+                 -- forall a (c :: a). c
+           ty3 = DForallT [DPlainTV a, DKindedTV c (DVarT a)] [] (DVarT c)
+
+       substTy1 <- substTy subst ty1
+       substTy2 <- substTy subst ty2
+       substTy3 <- substTy subst ty3
+
+       let freeVars1 = freeVarsOfTy substTy1
+           freeVars2 = freeVarsOfTy substTy2
+           freeVars3 = freeVarsOfTy substTy3
+
+           b1 = freeVars1 `eqTH` S.fromList [b]
+           b2 = freeVars2 `eqTH` S.fromList [b]
+           b3 = freeVars3 `eqTH` S.empty
+       [| [b1, b2, b3] |])
+
 test_lookup_value_type_names :: [Bool]
 test_lookup_value_type_names =
   $(do let nameStr = "***"
@@ -344,5 +373,8 @@ main = hspec $ do
 
     zipWithM (\b n -> it ("lookups up local value and type names " ++ show n) b)
       test_lookup_value_type_names [1..]
+
+    zipWithM (\b n -> it ("substitutes tyvar binder kinds " ++ show n) b)
+      test_kind_substitution [1..]
 
     fromHUnitTest tests

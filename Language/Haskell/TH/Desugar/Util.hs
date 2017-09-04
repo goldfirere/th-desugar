@@ -13,7 +13,7 @@ module Language.Haskell.TH.Desugar.Util (
   impossible,
   nameOccursIn, allNamesIn, mkTypeName, mkDataName, mkNameWith, isDataName,
   stripVarP_maybe, extractBoundNamesStmt,
-  concatMapM, mapMaybeM, expectJustM,
+  concatMapM, mapAccumLM, mapMaybeM, expectJustM,
   stripPlainTV_maybe,
   thirdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat,
@@ -224,12 +224,12 @@ extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
 #endif
 
 freeNamesOfTypes :: [Type] -> S.Set Name
-freeNamesOfTypes = mconcat . map go
+freeNamesOfTypes = foldMap go
   where
-    go (ForallT tvbs cxt ty) = (go ty <> mconcat (map go_pred cxt))
+    go (ForallT tvbs cxt ty) = (foldMap go_tvb tvbs <> go ty <> foldMap go_pred cxt)
                                S.\\ S.fromList (map tvbName tvbs)
     go (AppT t1 t2)          = go t1 <> go t2
-    go (SigT ty _)           = go ty
+    go (SigT ty ki)          = go ty <> go ki
     go (VarT n)              = S.singleton n
     go _                     = S.empty
 
@@ -239,6 +239,9 @@ freeNamesOfTypes = mconcat . map go
     go_pred (ClassP _ tys) = freeNamesOfTypes tys
     go_pred (EqualP t1 t2) = go t1 <> go t2
 #endif
+
+    go_tvb (PlainTV{})    = S.empty
+    go_tvb (KindedTV _ k) = go k
 
 ----------------------------------------
 -- General utility
@@ -266,6 +269,19 @@ concatMapM :: (Monad monad, Monoid monoid, Traversable t)
 concatMapM fn list = do
   bss <- mapM fn list
   return $ fold bss
+
+-- like GHC's
+-- | Monadic version of mapAccumL
+mapAccumLM :: Monad m
+            => (acc -> x -> m (acc, y)) -- ^ combining function
+            -> acc                      -- ^ initial state
+            -> [x]                      -- ^ inputs
+            -> m (acc, [y])             -- ^ final state, outputs
+mapAccumLM _ s []     = return (s, [])
+mapAccumLM f s (x:xs) = do
+    (s1, x')  <- f s x
+    (s2, xs') <- mapAccumLM f s1 xs
+    return    (s2, x' : xs')
 
 -- like GHC's
 mapMaybeM :: Monad m => (a -> m (Maybe b)) -> [a] -> m [b]
