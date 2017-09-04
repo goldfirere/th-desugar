@@ -29,7 +29,10 @@ module Language.Haskell.TH.Desugar.Expand (
   expandUnsoundly,
 
   -- * Capture-avoiding substitution
-  substTy
+  substTy,
+
+  -- * Free variable calculation
+  freeVarsOfTy
   ) where
 
 import qualified Data.Map as M
@@ -41,8 +44,10 @@ import Control.Applicative
 import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Syntax ( Quasi(..) )
 import Data.Data
+import qualified Data.Foldable as F
 import Data.Generics
 import Data.List
+import Data.Monoid
 import qualified Data.Traversable as T
 
 import Language.Haskell.TH.Desugar.Core
@@ -221,7 +226,7 @@ substTy vars (DForallT tvbs cxt ty) =
 substTy vars (DAppT t1 t2) =
   DAppT <$> substTy vars t1 <*> substTy vars t2
 substTy vars (DSigT ty ki) =
-  DSigT <$> substTy vars ty <*> pure ki
+  DSigT <$> substTy vars ty <*> substTy vars ki
 substTy vars (DVarT n)
   | Just ty <- M.lookup n vars
   = return ty
@@ -233,14 +238,18 @@ substTyVarBndrs :: DsMonad q => M.Map Name DType -> [DTyVarBndr]
                 -> (M.Map Name DType -> [DTyVarBndr] -> q DType)
                 -> q DType
 substTyVarBndrs vars tvbs thing = do
-  new_names <- mapM (const (qNewName "local")) tvbs
-  let new_vars = M.fromList (zip (map extractDTvbName tvbs) (map DVarT new_names))
-  -- this is very inefficient. Oh well.
-  thing (M.union vars new_vars) (zipWith substTvb tvbs new_names)
+  (vars', tvbs') <- mapAccumLM substTvb vars tvbs
+  thing vars' tvbs'
 
-substTvb :: DTyVarBndr -> Name -> DTyVarBndr
-substTvb (DPlainTV _) n = DPlainTV n
-substTvb (DKindedTV _ k) n = DKindedTV n k
+substTvb :: DsMonad q => M.Map Name DType -> DTyVarBndr
+         -> q (M.Map Name DType, DTyVarBndr)
+substTvb vars (DPlainTV n) = do
+  new_n <- qNewName (nameBase n)
+  return (M.insert n (DVarT new_n) vars, DPlainTV new_n)
+substTvb vars (DKindedTV n k) = do
+  new_n <- qNewName (nameBase n)
+  k' <- substTy vars k
+  return (M.insert n (DVarT new_n) vars, DKindedTV new_n k')
 
 -- | Extract the name from a @TyVarBndr@
 extractDTvbName :: DTyVarBndr -> Name
@@ -249,7 +258,7 @@ extractDTvbName (DKindedTV n _) = n
 
 substPred :: DsMonad q => M.Map Name DType -> DPred -> q DPred
 substPred vars (DAppPr p t) = DAppPr <$> substPred vars p <*> substTy vars t
-substPred vars (DSigPr p k) = DSigPr <$> substPred vars p <*> pure k
+substPred vars (DSigPr p k) = DSigPr <$> substPred vars p <*> substTy vars k
 substPred vars (DVarPr n)
   | Just ty <- M.lookup n vars
   = dTypeToDPred ty
@@ -297,3 +306,25 @@ expandUnsoundly = expand_ YesIgnore
 -- | Generalization of 'expand' that either can or won't ignore kind annotations.sx
 expand_ :: (DsMonad q, Data a) => IgnoreKinds -> a -> q a
 expand_ ign = everywhereM (mkM (expand_type ign) >=> mkM (expand_pred ign))
+
+-- | Compute the free variable of a 'DType'.
+freeVarsOfTy :: DType -> S.Set Name
+freeVarsOfTy = go_ty
+  where
+    go_ty :: DType -> S.Set Name
+    go_ty (DForallT tvbs cxt ty) = (F.foldMap go_tvb tvbs <> go_ty ty <> F.foldMap go_pred cxt)
+                                   S.\\ S.fromList (map extractDTvbName tvbs)
+    go_ty (DAppT t1 t2)          = go_ty t1 <> go_ty t2
+    go_ty (DSigT ty ki)          = go_ty ty <> go_ty ki
+    go_ty (DVarT n)              = S.singleton n
+    go_ty _                      = S.empty
+
+    go_pred :: DPred -> S.Set Name
+    go_pred (DAppPr pr ty) = go_pred pr <> go_ty ty
+    go_pred (DSigPr pr ki) = go_pred pr <> go_ty ki
+    go_pred (DVarPr n)     = S.singleton n
+    go_pred _              = S.empty
+
+    go_tvb :: DTyVarBndr -> S.Set Name
+    go_tvb (DPlainTV{})    = S.empty
+    go_tvb (DKindedTV _ k) = go_ty k
