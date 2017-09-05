@@ -82,7 +82,7 @@ module Language.Haskell.TH.Desugar (
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
   mkTypeName, mkDataName, newUniqueName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
-  substTy, freeVarsOfTy,
+  substTy, fvDType,
   tupleDegree_maybe, tupleNameDegree_maybe,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
@@ -101,6 +101,7 @@ import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Match
 
 import qualified Data.Map as M
+import Data.Monoid
 import qualified Data.Set as S
 #if __GLASGOW_HASKELL__ < 709
 import Data.Foldable ( foldMap )
@@ -176,17 +177,29 @@ flattenDValD (DValD pat exp) = do
 flattenDValD other_dec = return [other_dec]
 
 fvDType :: DType -> S.Set Name
-fvDType = go
+fvDType = go_ty
   where
-    go (DForallT tvbs _cxt ty) = go ty `S.difference` (foldMap dtvbName tvbs)
-    go (DAppT ty1 ty2)         = go ty1 `S.union` go ty2
-    go (DSigT ty ki)           = go ty `S.union` fvDType ki
-    go (DVarT n)               = S.singleton n
-    go (DConT _)               = S.empty
-    go DArrowT                 = S.empty
-    go (DLitT {})              = S.empty
-    go DWildCardT              = S.empty
-    go DStarT                  = S.empty
+    go_ty :: DType -> S.Set Name
+    go_ty (DForallT tvbs cxt ty) = (foldMap go_tvb tvbs <> go_ty ty <> foldMap go_pred cxt)
+                                   S.\\ foldMap dtvbName tvbs
+    go_ty (DAppT t1 t2)          = go_ty t1 <> go_ty t2
+    go_ty (DSigT ty ki)          = go_ty ty <> go_ty ki
+    go_ty (DVarT n)              = S.singleton n
+    go_ty (DConT {})             = S.empty
+    go_ty DArrowT                = S.empty
+    go_ty (DLitT {})             = S.empty
+    go_ty DWildCardT             = S.empty
+    go_ty DStarT                 = S.empty
+
+    go_pred :: DPred -> S.Set Name
+    go_pred (DAppPr pr ty) = go_pred pr <> go_ty ty
+    go_pred (DSigPr pr ki) = go_pred pr <> go_ty ki
+    go_pred (DVarPr n)     = S.singleton n
+    go_pred _              = S.empty
+
+    go_tvb :: DTyVarBndr -> S.Set Name
+    go_tvb (DPlainTV{})    = S.empty
+    go_tvb (DKindedTV _ k) = go_ty k
 
 dtvbName :: DTyVarBndr -> S.Set Name
 dtvbName (DPlainTV n)    = S.singleton n

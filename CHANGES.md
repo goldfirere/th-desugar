@@ -5,7 +5,7 @@ Version 1.8
 -----------
 * `substTy` now properly substitutes into kind signatures.
 
-* Implement `freeVarsOfTy`, which computes the free variables of a `DType`.
+* Expose `fvDType`, which computes the free variables of a `DType`.
 
 * Incorporate a `DDeclaredInfix` field into `DNormalC` to indicate if it is
   a constructor that was declared infix.

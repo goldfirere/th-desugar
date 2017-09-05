@@ -258,12 +258,12 @@ test_kind_substitution =
        substTy2 <- substTy subst ty2
        substTy3 <- substTy subst ty3
 
-       let freeVars1 = freeVarsOfTy substTy1
-           freeVars2 = freeVarsOfTy substTy2
-           freeVars3 = freeVarsOfTy substTy3
+       let freeVars1 = fvDType substTy1
+           freeVars2 = fvDType substTy2
+           freeVars3 = fvDType substTy3
 
-           b1 = freeVars1 `eqTH` S.fromList [b]
-           b2 = freeVars2 `eqTH` S.fromList [b]
+           b1 = freeVars1 `eqTH` S.singleton b
+           b2 = freeVars2 `eqTH` S.singleton b
            b3 = freeVars3 `eqTH` S.empty
        [| [b1, b2, b3] |])
 
