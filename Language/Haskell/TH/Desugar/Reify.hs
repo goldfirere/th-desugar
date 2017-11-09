@@ -172,6 +172,9 @@ newtype DsM q a = DsM (ReaderT [Dec] q a)
 #if __GLASGOW_HASKELL__ >= 800
            , Fail.MonadFail
 #endif
+#if __GLASGOW_HASKELL__ >= 803
+           , MonadIO
+#endif
            )
 
 instance Quasi q => DsMonad (DsM q) where
