@@ -5,7 +5,7 @@ rae@cs.brynmawr.edu
 -}
 
 {-# LANGUAGE TemplateHaskell, UnboxedTuples, ParallelListComp, CPP,
-             RankNTypes, ImpredicativeTypes, TypeFamilies,
+             RankNTypes, TypeFamilies,
              DataKinds, ConstraintKinds, PolyKinds, MultiParamTypeClasses,
              FlexibleInstances, ExistentialQuantification,
              ScopedTypeVariables, GADTs, ViewPatterns #-}
@@ -43,6 +43,7 @@ import Control.Monad
 import Control.Applicative
 #endif
 
+import Data.Generics ( geq )
 import qualified Data.Map as M
 import qualified Data.Set as S
 #if __GLASGOW_HASKELL__ >= 707
@@ -325,6 +326,31 @@ test_roundtrip = $( do exprs <- sequence test_exprs
                        let bools = zipWith eqTH ds_exprs2 ds_exprs3
                        Syn.lift bools )
 
+test_matchTy :: [Bool]
+test_matchTy =
+  [ matchTy NoIgnore (DVarT a) (DConT ''Bool) `geq` Just (M.singleton a (DConT ''Bool))
+  , matchTy NoIgnore (DVarT a) (DVarT a) `geq` Just (M.singleton a (DVarT a))
+  , matchTy NoIgnore (DVarT a) (DVarT b) `geq` Just (M.singleton a (DVarT b))
+  , matchTy NoIgnore (DConT ''Either `DAppT` DVarT a `DAppT` DVarT b)
+                     (DConT ''Either `DAppT` DConT ''Int `DAppT` DConT ''Bool)
+    `geq` Just (M.fromList [(a, DConT ''Int), (b, DConT ''Bool)])
+  , matchTy NoIgnore (DConT ''Either `DAppT` DVarT a `DAppT` DVarT a)
+                     (DConT ''Either `DAppT` DConT ''Int `DAppT` DConT ''Int)
+    `geq` Just (M.singleton a (DConT ''Int))
+  , matchTy NoIgnore (DConT ''Either `DAppT` DVarT a `DAppT` DVarT a)
+                     (DConT ''Either `DAppT` DConT ''Int `DAppT` DConT ''Bool)
+    `geq` Nothing
+  , matchTy NoIgnore (DConT ''Int) (DConT ''Bool) `geq` Nothing
+  , matchTy NoIgnore (DConT ''Int) (DConT ''Int) `geq` Just M.empty
+  , matchTy NoIgnore (DConT ''Int) (DVarT a) `geq` Nothing
+  , matchTy NoIgnore (DVarT a `DSigT` DConT ''Bool) (DConT ''Int) `geq` Nothing
+  , matchTy YesIgnore (DVarT a `DSigT` DConT ''Bool) (DConT ''Int)
+    `geq` Just (M.singleton a (DConT ''Int))
+  ]
+  where
+    a = mkName "a"
+    b = mkName "b"
+
 main :: IO ()
 main = hspec $ do
   describe "th-desugar library" $ do
@@ -376,5 +402,8 @@ main = hspec $ do
 
     zipWithM (\b n -> it ("substitutes tyvar binder kinds " ++ show n) b)
       test_kind_substitution [1..]
+
+    zipWithM (\b n -> it ("matches types " ++ show n) b)
+      test_matchTy [1..]
 
     fromHUnitTest tests

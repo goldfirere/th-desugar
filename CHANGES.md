@@ -19,6 +19,9 @@ Version 1.8
 
 * Export `reifyFixityWithLocals` from `Language.Haskell.TH.Desugar`.
 
+* Export `matchTy` (among other goodies) from new module `Language.Haskell.TH.Subst`.
+  This function matches a type template against a target.
+
 Version 1.7
 -----------
 * Support for TH's support for `TypeApplications`, thanks to @RyanGlScott.

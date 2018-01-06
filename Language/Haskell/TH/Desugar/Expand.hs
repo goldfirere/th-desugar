@@ -26,14 +26,10 @@ module Language.Haskell.TH.Desugar.Expand (
   expand, expandType,
 
   -- * Expand synonyms potentially unsoundly
-  expandUnsoundly,
-
-  -- * Capture-avoiding substitution
-  substTy
+  expandUnsoundly
   ) where
 
 import qualified Data.Map as M
-import qualified Data.Set as S
 import Control.Monad
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
@@ -42,16 +38,13 @@ import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Syntax ( Quasi(..) )
 import Data.Data
 import Data.Generics
-import Data.List
 import qualified Data.Traversable as T
 
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Sweeten
 import Language.Haskell.TH.Desugar.Reify
-
--- | Ignore kind annotations?
-data IgnoreKinds = YesIgnore | NoIgnore
+import Language.Haskell.TH.Desugar.Subst
 
 -- | Expands all type synonyms in a desugared type. Also expands open type family
 -- applications. (In GHCs before 7.10, this part does not work if there are any
@@ -128,7 +121,7 @@ expand_con ign n args = do
           [DTySynInstD _n (DTySynEqn lhs rhs)] -> do
             subst <-
               expectJustM "Impossible: reification returned a bogus instance" $
-              merge_maps $ zipWith build_subst lhs syn_args
+              unionMaybeSubsts $ zipWith (matchTy ign) lhs syn_args
             ty <- substTy subst rhs
             ty' <- expand_type ign ty
             return $ foldl DAppT ty' rest_args
@@ -151,7 +144,7 @@ expand_con ign n args = do
          -- returns the substed rhs
         check_eqn :: DsMonad q => [DType] -> DTySynEqn -> q (Maybe DType)
         check_eqn arg_tys (DTySynEqn lhs rhs) = do
-          let m_subst = merge_maps $ zipWith build_subst lhs arg_tys
+          let m_subst = unionMaybeSubsts $ zipWith (matchTy ign) lhs arg_tys
           T.mapM (flip substTy rhs) m_subst
 
     _ -> return $ foldl DAppT (DConT n) args
@@ -172,106 +165,13 @@ expand_con ign n args = do
         _                                        -> True
     no_tyvar_tyfam t = gmapQl (liftM2 (&&)) (return True) no_tyvars_tyfams t
 
-    build_subst :: DType -> DType -> Maybe (M.Map Name DType)
-    build_subst (DVarT var_name) arg = Just $ M.singleton var_name arg
-      -- if a pattern has a kind signature, it's really easy to get
-      -- this wrong.
-    build_subst (DSigT ty _ki) arg = case ign of
-      YesIgnore -> build_subst ty arg
-      NoIgnore  -> Nothing
-      -- but we can safely ignore kind signatures on the target
-    build_subst pat (DSigT ty _ki) = build_subst pat ty
-    build_subst (DForallT {}) _ =
-      error "Impossible: forall-quantified pattern to type family"
-      -- reifyInstances should fail if an argument is forall-quantified.
-    build_subst _ (DForallT {}) =
-      error "Impossible: forall-quantified argument to type family"
-    build_subst (DAppT pat1 pat2) (DAppT arg1 arg2) =
-      merge_maps [build_subst pat1 arg1, build_subst pat2 arg2]
-    build_subst (DConT pat_con) (DConT arg_con)
-      | pat_con == arg_con = Just M.empty
-    build_subst DArrowT DArrowT = Just M.empty
-    build_subst (DLitT pat_lit) (DLitT arg_lit)
-      | pat_lit == arg_lit = Just M.empty
-    build_subst _ _ = Nothing
-
-    merge_maps :: [Maybe (M.Map Name DType)] -> Maybe (M.Map Name DType)
-    merge_maps = foldl' merge_map1 (Just M.empty)
-
-    merge_map1 :: Maybe (M.Map Name DType) -> Maybe (M.Map Name DType)
-               -> Maybe (M.Map Name DType)
-    merge_map1 ma mb = do
-      a <- ma
-      b <- mb
-      let shared_key_set = M.keysSet a `S.intersection` M.keysSet b
-          matches_up     = S.foldr (\name -> ((a M.! name) `geq` (b M.! name) &&))
-                                   True shared_key_set
-      if matches_up then return (a `M.union` b) else Nothing
-
     allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
     allM f = foldM (\b x -> (b &&) `liftM` f x) True
-
--- | Capture-avoiding substitution on types
-substTy :: DsMonad q => M.Map Name DType -> DType -> q DType
-substTy vars (DForallT tvbs cxt ty) =
-  substTyVarBndrs vars tvbs $ \vars' tvbs' -> do
-    cxt' <- mapM (substPred vars') cxt
-    ty' <- substTy vars' ty
-    return $ DForallT tvbs' cxt' ty'
-substTy vars (DAppT t1 t2) =
-  DAppT <$> substTy vars t1 <*> substTy vars t2
-substTy vars (DSigT ty ki) =
-  DSigT <$> substTy vars ty <*> substTy vars ki
-substTy vars (DVarT n)
-  | Just ty <- M.lookup n vars
-  = return ty
-  | otherwise
-  = return $ DVarT n
-substTy _ ty = return ty
-
-substTyVarBndrs :: DsMonad q => M.Map Name DType -> [DTyVarBndr]
-                -> (M.Map Name DType -> [DTyVarBndr] -> q DType)
-                -> q DType
-substTyVarBndrs vars tvbs thing = do
-  (vars', tvbs') <- mapAccumLM substTvb vars tvbs
-  thing vars' tvbs'
-
-substTvb :: DsMonad q => M.Map Name DType -> DTyVarBndr
-         -> q (M.Map Name DType, DTyVarBndr)
-substTvb vars (DPlainTV n) = do
-  new_n <- qNewName (nameBase n)
-  return (M.insert n (DVarT new_n) vars, DPlainTV new_n)
-substTvb vars (DKindedTV n k) = do
-  new_n <- qNewName (nameBase n)
-  k' <- substTy vars k
-  return (M.insert n (DVarT new_n) vars, DKindedTV new_n k')
 
 -- | Extract the name from a @TyVarBndr@
 extractDTvbName :: DTyVarBndr -> Name
 extractDTvbName (DPlainTV n) = n
 extractDTvbName (DKindedTV n _) = n
-
-substPred :: DsMonad q => M.Map Name DType -> DPred -> q DPred
-substPred vars (DAppPr p t) = DAppPr <$> substPred vars p <*> substTy vars t
-substPred vars (DSigPr p k) = DSigPr <$> substPred vars p <*> substTy vars k
-substPred vars (DVarPr n)
-  | Just ty <- M.lookup n vars
-  = dTypeToDPred ty
-  | otherwise
-  = return $ DVarPr n
-substPred _ p = return p
-
--- | Convert a 'DType' to a 'DPred'
-dTypeToDPred :: DsMonad q => DType -> q DPred
-dTypeToDPred (DForallT _ _ _) = impossible "Forall-type used as constraint"
-dTypeToDPred (DAppT t1 t2)   = DAppPr <$> dTypeToDPred t1 <*> pure t2
-dTypeToDPred (DSigT ty ki)   = DSigPr <$> dTypeToDPred ty <*> pure ki
-dTypeToDPred (DVarT n)       = return $ DVarPr n
-dTypeToDPred (DConT n)       = return $ DConPr n
-dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
-dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
-dTypeToDPred DWildCardT      = return DWildCardPr
-dTypeToDPred DStarT          = impossible "Star used as head of constraint"
 
 -- | Expand all type synonyms and type families in the desugared abstract
 -- syntax tree provided, where type family simplification is on a "best effort"

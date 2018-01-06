@@ -75,6 +75,9 @@ module Language.Haskell.TH.Desugar (
   -- * Nested pattern flattening
   scExp, scLetDec,
 
+  -- * Capture-avoiding substitution and utilities
+  module Language.Haskell.TH.Desugar.Subst,
+
   -- * Utility functions
   applyDExp, applyDType,
   dPatToDExp, removeWilds,
@@ -82,7 +85,7 @@ module Language.Haskell.TH.Desugar (
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
   mkTypeName, mkDataName, newUniqueName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
-  substTy, fvDType,
+  fvDType,
   tupleDegree_maybe, tupleNameDegree_maybe,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
@@ -99,6 +102,7 @@ import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Desugar.Reify
 import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Match
+import Language.Haskell.TH.Desugar.Subst
 
 import qualified Data.Map as M
 import Data.Monoid
