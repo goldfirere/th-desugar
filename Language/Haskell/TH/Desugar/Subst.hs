@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Language.Haskell.TH.Desugar.Subst
@@ -30,6 +32,10 @@ import Data.List
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Desugar.Util
+
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative
+#endif
 
 -- | A substitution is just a map from names to types
 type DSubst = M.Map Name DType

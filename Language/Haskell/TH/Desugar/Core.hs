@@ -1397,8 +1397,8 @@ strictToBang = id
 -- | Convert a 'DType' to a 'DPred'
 dTypeToDPred :: Monad q => DType -> q DPred
 dTypeToDPred (DForallT _ _ _) = impossible "Forall-type used as constraint"
-dTypeToDPred (DAppT t1 t2)   = DAppPr <$> dTypeToDPred t1 <*> pure t2
-dTypeToDPred (DSigT ty ki)   = DSigPr <$> dTypeToDPred ty <*> pure ki
+dTypeToDPred (DAppT t1 t2)   = liftM2 DAppPr (dTypeToDPred t1) (return t2)
+dTypeToDPred (DSigT ty ki)   = liftM2 DSigPr (dTypeToDPred ty) (return ki)
 dTypeToDPred (DVarT n)       = return $ DVarPr n
 dTypeToDPred (DConT n)       = return $ DConPr n
 dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
