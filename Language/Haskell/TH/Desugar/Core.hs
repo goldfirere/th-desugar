@@ -32,6 +32,10 @@ import Data.Maybe (isJust)
 #endif
 import GHC.Generics hiding (Fixity)
 
+#if __GLASGOW_HASKELL__ >= 803
+import GHC.OverloadedLabels ( fromLabel )
+#endif
+
 import qualified Data.Set as S
 import GHC.Exts
 
@@ -489,6 +493,9 @@ dsExp (UnboundVarE n) = return (DVarE n)
 dsExp (AppTypeE exp ty) = DAppTypeE <$> dsExp exp <*> dsType ty
 dsExp (UnboxedSumE exp alt arity) =
   DAppE (DConE $ unboxedSumDataName alt arity) <$> dsExp exp
+#endif
+#if __GLASGOW_HASKELL__ >= 803
+dsExp (LabelE str) = return $ DVarE 'fromLabel `DAppTypeE` DLitT (StrTyLit str)
 #endif
 
 -- | Desugar a lambda expression, where the body has already been desugared

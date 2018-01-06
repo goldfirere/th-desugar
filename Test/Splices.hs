@@ -21,6 +21,11 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE UnboxedSums #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 803
+{-# LANGUAGE OverloadedLabels #-}
+{-# OPTIONS_GHC -Wno-orphans #-}  -- IsLabel is an orphan
+#endif
+
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
@@ -34,6 +39,10 @@ import GHC.TypeLits
 import Language.Haskell.TH
 import Language.Haskell.TH.Desugar
 import Data.Generics
+
+#if __GLASGOW_HASKELL__ >= 803
+import GHC.OverloadedLabels ( IsLabel(..) )
+#endif
 
 #if __GLASGOW_HASKELL__ < 707
 data Proxy a = Proxy
@@ -248,6 +257,24 @@ test45_empty_record_con = [| let j :: Maybe Int
                              in case j of
                                 Nothing -> j
                                 Just{}  -> j |]
+
+#if __GLASGOW_HASKELL__ >= 803
+data Label (l :: Symbol) = Get
+
+class Has a l b | a l -> b where
+  from :: a -> Label l -> b
+
+data Point = Point Int Int deriving Show
+
+instance Has Point "x" Int where from (Point x _) _ = x
+instance Has Point "y" Int where from (Point _ y) _ = y
+
+instance Has a l b => IsLabel l (a -> b) where
+  fromLabel x = from x (Get :: Label l)
+
+test46_overloaded_label = [| let p = Point 3 4 in
+                             #x p - #y p |]
+#endif
 
 type family TFExpand x
 type instance TFExpand Int = Bool
@@ -600,4 +627,7 @@ test_exprs = [ test1_sections
 #endif
              , test44_let_pragma
              , test45_empty_record_con
+#if __GLASGOW_HASKELL__ >= 803
+             , test46_overloaded_label
+#endif
              ]

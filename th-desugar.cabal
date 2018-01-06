@@ -12,6 +12,9 @@ extra-source-files: README.md, CHANGES.md
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
+tested-with:    GHC == 7.6.3, GHC == 7.8.2, GHC == 7.8.3, GHC == 7.8.4,
+                GHC == 7.10.1, GHC == 7.10.2, GHC == 7.10.3, GHC == 8.0.1,
+                GHC == 8.0.2, GHC == 8.2.1, GHC == 8.2.2, GHC == 8.4.1
 description:
     This package provides the Language.Haskell.TH.Desugar module, which desugars
     Template Haskell's rich encoding of Haskell syntax into a simpler encoding.

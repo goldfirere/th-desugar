@@ -3,6 +3,8 @@
 
 Version 1.8
 -----------
+* Support GHC 8.4.
+
 * `substTy` now properly substitutes into kind signatures.
 
 * Expose `fvDType`, which computes the free variables of a `DType`.

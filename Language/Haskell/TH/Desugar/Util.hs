@@ -34,7 +34,10 @@ import Data.Foldable
 import Data.Generics hiding ( Fixity )
 import Data.Traversable
 import Data.Maybe
+
+#if __GLASGOW_HASKELL__ < 804
 import Data.Monoid
+#endif
 
 ----------------------------------------
 -- TH manipulations

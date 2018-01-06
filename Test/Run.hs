@@ -11,7 +11,8 @@ rae@cs.brynmawr.edu
              ScopedTypeVariables, GADTs, ViewPatterns #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
-            -fno-warn-missing-signatures -fno-warn-unused-do-bind #-}
+            -fno-warn-missing-signatures -fno-warn-unused-do-bind
+            -fno-warn-missing-fields #-}
 
 #if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE PartialTypeSignatures #-}
@@ -119,6 +120,12 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "typeapps"   ~: $test41_typeapps   @=? $(dsSplice test41_typeapps)
              , "scoped_tvs" ~: $test42_scoped_tvs @=? $(dsSplice test42_scoped_tvs)
              , "ubx_sums"   ~: $test43_ubx_sums   @=? $(dsSplice test43_ubx_sums)
+#endif
+             , "let_pragma" ~: $test44_let_pragma @=? $(dsSplice test44_let_pragma)
+--             , "empty_rec"  ~: $test45_empty_record_con @=? $(dsSplice test45_empty_record_con)
+        -- This one can't be tested by this means, because it contains an "undefined"
+#if __GLASGOW_HASKELL__ >= 803
+             , "over_label" ~: $test46_overloaded_label @=? $(dsSplice test46_overloaded_label)
 #endif
              ]
 
