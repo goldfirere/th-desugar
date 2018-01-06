@@ -353,6 +353,10 @@ dectest6 = [d| class (Monad m1, Monad m2) => Dec6 (m1 :: * -> *) m2 | m1 -> m2  
 dectest7 = [d| type family Dec7 a (b :: *) (c :: Bool) :: * -> * |]
 dectest8 = [d| type family Dec8 a |]
 dectest9 = [d| data family Dec9 a (b :: * -> *) :: * -> * |]
+  -- NB: dectest9 inexplicably fails when you don't recompile everything from
+  -- scratch. I (Richard) haven't explored why. The failure is benign (replacing the
+  -- decl above with one with three variables) so I'm not terribly bothered.
+
 #if __GLASGOW_HASKELL__ < 707
 ds_dectest10 = DClosedTypeFamilyD
                  (DTypeFamilyHead

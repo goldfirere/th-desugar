@@ -45,6 +45,7 @@ import Control.Applicative
 #endif
 
 import Data.Generics ( geq )
+import Data.Function ( on )
 import qualified Data.Map as M
 import qualified Data.Set as S
 #if __GLASGOW_HASKELL__ >= 707
@@ -335,28 +336,32 @@ test_roundtrip = $( do exprs <- sequence test_exprs
 
 test_matchTy :: [Bool]
 test_matchTy =
-  [ matchTy NoIgnore (DVarT a) (DConT ''Bool) `geq` Just (M.singleton a (DConT ''Bool))
-  , matchTy NoIgnore (DVarT a) (DVarT a) `geq` Just (M.singleton a (DVarT a))
-  , matchTy NoIgnore (DVarT a) (DVarT b) `geq` Just (M.singleton a (DVarT b))
+  [ matchTy NoIgnore (DVarT a) (DConT ''Bool) `eq` Just (M.singleton a (DConT ''Bool))
+  , matchTy NoIgnore (DVarT a) (DVarT a) `eq` Just (M.singleton a (DVarT a))
+  , matchTy NoIgnore (DVarT a) (DVarT b) `eq` Just (M.singleton a (DVarT b))
   , matchTy NoIgnore (DConT ''Either `DAppT` DVarT a `DAppT` DVarT b)
                      (DConT ''Either `DAppT` DConT ''Int `DAppT` DConT ''Bool)
-    `geq` Just (M.fromList [(a, DConT ''Int), (b, DConT ''Bool)])
+    `eq` Just (M.fromList [(a, DConT ''Int), (b, DConT ''Bool)])
   , matchTy NoIgnore (DConT ''Either `DAppT` DVarT a `DAppT` DVarT a)
                      (DConT ''Either `DAppT` DConT ''Int `DAppT` DConT ''Int)
-    `geq` Just (M.singleton a (DConT ''Int))
+    `eq` Just (M.singleton a (DConT ''Int))
   , matchTy NoIgnore (DConT ''Either `DAppT` DVarT a `DAppT` DVarT a)
                      (DConT ''Either `DAppT` DConT ''Int `DAppT` DConT ''Bool)
-    `geq` Nothing
-  , matchTy NoIgnore (DConT ''Int) (DConT ''Bool) `geq` Nothing
-  , matchTy NoIgnore (DConT ''Int) (DConT ''Int) `geq` Just M.empty
-  , matchTy NoIgnore (DConT ''Int) (DVarT a) `geq` Nothing
-  , matchTy NoIgnore (DVarT a `DSigT` DConT ''Bool) (DConT ''Int) `geq` Nothing
+    `eq` Nothing
+  , matchTy NoIgnore (DConT ''Int) (DConT ''Bool) `eq` Nothing
+  , matchTy NoIgnore (DConT ''Int) (DConT ''Int) `eq` Just M.empty
+  , matchTy NoIgnore (DConT ''Int) (DVarT a) `eq` Nothing
+  , matchTy NoIgnore (DVarT a `DSigT` DConT ''Bool) (DConT ''Int) `eq` Nothing
   , matchTy YesIgnore (DVarT a `DSigT` DConT ''Bool) (DConT ''Int)
-    `geq` Just (M.singleton a (DConT ''Int))
+    `eq` Just (M.singleton a (DConT ''Int))
   ]
   where
     a = mkName "a"
     b = mkName "b"
+
+     -- GHC 7.6 uses containers-0.5.0.0 which doesn't have a good Data instance
+     -- for Map. So we have to convert to lists before comparing.
+    eq = geq `on` fmap M.toList
 
 main :: IO ()
 main = hspec $ do
