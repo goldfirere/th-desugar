@@ -89,7 +89,7 @@ module Language.Haskell.TH.Desugar (
   tupleDegree_maybe, tupleNameDegree_maybe,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
-  strictToBang,
+  strictToBang, isTypeKindName, typeKindName,
 
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
@@ -193,7 +193,6 @@ fvDType = go_ty
     go_ty DArrowT                = S.empty
     go_ty (DLitT {})             = S.empty
     go_ty DWildCardT             = S.empty
-    go_ty DStarT                 = S.empty
 
     go_pred :: DPred -> S.Set Name
     go_pred (DAppPr pr ty) = go_pred pr <> go_ty ty

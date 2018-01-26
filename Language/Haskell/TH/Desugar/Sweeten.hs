@@ -305,7 +305,6 @@ typeToTH DWildCardT = WildCardT
 #else
 typeToTH DWildCardT = error "Wildcards supported only in GHC 8.0+"
 #endif
-typeToTH DStarT = StarT
 
 tvbToTH :: DTyVarBndr -> TyVarBndr
 tvbToTH (DPlainTV n)           = PlainTV n
@@ -369,6 +368,10 @@ tyconToTH n
                                                  then PromotedTupleT deg
                                                  else TupleT deg
   | Just deg <- unboxedTupleNameDegree_maybe n = UnboxedTupleT deg
+#if __GLASGOW_HASKELL__ == 706
+    -- Work around Trac #7667
+  | isTypeKindName n            = StarT
+#endif
 #if __GLASGOW_HASKELL__ >= 801
   | Just deg <- unboxedSumNameDegree_maybe n   = UnboxedSumT deg
 #endif

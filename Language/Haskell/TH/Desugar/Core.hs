@@ -76,7 +76,6 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DArrowT
            | DLitT TyLit
            | DWildCardT
-           | DStarT
            deriving (Show, Typeable, Data, Generic)
 
 -- | Kinds are types.
@@ -1204,7 +1203,7 @@ dsType ListT = return $ DConT ''[]
 dsType (PromotedTupleT n) = return $ DConT (tupleDataName n)
 dsType PromotedNilT = return $ DConT '[]
 dsType PromotedConsT = return $ DConT '(:)
-dsType StarT = return DStarT
+dsType StarT = return $ DConT typeKindName
 dsType ConstraintT = return $ DConT ''Constraint
 dsType (LitT lit) = return $ DLitT lit
 #if __GLASGOW_HASKELL__ >= 709
@@ -1404,4 +1403,3 @@ dTypeToDPred (DConT n)       = return $ DConPr n
 dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
 dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
 dTypeToDPred DWildCardT      = return DWildCardPr
-dTypeToDPred DStarT          = impossible "Star used as head of constraint"
