@@ -4,7 +4,7 @@
 rae@cs.brynmawr.edu
 -}
 
-{-# LANGUAGE CPP, NoMonomorphismRestriction #-}
+{-# LANGUAGE CPP, NoMonomorphismRestriction, ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -66,9 +66,9 @@ expand_type ign = go []
       go (t2' : args) t1
     go args (DSigT ty ki) = do
       ty' <- go [] ty
-      return $ foldl DAppT (DSigT ty' ki) args
+      return $ applyDType (DSigT ty' ki) args
     go args (DConT n) = expand_con ign n args
-    go args ty = return $ foldl DAppT ty args
+    go args ty = return $ applyDType ty args
 
 -- | Expands all type synonyms in a desugared predicate.
 expand_pred :: DsMonad q => IgnoreKinds -> DPred -> q DPred
@@ -86,70 +86,78 @@ expand_pred ign = go []
     go args p = return $ foldl DAppPr p args
 
 -- | Expand a constructor with given arguments
-expand_con :: DsMonad q
+expand_con :: forall q.
+              DsMonad q
            => IgnoreKinds
            -> Name     -- ^ Tycon name
            -> [DType]  -- ^ Arguments
            -> q DType  -- ^ Expanded type
 expand_con ign n args = do
   info <- reifyWithLocals n
-  dinfo <- dsInfo info
-  args_ok <- allM no_tyvars_tyfams args
-  case dinfo of
-    DTyConI (DTySynD _n tvbs rhs) _
-      |  length args >= length tvbs   -- this should always be true!
-      -> do
-        let (syn_args, rest_args) = splitAtList tvbs args
-        ty <- substTy (M.fromList $ zip (map extractDTvbName tvbs) syn_args) rhs
-        ty' <- expand_type ign ty
-        return $ foldl DAppT ty' rest_args
-
-    DTyConI (DOpenTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann)) _
-      |  length args >= length tvbs   -- this should always be true!
-#if __GLASGOW_HASKELL__ < 709
-      ,  args_ok
-#endif
-      -> do
-        let (syn_args, rest_args) = splitAtList tvbs args
-        -- We need to get the correct instance. If we fail to reify anything
-        -- (e.g., if a type family is quasiquoted), then fall back by
-        -- pretending that there are no instances in scope.
-        insts <- qRecover (return []) $
-                 qReifyInstances n (map typeToTH syn_args)
-        dinsts <- dsDecs insts
-        case dinsts of
-          [DTySynInstD _n (DTySynEqn lhs rhs)] -> do
-            subst <-
-              expectJustM "Impossible: reification returned a bogus instance" $
-              unionMaybeSubsts $ zipWith (matchTy ign) lhs syn_args
-            ty <- substTy subst rhs
-            ty' <- expand_type ign ty
-            return $ foldl DAppT ty' rest_args
-          _ -> return $ foldl DAppT (DConT n) args
-
-
-    DTyConI (DClosedTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann) eqns) _
-      |  length args >= length tvbs
-      ,  args_ok
-      -> do
-        let (syn_args, rest_args) = splitAtList tvbs args
-        rhss <- mapMaybeM (check_eqn syn_args) eqns
-        case rhss of
-          (rhs : _) -> do
-            rhs' <- expand_type ign rhs
-            return $ foldl DAppT rhs' rest_args
-          [] -> return $ foldl DAppT (DConT n) args
-
-      where
-         -- returns the substed rhs
-        check_eqn :: DsMonad q => [DType] -> DTySynEqn -> q (Maybe DType)
-        check_eqn arg_tys (DTySynEqn lhs rhs) = do
-          let m_subst = unionMaybeSubsts $ zipWith (matchTy ign) lhs arg_tys
-          T.mapM (flip substTy rhs) m_subst
-
-    _ -> return $ foldl DAppT (DConT n) args
-
+  case info of
+    TyConI (TySynD _ _ StarT)
+         -- See Note [Don't expand synonyms for *]
+      -> return $ applyDType (DConT typeKindName) args
+    _ -> go info
   where
+    go :: Info -> q DType
+    go info = do
+      dinfo <- dsInfo info
+      args_ok <- allM no_tyvars_tyfams args
+      case dinfo of
+        DTyConI (DTySynD _n tvbs rhs) _
+          |  length args >= length tvbs   -- this should always be true!
+          -> do
+            let (syn_args, rest_args) = splitAtList tvbs args
+            ty <- substTy (M.fromList $ zip (map extractDTvbName tvbs) syn_args) rhs
+            ty' <- expand_type ign ty
+            return $ applyDType ty' rest_args
+
+        DTyConI (DOpenTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann)) _
+          |  length args >= length tvbs   -- this should always be true!
+#if __GLASGOW_HASKELL__ < 709
+          ,  args_ok
+#endif
+          -> do
+            let (syn_args, rest_args) = splitAtList tvbs args
+            -- We need to get the correct instance. If we fail to reify anything
+            -- (e.g., if a type family is quasiquoted), then fall back by
+            -- pretending that there are no instances in scope.
+            insts <- qRecover (return []) $
+                     qReifyInstances n (map typeToTH syn_args)
+            dinsts <- dsDecs insts
+            case dinsts of
+              [DTySynInstD _n (DTySynEqn lhs rhs)] -> do
+                subst <-
+                  expectJustM "Impossible: reification returned a bogus instance" $
+                  unionMaybeSubsts $ zipWith (matchTy ign) lhs syn_args
+                ty <- substTy subst rhs
+                ty' <- expand_type ign ty
+                return $ applyDType ty' rest_args
+              _ -> return $ applyDType (DConT n) args
+
+
+        DTyConI (DClosedTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann) eqns) _
+          |  length args >= length tvbs
+          ,  args_ok
+          -> do
+            let (syn_args, rest_args) = splitAtList tvbs args
+            rhss <- mapMaybeM (check_eqn syn_args) eqns
+            case rhss of
+              (rhs : _) -> do
+                rhs' <- expand_type ign rhs
+                return $ applyDType rhs' rest_args
+              [] -> return $ applyDType (DConT n) args
+
+          where
+             -- returns the substed rhs
+            check_eqn :: DsMonad q => [DType] -> DTySynEqn -> q (Maybe DType)
+            check_eqn arg_tys (DTySynEqn lhs rhs) = do
+              let m_subst = unionMaybeSubsts $ zipWith (matchTy ign) lhs arg_tys
+              T.mapM (flip substTy rhs) m_subst
+
+        _ -> return $ applyDType (DConT n) args
+
     no_tyvars_tyfams :: (DsMonad q, Data a) => a -> q Bool
     no_tyvars_tyfams = everything (liftM2 (&&)) (mkQ (return True) no_tyvar_tyfam)
 
@@ -167,6 +175,24 @@ expand_con ign n args = do
 
     allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
     allM f = foldM (\b x -> (b &&) `liftM` f x) True
+
+{-
+Note [Don't expand synonyms for *]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+We deliberately avoid expanding type synonyms for * such as Type and ★.
+Why? If you reify any such type synonym using Template Haskell, this is
+what you'll get:
+
+  TyConI (TySynD <type synonym name> [] StarT)
+
+If you blindly charge ahead and recursively inspect the right-hand side of
+this type synonym, you'll desugar StarT into (DConT ''Type), reify ''Type,
+and get back another type synonym with StarT as its right-hand side. Then
+you'll recursively inspect StarT and yourself knee-deep in an infinite loop.
+
+To prevent these sorts of shenanigans, we simply stop whenever we see a type
+synonym with StarT as its right-hand side and return Type.
+-}
 
 -- | Extract the name from a @TyVarBndr@
 extractDTvbName :: DTyVarBndr -> Name

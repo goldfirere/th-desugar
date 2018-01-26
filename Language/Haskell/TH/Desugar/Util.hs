@@ -6,7 +6,7 @@ rae@cs.brynmawr.edu
 Utility functions for th-desugar package.
 -}
 
-{-# LANGUAGE CPP, ExplicitNamespaces, TupleSections #-}
+{-# LANGUAGE CPP, TupleSections #-}
 
 #if __GLASGOW_HASKELL__ >= 800
 {-# LANGUAGE TemplateHaskellQuotes #-}
@@ -41,7 +41,7 @@ import Data.Traversable
 import Data.Maybe
 
 #if __GLASGOW_HASKELL__ >= 800
-import qualified Data.Kind as Kind (Type, type (*))
+import qualified Data.Kind as Kind
 #endif
 
 #if __GLASGOW_HASKELL__ < 804
@@ -329,10 +329,12 @@ isInfixDataCon :: String -> Bool
 isInfixDataCon (':':_) = True
 isInfixDataCon _ = False
 
--- | Returns 'True' if the argument 'Name' is that of 'Kind.Type'
+-- | Returns 'True' if the argument 'Name' is that of 'Kind.Type' or 'Kind.★'
 -- (or @*@, to support older GHCs).
 isTypeKindName :: Name -> Bool
-isTypeKindName n = n == starKindName || n == typeKindName
+isTypeKindName n = n == starKindName
+                || n == typeKindName
+                || n == uniStarKindName
 
 -- | The 'Name' of:
 --
@@ -351,4 +353,15 @@ starKindName :: Name
 starKindName = ''(Kind.*)
 #else
 starKindName = mkNameG_tc "ghc-prim" "GHC.Prim" "*"
+#endif
+
+-- | The 'Name' of:
+--
+-- 1. The kind 'Kind.★', on GHC 8.0 or later.
+-- 2. The kind @*@ on older GHCs.
+uniStarKindName :: Name
+#if __GLASGOW_HASKELL__ >= 800
+uniStarKindName = ''(Kind.★)
+#else
+uniStarKindName = starKindName
 #endif

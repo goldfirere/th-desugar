@@ -8,7 +8,7 @@ Version 1.9
   ease this transition:
 
   * `isTypeKindName`: returns `True` if the argument `Name` is that
-    of `Type` (or `*`, to support older GHCs).
+    of `Type` or `★` (or `*`, to support older GHCs).
   * `typeKindName`: the name of `Type` (on GHC 8.0 or later) or `*` (on older
     GHCs).
 
