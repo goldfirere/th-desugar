@@ -34,7 +34,7 @@ source-repository this
 library
   build-depends:
       base >= 4 && < 5,
-      template-haskell,
+      template-haskell >= 2.8,
       containers >= 0.5,
       mtl >= 2.1,
       syb >= 0.4,
