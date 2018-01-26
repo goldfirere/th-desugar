@@ -1,6 +1,17 @@
 `th-desugar` release notes
 ==========================
 
+Version 1.9
+-----------
+* Remove the `DStarT` constructor of `DType` in favor of `DConT ''Type`.
+  Two utility functions have been added to `Language.Haskell.TH.Desugar` to
+  ease this transition:
+
+  * `isTypeKindName`: returns `True` if the argument `Name` is that
+    of `Type` (or `*`, to support older GHCs).
+  * `typeKindName`: the name of `Type` (on GHC 8.0 or later) or `*` (on older
+    GHCs).
+
 Version 1.8
 -----------
 * Support GHC 8.4.

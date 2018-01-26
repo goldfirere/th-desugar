@@ -201,11 +201,13 @@ test_bug8884 = $(do info <- reify ''Poly
                     dinfo@(DTyConI (DOpenTypeFamilyD (DTypeFamilyHead _name _tvbs (DKindSig resK) _ann))
                                    (Just [DTySynInstD _name2 (DTySynEqn lhs _rhs)]))
                       <- dsInfo info
-                    case (resK, lhs) of
+                    let isTypeKind (DConT n) = isTypeKindName n
+                        isTypeKind _         = False
+                    case (isTypeKind resK, lhs) of
 #if __GLASGOW_HASKELL__ < 709
-                      (DStarT, [DVarT _]) -> [| True |]
+                      (True, [DVarT _]) -> [| True |]
 #else
-                      (DStarT, [DSigT (DVarT _) (DVarT _)]) -> [| True |]
+                      (True, [DSigT (DVarT _) (DVarT _)]) -> [| True |]
 #endif
                       _                                     -> do
                         runIO $ do

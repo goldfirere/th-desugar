@@ -362,7 +362,7 @@ ds_dectest10 = DClosedTypeFamilyD
                  (DTypeFamilyHead
                     (mkName "Dec10")
                     [DPlainTV (mkName "a")]
-                    (DKindSig (DAppT (DAppT DArrowT DStarT) DStarT))
+                    (DKindSig (DAppT (DAppT DArrowT (DConT typeKindName)) (DConT typeKindName)))
                     Nothing)
                  [ DTySynEqn [DConT ''Int]  (DConT ''Maybe)
                  , DTySynEqn [DConT ''Bool] (DConT ''[]) ]

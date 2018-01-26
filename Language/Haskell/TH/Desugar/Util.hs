@@ -6,7 +6,11 @@ rae@cs.brynmawr.edu
 Utility functions for th-desugar package.
 -}
 
-{-# LANGUAGE CPP, TupleSections #-}
+{-# LANGUAGE CPP, ExplicitNamespaces, TupleSections #-}
+
+#if __GLASGOW_HASKELL__ >= 800
+{-# LANGUAGE TemplateHaskellQuotes #-}
+#endif
 
 module Language.Haskell.TH.Desugar.Util (
   newUniqueName,
@@ -21,7 +25,8 @@ module Language.Haskell.TH.Desugar.Util (
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
-  topEverywhereM, isInfixDataCon
+  topEverywhereM, isInfixDataCon,
+  isTypeKindName, typeKindName
   ) where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
@@ -34,6 +39,10 @@ import Data.Foldable
 import Data.Generics hiding ( Fixity )
 import Data.Traversable
 import Data.Maybe
+
+#if __GLASGOW_HASKELL__ >= 800
+import qualified Data.Kind as Kind (Type, type (*))
+#endif
 
 #if __GLASGOW_HASKELL__ < 804
 import Data.Monoid
@@ -319,3 +328,27 @@ topEverywhereM handler =
 isInfixDataCon :: String -> Bool
 isInfixDataCon (':':_) = True
 isInfixDataCon _ = False
+
+-- | Returns 'True' if the argument 'Name' is that of 'Kind.Type'
+-- (or @*@, to support older GHCs).
+isTypeKindName :: Name -> Bool
+isTypeKindName n = n == starKindName || n == typeKindName
+
+-- | The 'Name' of:
+--
+-- 1. The kind 'Kind.Type', on GHC 8.0 or later.
+-- 2. The kind @*@ on older GHCs.
+typeKindName :: Name
+#if __GLASGOW_HASKELL__ >= 800
+typeKindName = ''Kind.Type
+#else
+typeKindName = starKindName
+#endif
+
+-- | The 'Name' of the kind @*@.
+starKindName :: Name
+#if __GLASGOW_HASKELL__ >= 800
+starKindName = ''(Kind.*)
+#else
+starKindName = mkNameG_tc "ghc-prim" "GHC.Prim" "*"
+#endif
