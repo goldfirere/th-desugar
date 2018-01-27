@@ -12,6 +12,9 @@ Version 1.9
   * `typeKindName`: the name of `Type` (on GHC 8.0 or later) or `*` (on older
     GHCs).
 
+* Add a `mkDLamEFromDPats` function for constructing a `DLamE` expression using
+  a list of `DPat` arguments and a `DExp` body.
+
 Version 1.8
 -----------
 * Support GHC 8.4.

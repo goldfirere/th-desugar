@@ -499,13 +499,36 @@ dsExp (LabelE str) = return $ DVarE 'fromLabel `DAppTypeE` DLitT (StrTyLit str)
 
 -- | Desugar a lambda expression, where the body has already been desugared
 dsLam :: DsMonad q => [Pat] -> DExp -> q DExp
-dsLam pats exp
-  | Just names <- mapM stripVarP_maybe pats
+dsLam = mkLam stripVarP_maybe dsPatsOverExp
+
+-- | Convert a list of 'DPat' arguments and a 'DExp' body into a 'DLamE'. This
+-- is needed since 'DLamE' takes a list of 'Name's for its bound variables
+-- instead of 'DPat's, so some reorganization is needed.
+mkDLamEFromDPats :: DsMonad q => [DPat] -> DExp -> q DExp
+mkDLamEFromDPats = mkLam stripDVarPa_maybe (\pats exp -> return (pats, exp))
+  where
+    stripDVarPa_maybe :: DPat -> Maybe Name
+    stripDVarPa_maybe (DVarPa n) = Just n
+    stripDVarPa_maybe _          = Nothing
+
+-- | Generalizes 'dsLam' and 'mkDLamEFromDPats' to work over an arbitrary
+-- pattern type.
+mkLam :: DsMonad q
+      => (pat -> Maybe Name) -- ^ Should return @'Just' n@ if the argument is a
+                             --   variable pattern, and 'Nothing' otherwise.
+      -> ([pat] -> DExp -> q ([DPat], DExp))
+                             -- ^ Should process a list of @pat@ arguments and
+                             --   a 'DExp' body. (This might do some internal
+                             --   reorganization if there are as-patterns, as
+                             --   in the case of 'dsPatsOverExp'.)
+      -> [pat] -> DExp -> q DExp
+mkLam mb_strip_var_pat process_pats_over_exp pats exp
+  | Just names <- mapM mb_strip_var_pat pats
   = return $ DLamE names exp
   | otherwise
   = do arg_names <- replicateM (length pats) (newUniqueName "arg")
        let scrutinee = mkTupleDExp (map DVarE arg_names)
-       (pats', exp') <- dsPatsOverExp pats exp
+       (pats', exp') <- process_pats_over_exp pats exp
        let match = DMatch (mkTupleDPat pats') exp'
        return $ DLamE arg_names (DCaseE scrutinee [match])
 

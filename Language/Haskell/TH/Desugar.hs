@@ -84,7 +84,7 @@ module Language.Haskell.TH.Desugar (
   getDataD, dataConNameToDataName, dataConNameToCon,
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
   mkTypeName, mkDataName, newUniqueName,
-  mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE,
+  mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE, mkDLamEFromDPats,
   fvDType,
   tupleDegree_maybe, tupleNameDegree_maybe,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
