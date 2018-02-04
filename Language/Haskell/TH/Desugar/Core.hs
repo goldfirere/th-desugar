@@ -21,9 +21,9 @@ import Language.Haskell.TH.ExpandSyns ( expandSyns )
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
 #endif
-import Control.Monad hiding (mapM)
+import Control.Monad hiding (forM_, mapM)
 import Control.Monad.Zip
-import Control.Monad.Writer hiding (mapM)
+import Control.Monad.Writer hiding (forM_, mapM)
 import Data.Foldable hiding (notElem)
 import Data.Traversable
 import Data.Data hiding (Fixity)
@@ -394,7 +394,7 @@ dsExp (RecConE con_name field_exps) = do
                     RecGadtC _names fields _ret_ty -> reorder_fields fields
 #endif
 
-    reorder_fields fields = reorderFields fields field_exps
+    reorder_fields fields = reorderFields con_name fields field_exps
                                           (repeat $ DVarE 'undefined)
 
     non_record fields | null field_exps
@@ -466,7 +466,7 @@ dsExp (RecUpdE exp field_exps) = do
       field_var_names <- mapM (newUniqueName . nameBase) con_field_names
       DMatch (DConPa con_name (map DVarPa field_var_names)) <$>
              (foldl DAppE (DConE con_name) <$>
-                    (reorderFields args field_exps (map DVarE field_var_names)))
+                    (reorderFields con_name args field_exps (map DVarE field_var_names)))
 
     con_to_dmatch :: DsMonad q => Con -> q DMatch
     con_to_dmatch (RecC con_name args) = rec_con_to_dmatch con_name args
@@ -737,7 +737,7 @@ dsPat (RecP con_name field_pats) = do
                      RecGadtC _names fields _ret_ty -> reorder_fields_pat fields
 #endif
 
-    reorder_fields_pat fields = reorderFieldsPat fields field_pats
+    reorder_fields_pat fields = reorderFieldsPat con_name fields field_pats
 
     non_record fields | null field_pats
                         -- Special case: record patterns are allowed for any
@@ -1335,25 +1335,36 @@ dsReify = traverse dsInfo <=< reifyWithLocals_maybe
 -- but with the values as given in the second argument
 -- if a field is missing from the second argument, use the corresponding expression
 -- from the third argument
-reorderFields :: DsMonad q => [VarStrictType] -> [FieldExp] -> [DExp] -> q [DExp]
+reorderFields :: DsMonad q => Name -> [VarStrictType] -> [FieldExp] -> [DExp] -> q [DExp]
 reorderFields = reorderFields' dsExp
 
-reorderFieldsPat :: DsMonad q => [VarStrictType] -> [FieldPat] -> PatM q [DPat]
-reorderFieldsPat field_decs field_pats =
-  reorderFields' dsPat field_decs field_pats (repeat DWildPa)
+reorderFieldsPat :: DsMonad q => Name -> [VarStrictType] -> [FieldPat] -> PatM q [DPat]
+reorderFieldsPat con_name field_decs field_pats =
+  reorderFields' dsPat con_name field_decs field_pats (repeat DWildPa)
 
 reorderFields' :: (Applicative m, Monad m)
                => (a -> m da)
+               -> Name -- ^ The name of the constructor (used for error reporting)
                -> [VarStrictType] -> [(Name, a)]
                -> [da] -> m [da]
-reorderFields' _ [] _ _ = return []
-reorderFields' ds_thing ((field_name, _, _) : rest)
-               field_things (deflt : rest_deflt) = do
-  rest' <- reorderFields' ds_thing rest field_things rest_deflt
-  case find (\(thing_name, _) -> thing_name == field_name) field_things of
-    Just (_, thing) -> (: rest') <$> ds_thing thing
-    Nothing -> return $ deflt : rest'
-reorderFields' _ (_ : _) _ [] = error "Internal error in th-desugar."
+reorderFields' ds_thing con_name field_names_types field_things deflts =
+  check_valid_fields >> reorder field_names deflts
+  where
+    field_names = map (\(a, _, _) -> a) field_names_types
+
+    check_valid_fields =
+      forM_ field_things $ \(thing_name, _) ->
+        unless (thing_name `elem` field_names) $
+          fail $ "Constructor ‘" ++ nameBase con_name   ++ "‘ does not have field ‘"
+                                 ++ nameBase thing_name ++ "‘"
+
+    reorder [] _ = return []
+    reorder (field_name : rest) (deflt : rest_deflt) = do
+      rest' <- reorder rest rest_deflt
+      case find (\(thing_name, _) -> thing_name == field_name) field_things of
+        Just (_, thing) -> (: rest') <$> ds_thing thing
+        Nothing -> return $ deflt : rest'
+    reorder (_ : _) [] = error "Internal error in th-desugar."
 
 -- | Make a tuple 'DExp' from a list of 'DExp's. Avoids using a 1-tuple.
 mkTupleDExp :: [DExp] -> DExp
