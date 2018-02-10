@@ -105,31 +105,9 @@ eqTHSplice a b =
   then [| True |]
   else [| False |]
 
--- Note [Annotating list elements]
---
--- Type annotations on list elements are needed to satisfy GHC 8.0-rc1, otherwise
--- we get errors like:
---
---    Test/Run.hs:63:53: error:
---        • Couldn't match type ‘Maybe Integer’ with ‘forall a. Maybe a’
---          Expected type: [forall a. Maybe a]
---            Actual type: [Maybe Integer]
---        • In the second argument of ‘(:)’, namely
---            ‘(:) (Just 19) ((:) (Nothing :: Maybe Integer) [])’
---          In the second argument of ‘(:)’, namely
---            ‘(:) Nothing ((:) (Just 19) ((:) (Nothing :: Maybe Integer) []))’
---          In the second argument of ‘map’, namely
---            ‘(:)
---               (Just 1)
---               ((:) Nothing ((:) (Just 19) ((:) (Nothing :: Maybe Integer) [])))’
---
--- This is probably a bug in the GHC type checker, but I haven't been able to
--- reduce it yet
-
 test1_sections = [| map ((* 3) . (4 +) . (\x -> x * x)) [10, 11, 12] |]
 test2_lampats = [| (\(Just x) (Left z) -> x + z) (Just 5) (Left 10) |]
--- See Note [Annotating list elements]
-test3_lamcase = [| foldr (-) 0 (map (\case { Just x -> x ; Nothing -> (-3) }) [Just 1, Nothing :: Maybe Integer, Just 19, Nothing :: Maybe Integer]) |]
+test3_lamcase = [| foldr (-) 0 (map (\case { Just x -> x ; Nothing -> (-3) }) [Just 1, Nothing, Just 19, Nothing]) |]
 test4_tuples = [| (\(a, _) (# b, _ #) -> a + b) (1,2) (# 3, 4 #) |]
 test5_ifs = [| if (5 > 7) then "foo" else if | Nothing <- Just "bar", True -> "blargh" | otherwise -> "bum" |]
 test6_ifs2 = [| if | Nothing <- Nothing, False -> 3 | Just _ <- Just "foo" -> 5 |]
@@ -163,8 +141,7 @@ data InfixType = Int :+: Bool
   deriving (Show, Eq)
 
 test17_infixp = [| map (\(x :+: y) -> if y then x + 1 else x - 1) [5 :+: True, 10 :+: False] |]
--- See Note [Annotating list elements]
-test18_tildep = [| map (\ ~() -> Nothing :: Maybe Int) [undefined :: (), ()] |]
+test18_tildep = [| map (\ ~() -> Nothing :: Maybe Int) [undefined, ()] |]
 test19_bangp = [| map (\ !() -> 5) [()] |]
 test20_asp = [| map (\ a@(b :+: c) -> (if c then b + 1 else b - 1, a)) [5 :+: True, 10 :+: False] |]
 test21_wildp = [| zipWith (\_ _ -> 10) [1,2,3] ['a','b','c'] |]
@@ -173,19 +150,16 @@ test22_listp = [| map (\ [a,b,c] -> a + b + c) [[1,2,3],[4,5,6]] |]
 test23_sigp = [| map (\ (a :: Int) -> a + a) [5, 10] |]
 #endif
 
--- See Note [Annotating list elements]
-test24_fun = [| let f :: Maybe (Maybe a) -> Maybe a
-                    f (Just x) = x
+test24_fun = [| let f (Just x) = x
                     f Nothing = Nothing in
                 f (Just (Just 10)) |]
 
--- See Note [Annotating list elements]
 test25_fun2 = [| let f (Just x)
                        | x > 0 = x
                        | x < 0 = x + 10
                      f Nothing = 0
                      f _ = 18 in
-                 map f [Just (-5), Just 5, Just 10, Nothing :: Maybe Integer, Just 0] |]
+                 map f [Just (-5), Just 5, Just 10, Nothing, Just 0] |]
 
 test26_forall = [| let f :: Num a => a -> a
                        f x = x + 10 in
