@@ -12,8 +12,54 @@ Version 1.9
   * `typeKindName`: the name of `Type` (on GHC 8.0 or later) or `*` (on older
     GHCs).
 
+* `th-desugar` now desugars all data types to GADT syntax. The most significant
+  API-facing changes resulting from this new design are:
+
+  * The `DDataD`, `DDataFamilyD`, and `DDataFamInstD` constructors of `DDec`
+    now have `DKind` fields corresponding to explicit return kinds (e.g., the
+    `k -> Type -> Type` in `data Foo :: k -> Type -> Type`). If a data type was
+    written without an explicit return kind, this defaults to `Type`.
+  * The `DCon` constructor previously had a field of type `Maybe DType`, since
+    there was a possibility it could be a GADT (with an explicit return type)
+    or non-GADT (without an explicit return type) constructor. Since all data
+    types are desugared to GADTs now, this field has been changed to be simply
+    a `DType`.
+  * The type signature of `dsCon` was previously:
+
+    ```haskell
+    dsCon :: DsMonad q => Con -> q [DCon]
+    ```
+
+    However, desugaring constructors now needs more information than before,
+    since GADT constructors have richer type signatures. Accordingly, the type
+    of `dsCon` is now:
+
+    ```haskell
+    dsCon :: DsMonad q => [DTyVarBndr] -> DType -> Con -> q [DCon]
+    ```
+
+    The `instance Desugar [Con] [DCon]` has also been removed, as the previous
+    implementation of `desugar` (`concatMapM dsCon`) no longer has enough
+    information to work.
+
+  Some other utility functions have also been added as part of this change:
+
+  * A `conExistentialTvbs` function has been introduced to determine the
+    existentially quantified type variables of a `DCon`. Note that this
+    function is not 100% accurate—refer to the documentation for
+    `conExistentialTvbs` for more information.
+
+  * A `mkExtraDKindBinders` function has been introduced to turn a data type's
+    return kind into explicit, fresh type variable binders.
+
 * Add a `mkDLamEFromDPats` function for constructing a `DLamE` expression using
   a list of `DPat` arguments and a `DExp` body.
+
+* Add an `unravel` function for decomposing a function type into its `forall`'d
+  type variables, its context, its argument types, and its result type.
+
+* Export a `substTyVarBndrs` function from `Language.Haskell.TH.Desugar.Subst`,
+  which substitutes over type variable binders in a capture-avoiding fashion.
 
 * `getDataD`, `dataConNameToDataName`, and `dataConNameToCon` from
   `Language.Haskell.TH.Desugar.Reify` now look up local declarations. As a

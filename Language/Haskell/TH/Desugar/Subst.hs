@@ -17,7 +17,7 @@ module Language.Haskell.TH.Desugar.Subst (
   DSubst,
 
   -- * Capture-avoiding substitution
-  substTy, unionSubsts, unionMaybeSubsts,
+  substTy, substTyVarBndrs, unionSubsts, unionMaybeSubsts,
 
   -- * Matching a type template against a type
   IgnoreKinds(..), matchTy
@@ -59,8 +59,8 @@ substTy vars (DVarT n)
 substTy _ ty = return ty
 
 substTyVarBndrs :: Quasi q => DSubst -> [DTyVarBndr]
-                -> (DSubst -> [DTyVarBndr] -> q DType)
-                -> q DType
+                -> (DSubst -> [DTyVarBndr] -> q a)
+                -> q a
 substTyVarBndrs vars tvbs thing = do
   (vars', tvbs') <- mapAccumLM substTvb vars tvbs
   thing vars' tvbs'

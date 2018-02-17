@@ -85,17 +85,17 @@ decsToTH = concatMap decToTH
 -- a one-to-one mapping between 'DDec' and @Dec@.
 decToTH :: DDec -> [Dec]
 decToTH (DLetDec d) = maybeToList (letDecToTH d)
-decToTH (DDataD Data cxt n tvbs cons derivings) =
+decToTH (DDataD Data cxt n tvbs _k cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (map conToTH cons)
+  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (Just (typeToTH _k)) (map conToTH cons)
          (concatMap derivClauseToTH derivings)]
 #else
   [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons)
          (map derivingToTH derivings)]
 #endif
-decToTH (DDataD Newtype cxt n tvbs [con] derivings) =
+decToTH (DDataD Newtype cxt n tvbs _k [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) Nothing (conToTH con)
+  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (Just (typeToTH _k)) (conToTH con)
             (concatMap derivClauseToTH derivings)]
 #else
   [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con)
@@ -119,23 +119,23 @@ decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs ann)) =
 decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs _ann)) =
   [FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)]
 #endif
-decToTH (DDataFamilyD n tvbs) =
+decToTH (DDataFamilyD n tvbs k) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataFamilyD n (map tvbToTH tvbs) Nothing]
+  [DataFamilyD n (map tvbToTH tvbs) (Just (typeToTH k))]
 #else
-  [FamilyD DataFam n (map tvbToTH tvbs) Nothing]
+  [FamilyD DataFam n (map tvbToTH tvbs) (Just (typeToTH k))]
 #endif
-decToTH (DDataInstD Data cxt n tys cons derivings) =
+decToTH (DDataInstD Data cxt n tys _k cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (map conToTH cons)
+  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (Just (typeToTH _k)) (map conToTH cons)
              (concatMap derivClauseToTH derivings)]
 #else
   [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons)
              (map derivingToTH derivings)]
 #endif
-decToTH (DDataInstD Newtype cxt n tys [con] derivings) =
+decToTH (DDataInstD Newtype cxt n tys _k [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) Nothing (conToTH con)
+  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (Just (typeToTH _k)) (conToTH con)
                 (concatMap derivClauseToTH derivings)]
 #else
   [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con)
@@ -217,34 +217,67 @@ letDecToTH (DPragmaD prag)      = fmap PragmaD (pragmaToTH prag)
 
 conToTH :: DCon -> Con
 #if __GLASGOW_HASKELL__ > 710
-conToTH (DCon [] [] n (DNormalC _ stys) (Just rty)) =
+conToTH (DCon [] [] n (DNormalC _ stys) rty) =
   GadtC [n] (map (second typeToTH) stys) (typeToTH rty)
-conToTH (DCon [] [] n (DRecC vstys) (Just rty)) =
+conToTH (DCon [] [] n (DRecC vstys) rty) =
   RecGadtC [n] (map (thirdOf3 typeToTH) vstys) (typeToTH rty)
-#endif
-conToTH (DCon [] [] n (DNormalC True [sty1, sty2]) _) =
-#if __GLASGOW_HASKELL__ > 710
-  InfixC (second typeToTH sty1) n (second typeToTH sty2)
 #else
+conToTH (DCon [] [] n (DNormalC True [sty1, sty2]) _) =
   InfixC ((bangToStrict *** typeToTH) sty1) n ((bangToStrict *** typeToTH) sty2)
-#endif
 -- Note: it's possible that someone could pass in a DNormalC value that
 -- erroneously claims that it's declared infix (e.g., if has more than two
 -- fields), but we will fall back on NormalC in such a scenario.
 conToTH (DCon [] [] n (DNormalC _ stys) _) =
-#if __GLASGOW_HASKELL__ > 710
-  NormalC n (map (second typeToTH) stys)
-#else
   NormalC n (map (bangToStrict *** typeToTH) stys)
-#endif
 conToTH (DCon [] [] n (DRecC vstys) _) =
-#if __GLASGOW_HASKELL__ > 710
-  RecC n (map (thirdOf3 typeToTH) vstys)
-#else
   RecC n (map (\(v,b,t) -> (v,bangToStrict b,typeToTH t)) vstys)
 #endif
+#if __GLASGOW_HASKELL__ > 710
+-- On GHC 8.0 or later, we sweeten every constructor to GADT syntax, so it is
+-- perfectly OK to put all of the quantified type variables
+-- (both universal and existential) in a ForallC.
 conToTH (DCon tvbs cxt n fields rty) =
   ForallC (map tvbToTH tvbs) (cxtToTH cxt) (conToTH $ DCon [] [] n fields rty)
+#else
+-- On GHCs earlier than 8.0, we must be careful, since the only time ForallC is
+-- used is when there are either:
+--
+-- 1. Any existentially quantified type variables
+-- 2. A constructor context
+--
+-- If neither of these conditions hold, then we must avoid the use of ForallC.
+conToTH (DCon tvbs cxt n fields rty)
+  | null ex_tvbs && null cxt
+  = con'
+  | otherwise
+  = ForallC ex_tvbs (cxtToTH cxt) con'
+  where
+    -- Fortunately, on old GHCs, it's especially easy to distinguish between
+    -- universally and existentially quantified type variables. When desugaring
+    -- a ForallC, we just stick all of the universals (from the datatype
+    -- definition) at the front of the @forall@. Therefore, it suffices to
+    -- count the number of type variables in the return type and drop that many
+    -- variables from the @forall@ in the ForallC, leaving only the
+    -- existentials.
+    ex_tvbs :: [TyVarBndr]
+    ex_tvbs = map tvbToTH $ drop num_univ_tvs tvbs
+
+    num_univ_tvs :: Int
+    num_univ_tvs = go rty
+      where
+        go :: DType -> Int
+        go (DForallT {}) = error "`forall` type used in GADT return type"
+        go (DAppT t1 t2) = go t1 + go t2
+        go (DSigT t _)   = go t
+        go (DVarT {})    = 1
+        go (DConT {})    = 0
+        go DArrowT       = 0
+        go (DLitT {})    = 0
+        go DWildCardT    = 0
+
+    con' :: Con
+    con' = conToTH $ DCon [] [] n fields rty
+#endif
 
 foreignToTH :: DForeign -> Foreign
 foreignToTH (DImportF cc safety str n ty) =
