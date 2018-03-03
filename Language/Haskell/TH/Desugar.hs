@@ -91,6 +91,7 @@ module Language.Haskell.TH.Desugar (
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
   strictToBang, isTypeKindName, typeKindName,
   unravel, conExistentialTvbs, mkExtraDKindBinders,
+  dTyVarBndrToDType, toposortTyVarsOf,
 
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat

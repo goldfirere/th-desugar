@@ -57,6 +57,10 @@ Version 1.9
   * A `mkExtraDKindBinders` function has been introduced to turn a data type's
     return kind into explicit, fresh type variable binders.
 
+  * A `toposortTyVarsOf` function, which finds the free variables of a list of
+    `DType`s and returns them in a well scoped list that has been sorted in
+    reverse topological order.
+
 * Add a `mkDLamEFromDPats` function for constructing a `DLamE` expression using
   a list of `DPat` arguments and a `DExp` body.
 
@@ -70,6 +74,9 @@ Version 1.9
   `Language.Haskell.TH.Desugar.Reify` now look up local declarations. As a
   result, the contexts in their type signatures have been strengthened from
   `Quasi` to `DsMonad`.
+
+* Export a `dTyVarBndrToDType` function which converts a `DTyVarBndr` to a
+  `DType`, which preserves its kind.
 
 * Previously, `th-desugar` would silently accept illegal uses of record
   construction with fields that did not belong to the constructor, such as
