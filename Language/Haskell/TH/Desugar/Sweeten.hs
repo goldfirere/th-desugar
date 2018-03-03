@@ -364,9 +364,14 @@ tyconToTH n
 #endif
   | n == '[]                    = PromotedNilT
   | n == '(:)                   = PromotedConsT
-  | Just deg <- tupleNameDegree_maybe n        = if isDataName n
-                                                 then PromotedTupleT deg
-                                                 else TupleT deg
+  | Just deg <- tupleNameDegree_maybe n
+                                = if isDataName n
+#if __GLASGOW_HASKELL__ >= 805
+                                  then PromotedTupleT deg
+#else
+                                  then PromotedT n -- Work around Trac #14843
+#endif
+                                  else TupleT deg
   | Just deg <- unboxedTupleNameDegree_maybe n = UnboxedTupleT deg
 #if __GLASGOW_HASKELL__ == 706
     -- Work around Trac #7667
