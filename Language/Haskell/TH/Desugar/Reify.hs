@@ -92,12 +92,12 @@ reifyFail name =
 ---------------------------------
 
 -- | Extract the @TyVarBndr@s and constructors given the @Name@ of a type
-getDataD :: Quasi q
+getDataD :: DsMonad q
          => String       -- ^ Print this out on failure
          -> Name         -- ^ Name of the datatype (@data@ or @newtype@) of interest
          -> q ([TyVarBndr], [Con])
 getDataD err name = do
-  info <- reifyWithWarning name
+  info <- reifyWithLocals name
   dec <- case info of
            TyConI dec -> return dec
            _ -> badDeclaration
@@ -116,9 +116,9 @@ getDataD err name = do
 
 -- | From the name of a data constructor, retrive the datatype definition it
 -- is a part of.
-dataConNameToDataName :: Quasi q => Name -> q Name
+dataConNameToDataName :: DsMonad q => Name -> q Name
 dataConNameToDataName con_name = do
-  info <- reifyWithWarning con_name
+  info <- reifyWithLocals con_name
   case info of
 #if __GLASGOW_HASKELL__ > 710
     DataConI _name _type parent_name -> return parent_name
@@ -129,7 +129,7 @@ dataConNameToDataName con_name = do
                 "a data constructor."
 
 -- | From the name of a data constructor, retrieve its definition as a @Con@
-dataConNameToCon :: Quasi q => Name -> q Con
+dataConNameToCon :: DsMonad q => Name -> q Con
 dataConNameToCon con_name = do
   -- we need to get the field ordering from the constructor. We must reify
   -- the constructor to get the tycon, and then reify the tycon to get the `Con`s

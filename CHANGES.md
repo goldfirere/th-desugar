@@ -15,6 +15,11 @@ Version 1.9
 * Add a `mkDLamEFromDPats` function for constructing a `DLamE` expression using
   a list of `DPat` arguments and a `DExp` body.
 
+* `getDataD`, `dataConNameToDataName`, and `dataConNameToCon` from
+  `Language.Haskell.TH.Desugar.Reify` now look up local declarations. As a
+  result, the contexts in their type signatures have been strengthened from
+  `Quasi` to `DsMonad`.
+
 * Previously, `th-desugar` would silently accept illegal uses of record
   construction with fields that did not belong to the constructor, such as
   `Identity { notAField = "wat" }`. This is now an error.

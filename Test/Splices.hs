@@ -485,6 +485,11 @@ reifyDecs = [d|
     r22 :: a -> a
     r22 = id   -- test #32
 
+  data R23 a = MkR23 { getR23 :: a }
+
+  r23Test :: R23 a -> a
+  r23Test (MkR23 { getR23 = x }) = x
+
 #if __GLASGOW_HASKELL__ >= 801
   pattern Point :: Int -> Int -> (Int, Int)
   pattern Point{x, y} = (x, y)
