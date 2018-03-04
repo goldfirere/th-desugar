@@ -358,6 +358,7 @@ predToTH DWildCardPr  = error "Wildcards supported only in GHC 8.0+"
 
 tyconToTH :: Name -> Type
 tyconToTH n
+  | n == ''(->)                 = ArrowT -- Work around Trac #14888
   | n == ''[]                   = ListT
 #if __GLASGOW_HASKELL__ >= 709
   | n == ''(~)                  = EqualityT
