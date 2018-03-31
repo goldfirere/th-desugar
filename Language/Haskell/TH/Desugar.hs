@@ -312,7 +312,7 @@ mkExtraDKindBinders = expandType >=> mkExtraDKindBinders'
 --
 -- Detecting the presence of existentially quantified type variables in the
 -- context of Template Haskell is quite involved. Here is an example that
--- we will will use to explain how this works:
+-- we will use to explain how this works:
 --
 -- @
 -- data family Foo a b

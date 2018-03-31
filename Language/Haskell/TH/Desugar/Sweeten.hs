@@ -85,17 +85,17 @@ decsToTH = concatMap decToTH
 -- a one-to-one mapping between 'DDec' and @Dec@.
 decToTH :: DDec -> [Dec]
 decToTH (DLetDec d) = maybeToList (letDecToTH d)
-decToTH (DDataD Data cxt n tvbs _k cons derivings) =
+decToTH (DDataD Data cxt n tvbs _mk cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (Just (typeToTH _k)) (map conToTH cons)
+  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap typeToTH _mk) (map conToTH cons)
          (concatMap derivClauseToTH derivings)]
 #else
   [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons)
          (map derivingToTH derivings)]
 #endif
-decToTH (DDataD Newtype cxt n tvbs _k [con] derivings) =
+decToTH (DDataD Newtype cxt n tvbs _mk [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (Just (typeToTH _k)) (conToTH con)
+  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap typeToTH _mk) (conToTH con)
             (concatMap derivClauseToTH derivings)]
 #else
   [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con)
@@ -119,23 +119,23 @@ decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs ann)) =
 decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs _ann)) =
   [FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)]
 #endif
-decToTH (DDataFamilyD n tvbs k) =
+decToTH (DDataFamilyD n tvbs mk) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataFamilyD n (map tvbToTH tvbs) (Just (typeToTH k))]
+  [DataFamilyD n (map tvbToTH tvbs) (fmap typeToTH mk)]
 #else
-  [FamilyD DataFam n (map tvbToTH tvbs) (Just (typeToTH k))]
+  [FamilyD DataFam n (map tvbToTH tvbs) (fmap typeToTH mk)]
 #endif
-decToTH (DDataInstD Data cxt n tys _k cons derivings) =
+decToTH (DDataInstD Data cxt n tys _mk cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (Just (typeToTH _k)) (map conToTH cons)
+  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (fmap typeToTH _mk) (map conToTH cons)
              (concatMap derivClauseToTH derivings)]
 #else
   [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons)
              (map derivingToTH derivings)]
 #endif
-decToTH (DDataInstD Newtype cxt n tys _k [con] derivings) =
+decToTH (DDataInstD Newtype cxt n tys _mk [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (Just (typeToTH _k)) (conToTH con)
+  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (fmap typeToTH _mk) (conToTH con)
                 (concatMap derivClauseToTH derivings)]
 #else
   [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con)
@@ -245,7 +245,9 @@ conToTH (DCon tvbs cxt n fields rty) =
 -- 1. Any existentially quantified type variables
 -- 2. A constructor context
 --
--- If neither of these conditions hold, then we must avoid the use of ForallC.
+-- If neither of these conditions hold, then we needn't put a ForallC at the
+-- front, since it would be completely pointless (you'd end up with things like
+-- @data Foo = forall. MkFoo@!).
 conToTH (DCon tvbs cxt n fields rty)
   | null ex_tvbs && null cxt
   = con'

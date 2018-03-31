@@ -124,15 +124,15 @@ data NewOrData = Newtype
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
-          | DDataD NewOrData DCxt Name [DTyVarBndr] DKind [DCon] [DDerivClause]
+          | DDataD NewOrData DCxt Name [DTyVarBndr] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynD Name [DTyVarBndr] DType
           | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
           | DInstanceD (Maybe Overlap) DCxt DType [DDec]
           | DForeignD DForeign
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
-          | DDataFamilyD Name [DTyVarBndr] DKind
-          | DDataInstD NewOrData DCxt Name [DType] DKind [DCon] [DDerivClause]
+          | DDataFamilyD Name [DTyVarBndr] (Maybe DKind)
+          | DDataInstD NewOrData DCxt Name [DType] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynInstD Name DTySynEqn
           | DRoleAnnotD Name [Role]
           | DStandaloneDerivD (Maybe DerivStrategy) DCxt DType
@@ -912,32 +912,34 @@ dsDec d@(FunD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec d@(ValD {}) = (fmap . map) DLetDec $ dsLetDec d
 #if __GLASGOW_HASKELL__ > 710
 dsDec (DataD cxt n tvbs mk cons derivings) = do
-  tvbs' <- mapM dsTvb tvbs
-  let data_type = vanillaDataReturnType n tvbs'
+  tvbs'    <- mapM dsTvb tvbs
+  all_tvbs <- nonFamilyDataTvbs tvbs' mk
+  let data_type = nonFamilyDataReturnType n all_tvbs
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> mapM dsTvb tvbs <*> maybeDsReturnKind mk
+                         <*> pure tvbs' <*> mapM dsType mk
                          <*> concatMapM (dsCon tvbs' data_type) cons
                          <*> mapM dsDerivClause derivings)
 dsDec (NewtypeD cxt n tvbs mk con derivings) = do
-  tvbs' <- mapM dsTvb tvbs
-  let data_type = vanillaDataReturnType n tvbs'
+  tvbs'    <- mapM dsTvb tvbs
+  all_tvbs <- nonFamilyDataTvbs tvbs' mk
+  let data_type = nonFamilyDataReturnType n all_tvbs
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> mapM dsTvb tvbs <*> maybeDsReturnKind mk
+                            <*> pure tvbs' <*> mapM dsType mk
                             <*> dsCon tvbs' data_type con
                             <*> mapM dsDerivClause derivings)
 #else
 dsDec (DataD cxt n tvbs cons derivings) = do
   tvbs' <- mapM dsTvb tvbs
-  let data_type = vanillaDataReturnType n tvbs'
+  let data_type = nonFamilyDataReturnType n tvbs'
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> pure tvbs' <*> pure typeKind
+                         <*> pure tvbs' <*> pure Nothing
                          <*> concatMapM (dsCon tvbs' data_type) cons
                          <*> mapM dsDerivClause derivings)
 dsDec (NewtypeD cxt n tvbs con derivings) = do
   tvbs' <- mapM dsTvb tvbs
-  let data_type = vanillaDataReturnType n tvbs'
+  let data_type = nonFamilyDataReturnType n tvbs'
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> pure tvbs' <*> pure typeKind
+                            <*> pure tvbs' <*> pure Nothing
                             <*> dsCon tvbs' data_type con
                             <*> mapM dsDerivClause derivings)
 #endif
@@ -961,45 +963,47 @@ dsDec d@(PragmaD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec (OpenTypeFamilyD tfHead) =
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead tfHead)
 dsDec (DataFamilyD n tvbs m_k) =
-  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> maybeDsReturnKind m_k)
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsType m_k)
 #else
 dsDec (FamilyD TypeFam n tvbs m_k) = do
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead n tvbs m_k)
 dsDec (FamilyD DataFam n tvbs m_k) =
-  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> maybeDsReturnKind m_k)
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsType m_k)
 #endif
 #if __GLASGOW_HASKELL__ > 710
 dsDec (DataInstD cxt n tys mk cons derivings) = do
-  tys' <- dataFamInstTypes tys mk
-  let tvbs = dataFamInstTvbs tys'
-      fam_inst_type = dataFamInstReturnType n tys'
+  tys'    <- mapM dsType tys
+  all_tys <- dataFamInstTypes tys' mk
+  let tvbs = dataFamInstTvbs all_tys
+      fam_inst_type = dataFamInstReturnType n all_tys
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n
-                             <*> mapM dsType tys <*> maybeDsReturnKind mk
+                             <*> pure tys' <*> mapM dsType mk
                              <*> concatMapM (dsCon tvbs fam_inst_type) cons
                              <*> mapM dsDerivClause derivings)
 dsDec (NewtypeInstD cxt n tys mk con derivings) = do
-  tys' <- dataFamInstTypes tys mk
-  let tvbs = dataFamInstTvbs tys'
-      fam_inst_type = dataFamInstReturnType n tys'
+  tys'    <- mapM dsType tys
+  all_tys <- dataFamInstTypes tys' mk
+  let tvbs = dataFamInstTvbs all_tys
+      fam_inst_type = dataFamInstReturnType n all_tys
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n
-                                <*> pure tys' <*> maybeDsReturnKind mk
+                                <*> pure tys' <*> mapM dsType mk
                                 <*> dsCon tvbs fam_inst_type con
                                 <*> mapM dsDerivClause derivings)
 #else
 dsDec (DataInstD cxt n tys cons derivings) = do
-  tys' <- dataFamInstTypes tys Nothing
+  tys' <- mapM dsType tys
   let tvbs = dataFamInstTvbs tys'
       fam_inst_type = dataFamInstReturnType n tys'
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n
-                             <*> pure tys' <*> pure typeKind
+                             <*> pure tys' <*> pure Nothing
                              <*> concatMapM (dsCon tvbs fam_inst_type) cons
                              <*> mapM dsDerivClause derivings)
 dsDec (NewtypeInstD cxt n tys con derivings) = do
-  tys' <- dataFamInstTypes tys Nothing
+  tys' <- mapM dsType tys
   let tvbs = dataFamInstTvbs tys'
       fam_inst_type = dataFamInstReturnType n tys'
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n
-                                <*> pure tys' <*> pure typeKind
+                                <*> pure tys' <*> pure Nothing
                                 <*> dsCon tvbs fam_inst_type con
                                 <*> mapM dsDerivClause derivings)
 #endif
@@ -1042,7 +1046,7 @@ dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 -- argument instead of DKind.
 mkExtraKindBinders :: DsMonad q => Maybe Kind -> q [DTyVarBndr]
 mkExtraKindBinders =
-  maybe (return typeKind) (runQ . expandSyns >=> dsType) >=> mkExtraDKindBinders'
+  maybe (pure (DConT typeKindName)) (runQ . expandSyns >=> dsType) >=> mkExtraDKindBinders'
 
 -- | Like mkExtraDKindBinders, but assumes kind synonyms have been expanded.
 mkExtraDKindBinders' :: Quasi q => DKind -> q [DTyVarBndr]
@@ -1126,7 +1130,7 @@ dsLetDec _dec = impossible "Illegal declaration in let expression."
 dsCon :: DsMonad q
       => [DTyVarBndr] -- ^ The universally quantified type variables
                       --   (used if desugaring a non-GADT constructor).
-      -> DType        -- ^ The original data declarations' type
+      -> DType        -- ^ The original data declaration's type
                       --   (used if desugaring a non-GADT constructor).
       -> Con -> q [DCon]
 dsCon univ_dtvbs data_type con = do
@@ -1506,34 +1510,35 @@ dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
 dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
 dTypeToDPred DWildCardT      = return DWildCardPr
 
-typeKind :: DKind
-typeKind = DConT typeKindName
-
-maybeDsReturnKind :: DsMonad q => Maybe Kind -> q DKind
-maybeDsReturnKind = maybe (return typeKind) dsType
-
--- Take a vanilla (i.e., non–data-family-instance) data type name and
+-- Take a data type name (which does not belong to a data family) and
 -- apply it to its type variable binders to form a DType.
-vanillaDataReturnType :: Name -> [DTyVarBndr] -> DType
-vanillaDataReturnType con_name = applyDType (DConT con_name) . map dTyVarBndrToDType
+nonFamilyDataReturnType :: Name -> [DTyVarBndr] -> DType
+nonFamilyDataReturnType con_name = applyDType (DConT con_name) . map dTyVarBndrToDType
 
 -- Take a data family name and apply it to its argument types to form a
 -- data family instance DType.
 dataFamInstReturnType :: Name -> [DType] -> DType
 dataFamInstReturnType fam_name = applyDType (DConT fam_name)
 
+-- Take a data type (which does not belong to a data family) of the form
+-- @Foo a :: k -> Type -> Type@ and return @Foo a (b :: k) (c :: Type)@, where
+-- @b@ and @c@ are fresh type variable names.
+nonFamilyDataTvbs :: DsMonad q => [DTyVarBndr] -> Maybe Kind -> q [DTyVarBndr]
+nonFamilyDataTvbs tvbs mk = do
+  extra_tvbs <- mkExtraKindBinders mk
+  pure $ tvbs ++ extra_tvbs
+
 -- Take a data family instance of the form @Foo a :: k -> Type -> Type@ and
 -- return @Foo a (b :: k) (c :: Type)@, where @b@ and @c@ are fresh type
 -- variable names.
-dataFamInstTypes :: DsMonad q => [Type] -> Maybe Kind -> q [DType]
+dataFamInstTypes :: DsMonad q => [DType] -> Maybe Kind -> q [DType]
 dataFamInstTypes tys mk = do
-  tys' <- mapM dsType tys
   extra_tvbs <- mkExtraKindBinders mk
-  return $ tys' ++ map dTyVarBndrToDType extra_tvbs
+  pure $ tys ++ map dTyVarBndrToDType extra_tvbs
 
 -- Unlike vanilla data types and data family declarations, data family
 -- instance declarations do not come equipped with a list of bound type
--- variables (at least not yet—see Trace #14268). This means that we have
+-- variables (at least not yet—see Trac #14268). This means that we have
 -- to reverse engineer this information ourselves from the list of type
 -- patterns. We accomplish this by taking the free variables of the types
 -- and performing a reverse topological sort on them to ensure that the

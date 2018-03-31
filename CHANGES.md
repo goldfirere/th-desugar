@@ -16,9 +16,9 @@ Version 1.9
   API-facing changes resulting from this new design are:
 
   * The `DDataD`, `DDataFamilyD`, and `DDataFamInstD` constructors of `DDec`
-    now have `DKind` fields corresponding to explicit return kinds (e.g., the
-    `k -> Type -> Type` in `data Foo :: k -> Type -> Type`). If a data type was
-    written without an explicit return kind, this defaults to `Type`.
+    now have `Maybe DKind` fields that either have `Just` an explicit return
+    kind (e.g., the `k -> Type -> Type` in `data Foo :: k -> Type -> Type`)
+    or `Nothing` (if lacking an explicit return kind).
   * The `DCon` constructor previously had a field of type `Maybe DType`, since
     there was a possibility it could be a GADT (with an explicit return type)
     or non-GADT (without an explicit return type) constructor. Since all data
@@ -35,7 +35,12 @@ Version 1.9
     of `dsCon` is now:
 
     ```haskell
-    dsCon :: DsMonad q => [DTyVarBndr] -> DType -> Con -> q [DCon]
+    dsCon :: DsMonad q
+          => [DTyVarBndr] -- ^ The universally quantified type variables
+                          --   (used if desugaring a non-GADT constructor)
+          -> DType        -- ^ The original data declaration's type
+                          --   (used if desugaring a non-GADT constructor).
+          -> Con -> q [DCon]
     ```
 
     The `instance Desugar [Con] [DCon]` has also been removed, as the previous
