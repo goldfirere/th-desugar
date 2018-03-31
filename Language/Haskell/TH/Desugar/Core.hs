@@ -1614,8 +1614,7 @@ fvDType :: DType -> S.Set Name
 fvDType = go_ty
   where
     go_ty :: DType -> S.Set Name
-    go_ty (DForallT tvbs cxt ty) = (foldMap go_tvb tvbs <> go_ty ty <> foldMap go_pred cxt)
-                                   S.\\ S.fromList (map dtvbName tvbs)
+    go_ty (DForallT tvbs cxt ty) = foldr go_tvb (foldMap go_pred cxt <> go_ty ty) tvbs
     go_ty (DAppT t1 t2)          = go_ty t1 <> go_ty t2
     go_ty (DSigT ty ki)          = go_ty ty <> go_ty ki
     go_ty (DVarT n)              = S.singleton n
@@ -1630,9 +1629,9 @@ fvDType = go_ty
     go_pred (DVarPr n)     = S.singleton n
     go_pred _              = S.empty
 
-    go_tvb :: DTyVarBndr -> S.Set Name
-    go_tvb (DPlainTV{})    = S.empty
-    go_tvb (DKindedTV _ k) = go_ty k
+    go_tvb :: DTyVarBndr -> S.Set Name -> S.Set Name
+    go_tvb (DPlainTV n)    fvs = S.delete n fvs
+    go_tvb (DKindedTV n k) fvs = S.delete n fvs <> go_ty k
 
 dtvbName :: DTyVarBndr -> Name
 dtvbName (DPlainTV n)    = n
