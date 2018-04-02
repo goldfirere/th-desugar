@@ -330,9 +330,9 @@ mkDataConCase var case_alts = do
       Just (DTyConI tycon_dec _) <- dsReify ty_name
       return $ S.fromList $ map get_con_name $ get_cons tycon_dec
 
-    get_cons (DDataD _ _ _ _ cons _)     = cons
-    get_cons (DDataInstD _ _ _ _ cons _) = cons
-    get_cons _                           = []
+    get_cons (DDataD _ _ _ _ _ cons _)     = cons
+    get_cons (DDataInstD _ _ _ _ _ cons _) = cons
+    get_cons _                             = []
 
     get_con_name (DCon _ _ n _ _) = n
 

@@ -90,6 +90,7 @@ module Language.Haskell.TH.Desugar (
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
   strictToBang, isTypeKindName, typeKindName,
+  unravel, conExistentialTvbs, mkExtraDKindBinders,
 
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
@@ -104,12 +105,9 @@ import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.Match
 import Language.Haskell.TH.Desugar.Subst
 
+import Control.Monad
 import qualified Data.Map as M
-import Data.Monoid
 import qualified Data.Set as S
-#if __GLASGOW_HASKELL__ < 709
-import Data.Foldable ( foldMap )
-#endif
 import Prelude hiding ( exp )
 
 -- | This class relates a TH type with its th-desugar type and allows
@@ -139,10 +137,6 @@ instance Desugar TyVarBndr DTyVarBndr where
 instance Desugar [Dec] [DDec] where
   desugar = dsDecs
   sweeten = decsToTH
-
-instance Desugar [Con] [DCon] where
-  desugar = concatMapM dsCon
-  sweeten = map conToTH
 
 -- | If the declaration passed in is a 'DValD', creates new, equivalent
 -- declarations such that the 'DPat' in all 'DValD's is just a plain
@@ -180,34 +174,6 @@ flattenDValD (DValD pat exp) = do
 
 flattenDValD other_dec = return [other_dec]
 
-fvDType :: DType -> S.Set Name
-fvDType = go_ty
-  where
-    go_ty :: DType -> S.Set Name
-    go_ty (DForallT tvbs cxt ty) = (foldMap go_tvb tvbs <> go_ty ty <> foldMap go_pred cxt)
-                                   S.\\ foldMap dtvbName tvbs
-    go_ty (DAppT t1 t2)          = go_ty t1 <> go_ty t2
-    go_ty (DSigT ty ki)          = go_ty ty <> go_ty ki
-    go_ty (DVarT n)              = S.singleton n
-    go_ty (DConT {})             = S.empty
-    go_ty DArrowT                = S.empty
-    go_ty (DLitT {})             = S.empty
-    go_ty DWildCardT             = S.empty
-
-    go_pred :: DPred -> S.Set Name
-    go_pred (DAppPr pr ty) = go_pred pr <> go_ty ty
-    go_pred (DSigPr pr ki) = go_pred pr <> go_ty ki
-    go_pred (DVarPr n)     = S.singleton n
-    go_pred _              = S.empty
-
-    go_tvb :: DTyVarBndr -> S.Set Name
-    go_tvb (DPlainTV{})    = S.empty
-    go_tvb (DKindedTV _ k) = go_ty k
-
-dtvbName :: DTyVarBndr -> S.Set Name
-dtvbName (DPlainTV n)    = S.singleton n
-dtvbName (DKindedTV n _) = S.singleton n
-
 -- | Produces 'DLetDec's representing the record selector functions from
 -- the provided 'DCon's.
 --
@@ -228,9 +194,14 @@ dtvbName (DKindedTV n _) = S.singleton n
 -- @
 --
 -- instead of returning one binding for @X1@ and another binding for @X2@.
+--
+-- 'getRecordSelectors' attempts to filter out \"naughty\" record selectors
+-- whose types mention existentially quantified type variables. But see the
+-- documentation for 'conExistentialTvbs' for limitations to this approach.
 
 -- See https://github.com/goldfirere/singletons/issues/180 for an example where
 -- the latter behavior can bite you.
+
 getRecordSelectors :: Quasi q
                    => DType        -- ^ the type of the argument
                    -> [DCon]
@@ -318,3 +289,98 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
           | DFunD n _ <- x, Just merged_clauses <- n `M.lookup` name_clause_map
           = DFunD n merged_clauses:augment_clauses name_clause_map xs
           | otherwise = x:augment_clauses name_clause_map xs
+
+-- | Create new kind variable binder names corresponding to the return kind of
+-- a data type. This is useful when you have a data type like:
+--
+-- @
+-- data Foo :: forall k. k -> Type -> Type where ...
+-- @
+--
+-- But you want to be able to refer to the type @Foo a b@.
+-- 'mkExtraDKindBinders' will take the kind @forall k. k -> Type -> Type@,
+-- discover that is has two visible argument kinds, and return as a result
+-- two new kind variable binders @[a :: k, b :: Type]@, where @a@ and @b@
+-- are fresh type variable names.
+--
+-- This expands kind synonyms if necessary.
+mkExtraDKindBinders :: DsMonad q => DKind -> q [DTyVarBndr]
+mkExtraDKindBinders = expandType >=> mkExtraDKindBinders'
+
+-- | Returns all of a constructor's existentially quantified type variable
+-- binders.
+--
+-- Detecting the presence of existentially quantified type variables in the
+-- context of Template Haskell is quite involved. Here is an example that
+-- we will use to explain how this works:
+--
+-- @
+-- data family Foo a b
+-- data instance Foo (Maybe a) b where
+--   MkFoo :: forall x y z. x -> y -> z -> Foo (Maybe x) [z]
+-- @
+--
+-- In @MkFoo@, @x@ is universally quantified, whereas @y@ and @z@ are
+-- existentially quantified. Note that @MkFoo@ desugars (in Core) to
+-- something like this:
+--
+-- @
+-- data instance Foo (Maybe a) b where
+--   MkFoo :: forall a b y z. (b ~ [z]). a -> y -> z -> Foo (Maybe a) b
+-- @
+--
+-- Here, we can see that @a@ appears in the desugared return type (it is a
+-- simple alpha-renaming of @x@), so it is universally quantified. On the other
+-- hand, neither @y@ nor @z@ appear in the desugared return type, so they are
+-- existentially quantified.
+--
+-- This analysis would not have been possible without knowing what the original
+-- data declaration's type was (in this case, @Foo (Maybe a) b@), which is why
+-- we require it as an argument. Our algorithm for detecting existentially
+-- quantified variables is not too different from what was described above:
+-- we match the constructor's return type with the original data type, forming
+-- a substitution, and check which quantified variables are not part of the
+-- domain of the substitution.
+--
+-- Be warned: this may overestimate which variables are existentially
+-- quantified when kind variables are involved. For instance, consider this
+-- example:
+--
+-- @
+-- data S k (a :: k)
+-- data T a where
+--   MkT :: forall k (a :: k). { foo :: Proxy (a :: k), bar :: S k a } -> T a
+-- @
+--
+-- Here, the kind variable @k@ does not appear syntactically in the return type
+-- @T a@, so 'conExistentialTvbs' would mistakenly flag @k@ as existential.
+--
+-- There are various tricks we could employ to improve this, but ultimately,
+-- making this behave correctly with respect to @PolyKinds@ 100% of the time
+-- would amount to performing kind inference in Template Haskell, which is
+-- quite difficult. For the sake of simplicity, we have decided to stick with
+-- a dumb-but-predictable syntactic check.
+conExistentialTvbs :: DsMonad q
+                   => DType -- ^ The type of the original data declaration
+                   -> DCon
+                   -> q [DTyVarBndr]
+conExistentialTvbs data_ty (DCon tvbs _ _ _ ret_ty) =
+  -- Due to GHC Trac #13885, it's possible that the type variables bound by
+  -- a GADT constructor will shadow those that are bound by the data type.
+  -- This function assumes this isn't the case in certain parts (e.g., when
+  -- unifying types), so we do an alpha-renaming of the
+  -- constructor-bound variables before proceeding.
+  substTyVarBndrs M.empty tvbs $ \subst tvbs' -> do
+    renamed_ret_ty <- substTy subst ret_ty
+    data_ty'       <- expandType data_ty
+    ret_ty'        <- expandType renamed_ret_ty
+    case matchTy YesIgnore ret_ty' data_ty' of
+      Nothing -> fail $ showString "Unable to match type "
+                      . showsPrec 11 ret_ty'
+                      . showString " with "
+                      . showsPrec 11 data_ty'
+                      $ ""
+      Just gadtSubt -> return [ tvb
+                              | tvb <- tvbs'
+                              , M.notMember (dtvbName tvb) gadtSubt
+                              ]

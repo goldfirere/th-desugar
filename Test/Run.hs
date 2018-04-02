@@ -256,6 +256,7 @@ test_kind_substitution =
   $(do a <- newName "a"
        b <- newName "b"
        c <- newName "c"
+       k <- newName "k"
        let subst = M.singleton a (DVarT b)
 
                  -- (Nothing :: Maybe a)
@@ -264,19 +265,28 @@ test_kind_substitution =
            ty2 = DForallT [DKindedTV c (DVarT a)] [] (DVarT c)
                  -- forall a (c :: a). c
            ty3 = DForallT [DPlainTV a, DKindedTV c (DVarT a)] [] (DVarT c)
+                 -- forall (a :: k) k (b :: k). Proxy b -> Proxy a
+           ty4 = DForallT [ DKindedTV a (DVarT k)
+                          , DPlainTV k
+                          , DKindedTV b (DVarT k)
+                          ] [] (DArrowT `DAppT` (DConT ''Proxy `DAppT` DVarT b)
+                                        `DAppT` (DConT ''Proxy `DAppT` DVarT a))
 
        substTy1 <- substTy subst ty1
        substTy2 <- substTy subst ty2
        substTy3 <- substTy subst ty3
+       substTy4 <- substTy subst ty4
 
        let freeVars1 = fvDType substTy1
            freeVars2 = fvDType substTy2
            freeVars3 = fvDType substTy3
+           freeVars4 = fvDType substTy4
 
            b1 = freeVars1 `eqTH` S.singleton b
            b2 = freeVars2 `eqTH` S.singleton b
            b3 = freeVars3 `eqTH` S.empty
-       [| [b1, b2, b3] |])
+           b4 = freeVars4 `eqTH` S.singleton k
+       [| [b1, b2, b3, b4] |])
 
 test_lookup_value_type_names :: [Bool]
 test_lookup_value_type_names =

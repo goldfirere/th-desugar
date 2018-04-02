@@ -312,14 +312,19 @@ dec_test_nums = [1..10] :: [Int]
 dec_test_nums = [1..11] :: [Int]
 #endif
 
-dectest1 = [d| data Dec1 = Foo | Bar Int |]
-dectest2 = [d| data Dec2 a = forall b. (Show b, Eq a) => MkDec2 a b Bool |]
-dectest3 = [d| data Dec3 a = forall b. MkDec3 { foo :: a, bar :: b }
+dectest1 = [d| data Dec1 where
+                 Foo :: Dec1
+                 Bar :: Int -> Dec1 |]
+dectest2 = [d| data Dec2 a where
+                 MkDec2 :: forall a b. (Show b, Eq a) => a -> b -> Bool -> Dec2 a |]
+dectest3 = [d| data Dec3 a where
+                 MkDec3 :: forall a b. { foo :: a, bar :: b } -> Dec3 a
 #if __GLASGOW_HASKELL__ >= 707
                type role Dec3 nominal
 #endif
                |]
-dectest4 = [d| newtype Dec4 a = MkDec4 (a, Int) |]
+dectest4 = [d| newtype Dec4 a where
+                 MkDec4 :: (a, Int) -> Dec4 a |]
 dectest5 = [d| type Dec5 a b = (a b, Maybe b) |]
 dectest6 = [d| class (Monad m1, Monad m2) => Dec6 (m1 :: * -> *) m2 | m1 -> m2  where
                  lift :: forall a. m1 a -> m2 a
@@ -327,9 +332,6 @@ dectest6 = [d| class (Monad m1, Monad m2) => Dec6 (m1 :: * -> *) m2 | m1 -> m2  
 dectest7 = [d| type family Dec7 a (b :: *) (c :: Bool) :: * -> * |]
 dectest8 = [d| type family Dec8 a |]
 dectest9 = [d| data family Dec9 a (b :: * -> *) :: * -> * |]
-  -- NB: dectest9 inexplicably fails when you don't recompile everything from
-  -- scratch. I (Richard) haven't explored why. The failure is benign (replacing the
-  -- decl above with one with three variables) so I'm not terribly bothered.
 
 #if __GLASGOW_HASKELL__ < 707
 ds_dectest10 = DClosedTypeFamilyD
@@ -395,8 +397,19 @@ imp_inst_test1 = [d| instance Dec6 Maybe (Either ()) where
                        type M2 Maybe = Either () |]
 
 data family Dec9 a (b :: * -> *) :: * -> *
+#if __GLASGOW_HASKELL__ >= 800
+imp_inst_test2 = [d| data instance Dec9 Int Maybe a where
+                       MkIMB  ::             [a] -> Dec9 Int Maybe a
+                       MkIMB2 :: forall a b. b a -> Dec9 Int Maybe a |]
+imp_inst_test3 = [d| newtype instance Dec9 Bool m x where
+                       MkBMX :: m x -> Dec9 Bool m x |]
+#else
+-- TH-quoted data family instances with GADT syntax are horribly broken on GHC 7.10
+-- and older, so we opt to use non-GADT syntax on older GHCs so we can at least
+-- test *something*.
 imp_inst_test2 = [d| data instance Dec9 Int Maybe a = MkIMB [a] | forall b. MkIMB2 (b a) |]
 imp_inst_test3 = [d| newtype instance Dec9 Bool m x = MkBMX (m x) |]
+#endif
 
 type family Dec8 a
 imp_inst_test4 = [d| type instance Dec8 Int = Bool |]

@@ -25,6 +25,10 @@ import Control.Monad hiding (forM_, mapM)
 import Control.Monad.Zip
 import Control.Monad.Writer hiding (forM_, mapM)
 import Data.Foldable hiding (notElem)
+import Data.Graph
+import qualified Data.Map as Map
+import Data.Map (Map)
+import qualified Data.Set as Set
 import Data.Traversable
 import Data.Data hiding (Fixity)
 #if __GLASGOW_HASKELL__ > 710
@@ -120,15 +124,15 @@ data NewOrData = Newtype
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
-          | DDataD NewOrData DCxt Name [DTyVarBndr] [DCon] [DDerivClause]
+          | DDataD NewOrData DCxt Name [DTyVarBndr] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynD Name [DTyVarBndr] DType
           | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
           | DInstanceD (Maybe Overlap) DCxt DType [DDec]
           | DForeignD DForeign
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
-          | DDataFamilyD Name [DTyVarBndr]
-          | DDataInstD NewOrData DCxt Name [DType] [DCon] [DDerivClause]
+          | DDataFamilyD Name [DTyVarBndr] (Maybe DKind)
+          | DDataInstD NewOrData DCxt Name [DType] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynInstD Name DTySynEqn
           | DRoleAnnotD Name [Role]
           | DStandaloneDerivD (Maybe DerivStrategy) DCxt DType
@@ -176,9 +180,23 @@ data InjectivityAnn = InjectivityAnn Name [Name]
   deriving (Eq, Ord, Show, Typeable, Data, Generic)
 #endif
 
--- | Corresponds to TH's @Con@ type.
+-- | Corresponds to TH's 'Con' type. Unlike 'Con', all 'DCon's reflect GADT
+-- syntax. This is beneficial for @th-desugar@'s since it means
+-- that all data type declarations can support explicit return kinds, so
+-- one does not need to represent them with something like @'Maybe' 'DKind'@,
+-- since Haskell98-style data declaration syntax isn't used. Accordingly,
+-- there are some differences between 'DCon' and 'Con' to keep in mind:
+--
+-- * Unlike 'ForallC', where the meaning of the 'TyVarBndr's changes depending
+--   on whether it's followed by 'GadtC'/'RecGadtC' or not, the meaning of the
+--   'DTyVarBndr's in a 'DCon' is always the same: it is the list of
+--   universally /and/ existentially quantified type variables. Note that it is
+--   not guaranteed that one set of type variables will appear before the
+--   other.
+--
+-- * A 'DCon' always has an explicit return type.
 data DCon = DCon [DTyVarBndr] DCxt Name DConFields
-                 (Maybe DType)  -- ^ A GADT result type, if there is one
+                 DType  -- ^ The GADT result type
           deriving (Show, Typeable, Data, Generic)
 
 -- | A list of fields either for a standard data constructor or a record
@@ -849,7 +867,7 @@ fixBug8884ForFamilies (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs ann) eq
       eqns' = map (fixBug8884ForEqn num_args) eqns
   frs' <- remove_arrows num_args frs
   return (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs' ann) eqns', num_args)
-fixBug8884ForFamilies dec@(DDataFamilyD _ _)
+fixBug8884ForFamilies dec@(DDataFamilyD _ _ _)
   = return (dec, 0)   -- the num_args is ignored for data families
 fixBug8884ForFamilies dec =
   impossible $ "Reifying yielded a FamilyI with a non-family Dec: " ++ show dec
@@ -894,25 +912,35 @@ dsDec d@(FunD {}) = (fmap . map) DLetDec $ dsLetDec d
 dsDec d@(ValD {}) = (fmap . map) DLetDec $ dsLetDec d
 #if __GLASGOW_HASKELL__ > 710
 dsDec (DataD cxt n tvbs mk cons derivings) = do
-  extra_tvbs <- mkExtraTvbs tvbs mk
+  tvbs'    <- mapM dsTvb tvbs
+  all_tvbs <- nonFamilyDataTvbs tvbs' mk
+  let data_type = nonFamilyDataReturnType n all_tvbs
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
-                         <*> concatMapM dsCon cons
+                         <*> pure tvbs' <*> mapM dsType mk
+                         <*> concatMapM (dsCon tvbs' data_type) cons
                          <*> mapM dsDerivClause derivings)
 dsDec (NewtypeD cxt n tvbs mk con derivings) = do
-  extra_tvbs <- mkExtraTvbs tvbs mk
+  tvbs'    <- mapM dsTvb tvbs
+  all_tvbs <- nonFamilyDataTvbs tvbs' mk
+  let data_type = nonFamilyDataReturnType n all_tvbs
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> ((++ extra_tvbs) <$> mapM dsTvb tvbs)
-                            <*> dsCon con
+                            <*> pure tvbs' <*> mapM dsType mk
+                            <*> dsCon tvbs' data_type con
                             <*> mapM dsDerivClause derivings)
 #else
-dsDec (DataD cxt n tvbs cons derivings) =
+dsDec (DataD cxt n tvbs cons derivings) = do
+  tvbs' <- mapM dsTvb tvbs
+  let data_type = nonFamilyDataReturnType n tvbs'
   (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> mapM dsTvb tvbs <*> concatMapM dsCon cons
+                         <*> pure tvbs' <*> pure Nothing
+                         <*> concatMapM (dsCon tvbs' data_type) cons
                          <*> mapM dsDerivClause derivings)
-dsDec (NewtypeD cxt n tvbs con derivings) =
+dsDec (NewtypeD cxt n tvbs con derivings) = do
+  tvbs' <- mapM dsTvb tvbs
+  let data_type = nonFamilyDataReturnType n tvbs'
   (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> mapM dsTvb tvbs <*> dsCon con
+                            <*> pure tvbs' <*> pure Nothing
+                            <*> dsCon tvbs' data_type con
                             <*> mapM dsDerivClause derivings)
 #endif
 dsDec (TySynD n tvbs ty) =
@@ -934,37 +962,50 @@ dsDec d@(PragmaD {}) = (fmap . map) DLetDec $ dsLetDec d
 #if __GLASGOW_HASKELL__ > 710
 dsDec (OpenTypeFamilyD tfHead) =
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead tfHead)
-dsDec (DataFamilyD n tvbs m_k) = do
-  extra_tvbs <- mkExtraTvbs tvbs m_k
-  (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs))
+dsDec (DataFamilyD n tvbs m_k) =
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsType m_k)
 #else
 dsDec (FamilyD TypeFam n tvbs m_k) = do
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead n tvbs m_k)
-dsDec (FamilyD DataFam n tvbs m_k) = do
-  extra_tvbs <- mkExtraTvbs tvbs m_k
-  (:[]) <$> (DDataFamilyD n <$> ((++ extra_tvbs) <$> mapM dsTvb tvbs))
+dsDec (FamilyD DataFam n tvbs m_k) =
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsType m_k)
 #endif
 #if __GLASGOW_HASKELL__ > 710
 dsDec (DataInstD cxt n tys mk cons derivings) = do
-  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs [] mk
+  tys'    <- mapM dsType tys
+  all_tys <- dataFamInstTypes tys' mk
+  let tvbs = dataFamInstTvbs all_tys
+      fam_inst_type = dataFamInstReturnType n all_tys
   (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n
-                             <*> ((++ extra_tvbs) <$> mapM dsType tys)
-                             <*> concatMapM dsCon cons
+                             <*> pure tys' <*> mapM dsType mk
+                             <*> concatMapM (dsCon tvbs fam_inst_type) cons
                              <*> mapM dsDerivClause derivings)
 dsDec (NewtypeInstD cxt n tys mk con derivings) = do
-  extra_tvbs <- map dTyVarBndrToDType <$> mkExtraTvbs [] mk
+  tys'    <- mapM dsType tys
+  all_tys <- dataFamInstTypes tys' mk
+  let tvbs = dataFamInstTvbs all_tys
+      fam_inst_type = dataFamInstReturnType n all_tys
   (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n
-                                <*> ((++ extra_tvbs) <$> mapM dsType tys)
-                                <*> dsCon con
+                                <*> pure tys' <*> mapM dsType mk
+                                <*> dsCon tvbs fam_inst_type con
                                 <*> mapM dsDerivClause derivings)
 #else
 dsDec (DataInstD cxt n tys cons derivings) = do
-  (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                             <*> concatMapM dsCon cons
+  tys' <- mapM dsType tys
+  let tvbs = dataFamInstTvbs tys'
+      fam_inst_type = dataFamInstReturnType n tys'
+  (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure n
+                             <*> pure tys' <*> pure Nothing
+                             <*> concatMapM (dsCon tvbs fam_inst_type) cons
                              <*> mapM dsDerivClause derivings)
 dsDec (NewtypeInstD cxt n tys con derivings) = do
-  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n <*> mapM dsType tys
-                                <*> dsCon con <*> mapM dsDerivClause derivings)
+  tys' <- mapM dsType tys
+  let tvbs = dataFamInstTvbs tys'
+      fam_inst_type = dataFamInstReturnType n tys'
+  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure n
+                                <*> pure tys' <*> pure Nothing
+                                <*> dsCon tvbs fam_inst_type con
+                                <*> mapM dsDerivClause derivings)
 #endif
 #if __GLASGOW_HASKELL__ < 707
 dsDec (TySynInstD n lhs rhs) = (:[]) <$> (DTySynInstD n <$>
@@ -1001,35 +1042,18 @@ dsDec (StandaloneDerivD cxt ty) =
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif
 
-mkExtraTvbs :: DsMonad q => [TyVarBndr] -> Maybe Kind -> q [DTyVarBndr]
-mkExtraTvbs _         Nothing = return []
-mkExtraTvbs orig_tvbs (Just k) = do
-  k' <- runQ (expandSyns k)  -- just in case
-  dk <- dsType k'
-  let args = split_funs [] dk
-      -- christiaanb: I have no idea how GHC normally picks fresh
-      -- tyvars, this looks like something GHC might do. Though probably in a
-      -- nicer/safer way.
-      --
-      -- RAE: It's actually not terribly far off from what GHC does. This is
-      -- terrible. But I don't see another way to do this. <shudder>
-      --
-      -- All of this is needed so that "dec test 9" passes.
-      orig_names = map (nameBase . tvbName) orig_tvbs
-      all_names  =
-#if __GLASGOW_HASKELL__ <= 708
-                    map ('$':) $
-#endif
-                    take (length args + length orig_tvbs)
-                        (map (:[]) ['a' .. 'z'] ++
-                         concatMap (zipWith (:) ['a' .. 'z'] . repeat . show)
-                                   [(0::Int)..])
-      new_names  = filter (`notElem` orig_names) all_names
-  names <- zipWithM (\n _ -> qNewName n) new_names args
+-- Like mkExtraDKindBinders, but accepts a Maybe Kind
+-- argument instead of DKind.
+mkExtraKindBinders :: DsMonad q => Maybe Kind -> q [DTyVarBndr]
+mkExtraKindBinders =
+  maybe (pure (DConT typeKindName)) (runQ . expandSyns >=> dsType) >=> mkExtraDKindBinders'
+
+-- | Like mkExtraDKindBinders, but assumes kind synonyms have been expanded.
+mkExtraDKindBinders' :: Quasi q => DKind -> q [DTyVarBndr]
+mkExtraDKindBinders' k = do
+  let (_, _, args, _) = unravel k
+  names <- replicateM (length args) (qNewName "a")
   return (zipWith DKindedTV names args)
-  where
-    split_funs args (DAppT (DAppT DArrowT arg) res) = split_funs (arg:args) res
-    split_funs args _other                          = reverse args
 
 #if __GLASGOW_HASKELL__ > 710
 -- | Desugar a @FamilyResultSig@
@@ -1082,24 +1106,72 @@ dsLetDec (PragmaD prag) = (:[]) <$> (DPragmaD <$> dsPragma prag)
 dsLetDec _dec = impossible "Illegal declaration in let expression."
 
 -- | Desugar a single @Con@.
+--
+-- Because we always desugar @Con@s to GADT syntax (see the documentation for
+-- 'DCon'), it is not always possible to desugar with just a 'Con' alone.
+-- For instance, we must desugar:
+--
+-- @
+-- data Foo a = forall b. MkFoo b
+-- @
+--
+-- To this:
+--
+-- @
+-- data Foo a :: Type where
+--   MkFoo :: forall a b. b -> Foo a
+-- @
+--
+-- If our only argument was @forall b. MkFoo b@, it would be somewhat awkward
+-- to figure out (1) what the set of universally quantified type variables
+-- (@[a]@) was, and (2) what the return type (@Foo a@) was. For this reason,
+-- we require passing these as arguments. (If we desugar an actual GADT
+-- constructor, these arguments are ignored.)
 dsCon :: DsMonad q
-      => Con -> q [DCon]
-dsCon (NormalC n stys) =
-  (:[]) <$> (DCon [] [] n <$> (DNormalC False <$> mapM dsBangType stys) <*> pure Nothing)
-dsCon (RecC n vstys) =
-  (:[]) <$> (DCon [] [] n <$> (DRecC <$> mapM dsVarBangType vstys) <*> pure Nothing)
-dsCon (InfixC sty1 n sty2) = do
+      => [DTyVarBndr] -- ^ The universally quantified type variables
+                      --   (used if desugaring a non-GADT constructor).
+      -> DType        -- ^ The original data declaration's type
+                      --   (used if desugaring a non-GADT constructor).
+      -> Con -> q [DCon]
+dsCon univ_dtvbs data_type con = do
+  dcons' <- dsCon' con
+  return $ flip map dcons' $ \(n, dtvbs, dcxt, fields, m_gadt_type) ->
+    case m_gadt_type of
+      Nothing ->
+        let ex_dtvbs = dtvbs in
+        DCon (univ_dtvbs ++ ex_dtvbs) dcxt n fields data_type
+      Just gadt_type ->
+        let univ_ex_dtvbs = dtvbs in
+        DCon univ_ex_dtvbs dcxt n fields gadt_type
+
+-- Desugar a Con in isolation. The meaning of the returned DTyVarBndrs changes
+-- depending on what the returned Maybe DType value is:
+--
+-- * If returning Just gadt_ty, then we've encountered a GadtC or RecGadtC,
+--   so the returned DTyVarBndrs are both the universally and existentially
+--   quantified tyvars.
+-- * If returning Nothing, we're dealing with a non-GADT constructor, so
+--   the returned DTyVarBndrs are the existentials only.
+dsCon' :: DsMonad q
+       => Con -> q [(Name, [DTyVarBndr], DCxt, DConFields, Maybe DType)]
+dsCon' (NormalC n stys) = do
+  dtys <- mapM dsBangType stys
+  return [(n, [], [], DNormalC False dtys, Nothing)]
+dsCon' (RecC n vstys) = do
+  vdtys <- mapM dsVarBangType vstys
+  return [(n, [], [], DRecC vdtys, Nothing)]
+dsCon' (InfixC sty1 n sty2) = do
   dty1 <- dsBangType sty1
   dty2 <- dsBangType sty2
-  return $ [DCon [] [] n (DNormalC True [dty1, dty2]) Nothing]
-dsCon (ForallC tvbs cxt con) = do
+  return [(n, [], [], DNormalC True [dty1, dty2], Nothing)]
+dsCon' (ForallC tvbs cxt con) = do
   dtvbs <- mapM dsTvb tvbs
   dcxt <- dsCxt cxt
-  dcons <- dsCon con
-  return $ flip map dcons $ \(DCon dtvbs' dcxt' n fields m_kind) ->
-    DCon (dtvbs ++ dtvbs') (dcxt ++ dcxt') n fields m_kind
+  dcons' <- dsCon' con
+  return $ flip map dcons' $ \(n, dtvbs', dcxt', fields, m_gadt_type) ->
+    (n, dtvbs ++ dtvbs', dcxt ++ dcxt', fields, m_gadt_type)
 #if __GLASGOW_HASKELL__ > 710
-dsCon (GadtC nms btys rty) = do
+dsCon' (GadtC nms btys rty) = do
   dbtys <- mapM dsBangType btys
   drty  <- dsType rty
   sequence $ flip map nms $ \nm -> do
@@ -1111,12 +1183,12 @@ dsCon (GadtC nms btys rty) = do
                 || length dbtys == 2            -- 2. It has exactly two fields
                 || isJust mbFi                  -- 3. It has a programmer-specified
                                                 --    fixity declaration
-    return $ DCon [] [] nm (DNormalC decInfix dbtys) (Just drty)
-dsCon (RecGadtC nms vbtys rty) = do
+    return (nm, [], [], DNormalC decInfix dbtys, Just drty)
+dsCon' (RecGadtC nms vbtys rty) = do
   dvbtys <- mapM dsVarBangType vbtys
   drty   <- dsType rty
   return $ flip map nms $ \nm ->
-    DCon [] [] nm (DRecC dvbtys) (Just drty)
+    (nm, [], [], DRecC dvbtys, Just drty)
 #endif
 
 #if __GLASGOW_HASKELL__ > 710
@@ -1437,3 +1509,141 @@ dTypeToDPred (DConT n)       = return $ DConPr n
 dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
 dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
 dTypeToDPred DWildCardT      = return DWildCardPr
+
+-- Take a data type name (which does not belong to a data family) and
+-- apply it to its type variable binders to form a DType.
+nonFamilyDataReturnType :: Name -> [DTyVarBndr] -> DType
+nonFamilyDataReturnType con_name = applyDType (DConT con_name) . map dTyVarBndrToDType
+
+-- Take a data family name and apply it to its argument types to form a
+-- data family instance DType.
+dataFamInstReturnType :: Name -> [DType] -> DType
+dataFamInstReturnType fam_name = applyDType (DConT fam_name)
+
+-- Take a data type (which does not belong to a data family) of the form
+-- @Foo a :: k -> Type -> Type@ and return @Foo a (b :: k) (c :: Type)@, where
+-- @b@ and @c@ are fresh type variable names.
+nonFamilyDataTvbs :: DsMonad q => [DTyVarBndr] -> Maybe Kind -> q [DTyVarBndr]
+nonFamilyDataTvbs tvbs mk = do
+  extra_tvbs <- mkExtraKindBinders mk
+  pure $ tvbs ++ extra_tvbs
+
+-- Take a data family instance of the form @Foo a :: k -> Type -> Type@ and
+-- return @Foo a (b :: k) (c :: Type)@, where @b@ and @c@ are fresh type
+-- variable names.
+dataFamInstTypes :: DsMonad q => [DType] -> Maybe Kind -> q [DType]
+dataFamInstTypes tys mk = do
+  extra_tvbs <- mkExtraKindBinders mk
+  pure $ tys ++ map dTyVarBndrToDType extra_tvbs
+
+-- Unlike vanilla data types and data family declarations, data family
+-- instance declarations do not come equipped with a list of bound type
+-- variables (at least not yet—see Trac #14268). This means that we have
+-- to reverse engineer this information ourselves from the list of type
+-- patterns. We accomplish this by taking the free variables of the types
+-- and performing a reverse topological sort on them to ensure that the
+-- returned list is well scoped.
+dataFamInstTvbs :: [DType] -> [DTyVarBndr]
+dataFamInstTvbs = toposortTyVarsOf
+
+-- | Take a list of 'DType's, find their free variables, and sort them in
+-- reverse topological order to ensure that they are well scoped.
+--
+-- On older GHCs, this takes measures to avoid returning explicitly bound
+-- kind variables, which was not possible before @TypeInType@.
+toposortTyVarsOf :: [DType] -> [DTyVarBndr]
+toposortTyVarsOf tys =
+  let fvs :: [Name]
+      fvs = Set.toList $ foldMap fvDType tys
+
+      varKindSigs :: Map Name DKind
+      varKindSigs = foldMap go tys
+        where
+          go :: DType -> Map Name DKind
+          go (DForallT {}) = error "`forall` type used in type family pattern"
+          go (DAppT t1 t2) = go t1 `mappend` go t2
+          go (DSigT t k) =
+            let kSigs = go k
+            in case t of
+                 DVarT n -> Map.insert n k kSigs
+                 _       -> go t `mappend` kSigs
+          go (DVarT {}) = mempty
+          go (DConT {}) = mempty
+          go DArrowT    = mempty
+          go (DLitT {}) = mempty
+          go DWildCardT = mempty
+
+      (g, gLookup, _)
+        = graphFromEdges [ (fv, fv, kindVars)
+                         | fv <- fvs
+                         , let kindVars =
+                                 case Map.lookup fv varKindSigs of
+                                   Nothing -> []
+                                   Just ks -> Set.toList (fvDType ks)
+                         ]
+      tg = reverse $ topSort g
+
+      lookupVertex x =
+        case gLookup x of
+          (n, _, _) -> n
+
+      ascribeWithKind n
+        | Just k <- Map.lookup n varKindSigs
+        = DKindedTV n k
+        | otherwise
+        = DPlainTV n
+
+      -- An annoying wrinkle: GHCs before 8.0 don't support explicitly
+      -- quantifying kinds, so something like @forall k (a :: k)@ would be
+      -- rejected. To work around this, we filter out any binders whose names
+      -- also appear in a kind on old GHCs.
+      isKindBinderOnOldGHCs
+#if __GLASGOW_HASKELL__ >= 800
+        = const False
+#else
+        = (`elem` kindVars)
+          where
+            kindVars = foldMap fvDType $ Map.elems varKindSigs
+#endif
+
+  in map ascribeWithKind $
+     filter (not . isKindBinderOnOldGHCs) $
+     map lookupVertex tg
+
+fvDType :: DType -> S.Set Name
+fvDType = go_ty
+  where
+    go_ty :: DType -> S.Set Name
+    go_ty (DForallT tvbs cxt ty) = foldr go_tvb (foldMap go_pred cxt <> go_ty ty) tvbs
+    go_ty (DAppT t1 t2)          = go_ty t1 <> go_ty t2
+    go_ty (DSigT ty ki)          = go_ty ty <> go_ty ki
+    go_ty (DVarT n)              = S.singleton n
+    go_ty (DConT {})             = S.empty
+    go_ty DArrowT                = S.empty
+    go_ty (DLitT {})             = S.empty
+    go_ty DWildCardT             = S.empty
+
+    go_pred :: DPred -> S.Set Name
+    go_pred (DAppPr pr ty) = go_pred pr <> go_ty ty
+    go_pred (DSigPr pr ki) = go_pred pr <> go_ty ki
+    go_pred (DVarPr n)     = S.singleton n
+    go_pred _              = S.empty
+
+    go_tvb :: DTyVarBndr -> S.Set Name -> S.Set Name
+    go_tvb (DPlainTV n)    fvs = S.delete n fvs
+    go_tvb (DKindedTV n k) fvs = S.delete n fvs <> go_ty k
+
+dtvbName :: DTyVarBndr -> Name
+dtvbName (DPlainTV n)    = n
+dtvbName (DKindedTV n _) = n
+
+-- | Decompose a function type into its type variables, its context, its
+-- argument types, and its result type.
+unravel :: DType -> ([DTyVarBndr], [DPred], [DType], DType)
+unravel (DForallT tvbs cxt ty) =
+  let (tvbs', cxt', tys, res) = unravel ty in
+  (tvbs ++ tvbs', cxt ++ cxt', tys, res)
+unravel (DAppT (DAppT DArrowT t1) t2) =
+  let (tvbs, cxt, tys, res) = unravel t2 in
+  (tvbs, cxt, t1 : tys, res)
+unravel t = ([], [], [], t)
