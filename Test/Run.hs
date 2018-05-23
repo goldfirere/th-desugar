@@ -251,6 +251,23 @@ test_local_tyfam_expansion =
                    (expandType orig_ty)
        orig_ty `eqTHSplice` exp_ty)
 
+test_getDataD_kind_sig :: Bool
+test_getDataD_kind_sig =
+#if __GLASGOW_HASKELL__ >= 800
+  3 == $(do data_name <- newName "TestData"
+            a         <- newName "a"
+            let type_kind     = DConT typeKindName
+                data_kind_sig = DArrowT `DAppT` type_kind `DAppT`
+                                  (DArrowT `DAppT` type_kind `DAppT` type_kind)
+            (tvbs, _) <- withLocalDeclarations
+                           (decToTH (DDataD Data [] data_name [DPlainTV a]
+                                            (Just data_kind_sig) [] []))
+                           (getDataD "th-desugar: Impossible" data_name)
+            [| $(Syn.lift (length tvbs)) |])
+#else
+  True -- DataD didn't have the ability to store kind signatures prior to GHC 8.0
+#endif
+
 test_kind_substitution :: [Bool]
 test_kind_substitution =
   $(do a <- newName "a"
@@ -406,6 +423,8 @@ main = hspec $ do
     it "works with deriving strategies" $ test_deriving_strategies
 
     it "doesn't expand local type families" $ test_local_tyfam_expansion
+
+    it "reifies data type return kinds accurately" $ test_getDataD_kind_sig
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')

@@ -26,7 +26,8 @@ module Language.Haskell.TH.Desugar.Util (
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
   topEverywhereM, isInfixDataCon,
-  isTypeKindName, typeKindName
+  isTypeKindName, typeKindName,
+  mkExtraKindBindersGeneric, unravelType
   ) where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
@@ -34,6 +35,7 @@ import Prelude hiding (mapM, foldl, concatMap, any)
 import Language.Haskell.TH hiding ( cxt )
 import Language.Haskell.TH.Syntax
 
+import Control.Monad ( replicateM )
 import qualified Data.Set as S
 import Data.Foldable
 import Data.Generics hiding ( Fixity )
@@ -184,6 +186,29 @@ splitTuple_maybe t = go [] t
           | length args == degree
           = Just args
         go _ _ = Nothing
+
+-- | Like 'mkExtraDKindBinders', but parameterized to allow working over both
+-- 'Kind'/'TyVarBndr' and 'DKind'/'DTyVarBndr'.
+mkExtraKindBindersGeneric
+  :: Quasi q
+  => (kind -> ([tyVarBndr], [pred], [kind], kind))
+  -> (Name -> kind -> tyVarBndr)
+  -> kind -> q [tyVarBndr]
+mkExtraKindBindersGeneric unravel mkKindedTV k = do
+  let (_, _, args, _) = unravel k
+  names <- replicateM (length args) (qNewName "a")
+  return (zipWith mkKindedTV names args)
+
+-- | Decompose a function 'Type' into its type variables, its context, its
+-- argument types, and its result type.
+unravelType :: Type -> ([TyVarBndr], [Pred], [Type], Type)
+unravelType (ForallT tvbs cxt ty) =
+  let (tvbs', cxt', tys, res) = unravelType ty in
+  (tvbs ++ tvbs', cxt ++ cxt', tys, res)
+unravelType (AppT (AppT ArrowT t1) t2) =
+  let (tvbs, cxt, tys, res) = unravelType t2 in
+  (tvbs, cxt, t1 : tys, res)
+unravelType t = ([], [], [], t)
 
 ----------------------------------------
 -- Free names, etc.

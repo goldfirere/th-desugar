@@ -44,6 +44,7 @@ import qualified Control.Monad.Fail as Fail
 import qualified Control.Monad as Fail
 #endif
 
+import Language.Haskell.TH.ExpandSyns ( expandSyns )
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax hiding ( lift )
 
@@ -103,14 +104,21 @@ getDataD err name = do
            _ -> badDeclaration
   case dec of
 #if __GLASGOW_HASKELL__ > 710
-    DataD _cxt _name tvbs _mk cons _derivings -> return (tvbs, cons)
-    NewtypeD _cxt _name tvbs _mk con _derivings -> return (tvbs, [con])
+    DataD _cxt _name tvbs mk cons _derivings -> go tvbs mk cons
+    NewtypeD _cxt _name tvbs mk con _derivings -> go tvbs mk [con]
 #else
-    DataD _cxt _name tvbs cons _derivings -> return (tvbs, cons)
-    NewtypeD _cxt _name tvbs con _derivings -> return (tvbs, [con])
+    DataD _cxt _name tvbs cons _derivings -> go tvbs Nothing cons
+    NewtypeD _cxt _name tvbs con _derivings -> go tvbs Nothing [con]
 #endif
     _ -> badDeclaration
-  where badDeclaration =
+  where
+    go tvbs mk cons = do
+      k <- maybe (pure (ConT typeKindName)) (runQ . expandSyns) mk
+      extra_tvbs <- mkExtraKindBindersGeneric unravelType KindedTV k
+      let all_tvbs = tvbs ++ extra_tvbs
+      return (all_tvbs, cons)
+
+    badDeclaration =
           fail $ "The name (" ++ (show name) ++ ") refers to something " ++
                  "other than a datatype. " ++ err
 

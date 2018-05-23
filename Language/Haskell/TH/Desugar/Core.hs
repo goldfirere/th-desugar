@@ -1050,10 +1050,7 @@ mkExtraKindBinders =
 
 -- | Like mkExtraDKindBinders, but assumes kind synonyms have been expanded.
 mkExtraDKindBinders' :: Quasi q => DKind -> q [DTyVarBndr]
-mkExtraDKindBinders' k = do
-  let (_, _, args, _) = unravel k
-  names <- replicateM (length args) (qNewName "a")
-  return (zipWith DKindedTV names args)
+mkExtraDKindBinders' = mkExtraKindBindersGeneric unravel DKindedTV
 
 #if __GLASGOW_HASKELL__ > 710
 -- | Desugar a @FamilyResultSig@
