@@ -32,7 +32,12 @@ description:
 source-repository this
   type:     git
   location: https://github.com/goldfirere/th-desugar.git
-  tag:      v1.8
+  tag:      v1.9
+
+source-repository head
+  type:     git
+  location: https://github.com/goldfirere/th-desugar.git
+  branch:   master
 
 library
   build-depends:
