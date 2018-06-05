@@ -5,7 +5,7 @@ synopsis:       Functions to desugar Template Haskell
 homepage:       https://github.com/goldfirere/th-desugar
 category:       Template Haskell
 author:         Richard Eisenberg <rae@cs.brynmawr.edu>
-maintainer:     Richard Eisenberg <rae@cs.brynmawr.edu>, Ryan Scott <ryan.gl.scott@gmail.com>
+maintainer:     Ryan Scott <ryan.gl.scott@gmail.com>
 bug-reports:    https://github.com/goldfirere/th-desugar/issues
 stability:      experimental
 extra-source-files: README.md, CHANGES.md

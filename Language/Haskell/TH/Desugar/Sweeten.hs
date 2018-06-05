@@ -14,7 +14,7 @@ Converts desugared TH back into real TH.
 -- Module      :  Language.Haskell.TH.Desugar.Sweeten
 -- Copyright   :  (C) 2014 Richard Eisenberg
 -- License     :  BSD-style (see LICENSE)
--- Maintainer  :  Richard Eisenberg (rae@cs.brynmawr.edu)
+-- Maintainer  :  Ryan Scott
 -- Stability   :  experimental
 -- Portability :  non-portable
 --
