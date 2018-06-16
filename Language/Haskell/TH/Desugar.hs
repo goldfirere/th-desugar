@@ -17,7 +17,7 @@ rae@cs.brynmawr.edu
 -- Portability :  non-portable
 --
 -- Desugars full Template Haskell syntax into a smaller core syntax for further
--- processing. The desugared types and constructors are prefixed with a D.
+-- processing.
 --
 ----------------------------------------------------------------------------
 
@@ -97,6 +97,7 @@ module Language.Haskell.TH.Desugar (
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
   ) where
 
+import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Sweeten

@@ -40,6 +40,7 @@ import Data.Data
 import Data.Generics
 import qualified Data.Traversable as T
 
+import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Sweeten

@@ -39,7 +39,7 @@ import Control.Arrow
 
 import Language.Haskell.TH hiding (cxt)
 
-import Language.Haskell.TH.Desugar.Core
+import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.Util
 
 import Data.Maybe ( maybeToList, mapMaybe )
