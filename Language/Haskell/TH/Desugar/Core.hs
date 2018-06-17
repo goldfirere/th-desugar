@@ -352,7 +352,9 @@ dsGuardStmts (ParS _ : _) _ _ = impossible "Parallel comprehension in a pattern 
 dsDoStmts :: DsMonad q => [Stmt] -> q DExp
 dsDoStmts [] = impossible "do-expression ended with something other than bare statement."
 dsDoStmts [NoBindS exp] = dsExp exp
-dsDoStmts (BindS pat exp : rest) = dsBindS exp pat (dsDoStmts rest) "do expression"
+dsDoStmts (BindS pat exp : rest) = do
+  rest' <- dsDoStmts rest
+  dsBindS exp pat rest' "do expression"
 dsDoStmts (LetS decs : rest) = DLetE <$> dsLetDecs decs <*> dsDoStmts rest
 dsDoStmts (NoBindS exp : rest) = do
   exp' <- dsExp exp
@@ -364,7 +366,9 @@ dsDoStmts (ParS _ : _) = impossible "Parallel comprehension in a do-statement."
 dsComp :: DsMonad q => [Stmt] -> q DExp
 dsComp [] = impossible "List/monad comprehension ended with something other than a bare statement."
 dsComp [NoBindS exp] = DAppE (DVarE 'return) <$> dsExp exp
-dsComp (BindS pat exp : rest) = dsBindS exp pat (dsComp rest) "monad comprehension"
+dsComp (BindS pat exp : rest) = do
+  rest' <- dsComp rest
+  dsBindS exp pat rest' "monad comprehension"
 dsComp (LetS decs : rest) = DLetE <$> dsLetDecs decs <*> dsComp rest
 dsComp (NoBindS exp : rest) = do
   exp' <- dsExp exp
@@ -382,10 +386,9 @@ dsComp (ParS stmtss : rest) = do
 -- 'MonadFail' or 'Monad', depending on whether the @MonadFailDesugaring@
 -- language extension is enabled or not. (On GHCs older than 8.0, 'fail' from
 -- 'Monad' is always used.)
-dsBindS :: forall q. DsMonad q => Exp -> Pat -> q DExp -> String -> q DExp
-dsBindS bind_arg_exp success_pat mk_success_exp ctxt = do
+dsBindS :: forall q. DsMonad q => Exp -> Pat -> DExp -> String -> q DExp
+dsBindS bind_arg_exp success_pat success_exp ctxt = do
   bind_arg_exp' <- dsExp bind_arg_exp
-  success_exp   <- mk_success_exp
   (success_pat', success_exp') <- dsPatOverExp success_pat success_exp
   is_univ_pat <- isUniversalPattern success_pat'
   let bind_into = DAppE (DAppE (DVarE '(>>=)) bind_arg_exp')
