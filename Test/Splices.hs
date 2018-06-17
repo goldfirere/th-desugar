@@ -250,6 +250,8 @@ test46_overloaded_label = [| let p = Point 3 4 in
                              #x p - #y p |]
 #endif
 
+test47_do_partial_match = [| do { Just () <- [Nothing]; return () } |]
+
 type family TFExpand x
 type instance TFExpand Int = Bool
 type instance TFExpand (Maybe a) = [a]

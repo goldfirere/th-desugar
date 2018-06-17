@@ -128,6 +128,7 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #if __GLASGOW_HASKELL__ >= 803
              , "over_label" ~: $test46_overloaded_label @=? $(dsSplice test46_overloaded_label)
 #endif
+             , "do_partial_match" ~: $test47_do_partial_match @=? $(dsSplice test47_do_partial_match)
              ]
 
 test35a = $test35_expand

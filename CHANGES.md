@@ -61,6 +61,11 @@ Version 1.9
     `DType`s and returns them in a well scoped list that has been sorted in
     reverse topological order.
 
+* `th-desugar` now desugars partial pattern matches in `do`-notation and
+  list/monad comprehensions to the appropriate invocation of `fail`.
+  (Previously, these were incorrectly desugared into `case` expressions with
+  incomplete patterns.)
+
 * Add a `mkDLamEFromDPats` function for constructing a `DLamE` expression using
   a list of `DPat` arguments and a `DExp` body.
 
