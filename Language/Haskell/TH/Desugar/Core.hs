@@ -7,7 +7,7 @@ Desugars full Template Haskell syntax into a smaller core syntax for further
 processing. The desugared types and constructors are prefixed with a D.
 -}
 
-{-# LANGUAGE TemplateHaskell, LambdaCase, CPP, TupleSections #-}
+{-# LANGUAGE TemplateHaskell, LambdaCase, CPP, ScopedTypeVariables, TupleSections #-}
 
 module Language.Haskell.TH.Desugar.Core where
 
@@ -31,6 +31,10 @@ import qualified Data.Set as Set
 import Data.Traversable
 #if __GLASGOW_HASKELL__ > 710
 import Data.Maybe (isJust)
+#endif
+
+#if __GLASGOW_HASKELL__ >= 800
+import qualified Control.Monad.Fail as MonadFail
 #endif
 
 #if __GLASGOW_HASKELL__ >= 803
@@ -348,10 +352,7 @@ dsGuardStmts (ParS _ : _) _ _ = impossible "Parallel comprehension in a pattern 
 dsDoStmts :: DsMonad q => [Stmt] -> q DExp
 dsDoStmts [] = impossible "do-expression ended with something other than bare statement."
 dsDoStmts [NoBindS exp] = dsExp exp
-dsDoStmts (BindS pat exp : rest) = do
-  exp' <- dsExp exp
-  rest' <- dsDoStmts rest
-  DAppE (DAppE (DVarE '(>>=)) exp') <$> dsLam [pat] rest'
+dsDoStmts (BindS pat exp : rest) = dsBindS exp pat (dsDoStmts rest) "do expression"
 dsDoStmts (LetS decs : rest) = DLetE <$> dsLetDecs decs <*> dsDoStmts rest
 dsDoStmts (NoBindS exp : rest) = do
   exp' <- dsExp exp
@@ -363,10 +364,7 @@ dsDoStmts (ParS _ : _) = impossible "Parallel comprehension in a do-statement."
 dsComp :: DsMonad q => [Stmt] -> q DExp
 dsComp [] = impossible "List/monad comprehension ended with something other than a bare statement."
 dsComp [NoBindS exp] = DAppE (DVarE 'return) <$> dsExp exp
-dsComp (BindS pat exp : rest) = do
-  exp' <- dsExp exp
-  rest' <- dsComp rest
-  DAppE (DAppE (DVarE '(>>=)) exp') <$> dsLam [pat] rest'
+dsComp (BindS pat exp : rest) = dsBindS exp pat (dsComp rest) "monad comprehension"
 dsComp (LetS decs : rest) = DLetE <$> dsLetDecs decs <*> dsComp rest
 dsComp (NoBindS exp : rest) = do
   exp' <- dsExp exp
@@ -376,6 +374,40 @@ dsComp (ParS stmtss : rest) = do
   (pat, exp) <- dsParComp stmtss
   rest' <- dsComp rest
   DAppE (DAppE (DVarE '(>>=)) exp) <$> dsLam [pat] rest'
+
+-- Desugar a binding statement in a do- or list comprehension.
+--
+-- In the event that the pattern in the statement is partial, the desugared
+-- case expression will contain a catch-all case that calls 'fail' from either
+-- 'MonadFail' or 'Monad', depending on whether the @MonadFailDesugaring@
+-- language extension is enabled or not. (On GHCs older than 8.0, 'fail' from
+-- 'Monad' is always used.)
+dsBindS :: forall q. DsMonad q => Exp -> Pat -> q DExp -> String -> q DExp
+dsBindS bind_arg_exp success_pat mk_success_exp ctxt = do
+  bind_arg_exp' <- dsExp bind_arg_exp
+  success_exp   <- mk_success_exp
+  (success_pat', success_exp') <- dsPatOverExp success_pat success_exp
+  is_univ_pat <- isUniversalPattern success_pat'
+  let bind_into = DAppE (DAppE (DVarE '(>>=)) bind_arg_exp')
+  if is_univ_pat
+     then bind_into <$> mkDLamEFromDPats [success_pat'] success_exp'
+     else do arg_name  <- newUniqueName "arg"
+             fail_name <- mk_fail_name
+             return $ bind_into $ DLamE [arg_name] $ DCaseE (DVarE arg_name)
+               [ DMatch success_pat' success_exp'
+               , DMatch DWildPa $
+                 DVarE fail_name `DAppE`
+                   DLitE (StringL $ "Pattern match failure in " ++ ctxt)
+               ]
+  where
+    mk_fail_name :: q Name
+#if __GLASGOW_HASKELL__ >= 800
+    mk_fail_name = do
+      mfd <- qIsExtEnabled MonadFailDesugaring
+      return $ if mfd then 'MonadFail.fail else 'Prelude.fail
+#else
+    mk_fail_name = return 'Prelude.fail
+#endif
 
 -- | Desugar the contents of a parallel comprehension.
 --   Returns a @Pat@ containing a tuple of all bound variables and an expression
