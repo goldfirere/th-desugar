@@ -354,12 +354,14 @@ isInfixDataCon :: String -> Bool
 isInfixDataCon (':':_) = True
 isInfixDataCon _ = False
 
--- | Returns 'True' if the argument 'Name' is that of 'Kind.Type' or 'Kind.★'
--- (or @*@, to support older GHCs).
+-- | Returns 'True' if the argument 'Name' is that of 'Kind.Type'
+-- (or @*@ or 'Kind.★', to support older GHCs).
 isTypeKindName :: Name -> Bool
-isTypeKindName n = n == starKindName
-                || n == typeKindName
+isTypeKindName n = n == typeKindName
+#if __GLASGOW_HASKELL__ < 805
+                || n == starKindName
                 || n == uniStarKindName
+#endif
 
 -- | The 'Name' of:
 --
@@ -372,6 +374,7 @@ typeKindName = ''Kind.Type
 typeKindName = starKindName
 #endif
 
+#if __GLASGOW_HASKELL__ < 805
 -- | The 'Name' of the kind @*@.
 starKindName :: Name
 #if __GLASGOW_HASKELL__ >= 800
@@ -389,4 +392,5 @@ uniStarKindName :: Name
 uniStarKindName = ''(Kind.★)
 #else
 uniStarKindName = starKindName
+#endif
 #endif
