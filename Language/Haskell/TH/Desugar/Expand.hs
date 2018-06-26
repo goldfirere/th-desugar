@@ -128,14 +128,13 @@ expand_con ign n args = do
                      qReifyInstances n (map typeToTH syn_args)
             dinsts <- dsDecs insts
             case dinsts of
-              [DTySynInstD _n (DTySynEqn lhs rhs)] -> do
-                subst <-
-                  expectJustM "Impossible: reification returned a bogus instance" $
-                  unionMaybeSubsts $ zipWith (matchTy ign) lhs syn_args
-                ty <- substTy subst rhs
-                ty' <- expand_type ign ty
-                return $ applyDType ty' rest_args
-              _ -> return $ applyDType (DConT n) args
+              [DTySynInstD _n (DTySynEqn lhs rhs)]
+                |  Just subst <-
+                     unionMaybeSubsts $ zipWith (matchTy ign) lhs syn_args
+                -> do ty <- substTy subst rhs
+                      ty' <- expand_type ign ty
+                      return $ applyDType ty' rest_args
+              _ -> give_up
 
 
         DTyConI (DClosedTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann) eqns) _
@@ -148,7 +147,7 @@ expand_con ign n args = do
               (rhs : _) -> do
                 rhs' <- expand_type ign rhs
                 return $ applyDType rhs' rest_args
-              [] -> return $ applyDType (DConT n) args
+              [] -> give_up
 
           where
              -- returns the substed rhs
@@ -157,7 +156,13 @@ expand_con ign n args = do
               let m_subst = unionMaybeSubsts $ zipWith (matchTy ign) lhs arg_tys
               T.mapM (flip substTy rhs) m_subst
 
-        _ -> return $ applyDType (DConT n) args
+        _ -> give_up
+
+    -- Used when we can't proceed with type family instance expansion any more,
+    -- and must conservatively return the orignal type family applied to its
+    -- arguments.
+    give_up :: q DType
+    give_up = return $ applyDType (DConT n) args
 
     no_tyvars_tyfams :: (DsMonad q, Data a) => a -> q Bool
     no_tyvars_tyfams = everything (liftM2 (&&)) (mkQ (return True) no_tyvar_tyfam)

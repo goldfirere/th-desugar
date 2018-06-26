@@ -252,6 +252,26 @@ test_local_tyfam_expansion =
                    (expandType orig_ty)
        orig_ty `eqTHSplice` exp_ty)
 
+test_stuck_tyfam_expansion :: Bool
+test_stuck_tyfam_expansion =
+  $(do fam_name <- newName "F"
+       x        <- newName "x"
+       k        <- newName "k"
+       let orig_ty = DConT fam_name `DAppT` DConT '() -- F '()
+       exp_ty <- withLocalDeclarations
+                   (decsToTH [ -- type family F (x :: k) :: k
+                               DOpenTypeFamilyD
+                                 (DTypeFamilyHead fam_name
+                                                  [DKindedTV x (DVarT k)]
+                                                  (DKindSig (DVarT k))
+                                                  Nothing)
+                               -- type instance F (x :: ()) = x
+                             , DTySynInstD fam_name
+                                 (DTySynEqn [DSigT (DVarT x) (DConT ''())] (DVarT x))
+                             ])
+                   (expandType orig_ty)
+       orig_ty `eqTHSplice` exp_ty)
+
 test_getDataD_kind_sig :: Bool
 test_getDataD_kind_sig =
 #if __GLASGOW_HASKELL__ >= 800
@@ -424,6 +444,8 @@ main = hspec $ do
     it "works with deriving strategies" $ test_deriving_strategies
 
     it "doesn't expand local type families" $ test_local_tyfam_expansion
+
+    it "doesn't crash on a stuck type family application" $ test_stuck_tyfam_expansion
 
     it "reifies data type return kinds accurately" $ test_getDataD_kind_sig
 
