@@ -153,7 +153,7 @@ expand_con ign n args = do
 
           where
              -- returns the substed rhs
-            check_eqn :: DsMonad q => [DType] -> DTySynEqn -> q (Maybe DType)
+            check_eqn :: [DType] -> DTySynEqn -> q (Maybe DType)
             check_eqn arg_tys (DTySynEqn lhs rhs) = do
               let m_subst = unionMaybeSubsts $ zipWith (matchTy ign) lhs arg_tys
               T.mapM (flip substTy rhs) m_subst
@@ -166,10 +166,10 @@ expand_con ign n args = do
     give_up :: q DType
     give_up = return $ applyDType (DConT n) args
 
-    no_tyvars_tyfams :: (DsMonad q, Data a) => a -> q Bool
+    no_tyvars_tyfams :: Data a => a -> q Bool
     no_tyvars_tyfams = everything (liftM2 (&&)) (mkQ (return True) no_tyvar_tyfam)
 
-    no_tyvar_tyfam :: DsMonad q => DType -> q Bool
+    no_tyvar_tyfam :: DType -> q Bool
     no_tyvar_tyfam (DVarT _) = return False
     no_tyvar_tyfam (DConT con_name) = do
       m_info <- dsReify con_name

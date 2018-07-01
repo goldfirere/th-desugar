@@ -275,9 +275,9 @@ test_stuck_tyfam_expansion =
 test_t85 :: Bool
 test_t85 =
   $(do let orig_ty =
-             (DConT ''Constant `DAppT` DConT ''Bool `DAppT` DConT ''Int)
-             `DSigT` (DConT ''Constant `DAppT` DConT ''Bool `DAppT` DConT typeKindName)
-           expected_ty = DConT ''Int `DSigT` DConT typeKindName
+             (DConT ''Constant `DAppT` DConT ''Int `DAppT` DConT 'True)
+             `DSigT` (DConT ''Constant `DAppT` DConT ''Char `DAppT` DConT ''Bool)
+           expected_ty = DConT 'True `DSigT` DConT ''Bool
        expanded_ty <- expandType orig_ty
        expected_ty `eqTHSplice` expanded_ty)
 
