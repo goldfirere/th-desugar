@@ -169,7 +169,7 @@ decToTH (DDefaultSigD {})      =
 decToTH (DStandaloneDerivD _mds cxt ty) =
   [StandaloneDerivD
 #if __GLASGOW_HASKELL__ >= 801
-    _mds
+    (fmap derivStrategyToTH _mds)
 #endif
     (cxtToTH cxt) (typeToTH ty)]
 decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
@@ -350,10 +350,23 @@ cxtToTH = map predToTH
 
 #if __GLASGOW_HASKELL__ >= 801
 derivClauseToTH :: DDerivClause -> [DerivClause]
-derivClauseToTH (DDerivClause mds cxt) = [DerivClause mds (cxtToTH cxt)]
+derivClauseToTH (DDerivClause mds cxt) =
+  [DerivClause (fmap derivStrategyToTH mds) (cxtToTH cxt)]
 #else
 derivClauseToTH :: DDerivClause -> Cxt
 derivClauseToTH (DDerivClause _ cxt) = cxtToTH cxt
+#endif
+
+#if __GLASGOW_HASKELL__ >= 801
+derivStrategyToTH :: DDerivStrategy -> DerivStrategy
+derivStrategyToTH DStockStrategy    = StockStrategy
+derivStrategyToTH DAnyclassStrategy = AnyclassStrategy
+derivStrategyToTH DNewtypeStrategy  = NewtypeStrategy
+#if __GLASGOW_HASKELL__ >= 805
+derivStrategyToTH (DViaStrategy ty) = ViaStrategy (typeToTH ty)
+#else
+derivStrategyToTH (DViaStrategy _)  = error "DerivingVia supported only in GHC 8.6+"
+#endif
 #endif
 
 #if __GLASGOW_HASKELL__ >= 801
@@ -379,6 +392,8 @@ predToTH = go []
       = ClassP n acc
     go _ DWildCardPr
       = error "Wildcards supported only in GHC 8.0+"
+    go _ (DForallPr {})
+      = error "Quantified constraints supported only in GHC 8.6+"
 #else
 predToTH (DAppPr p t) = AppT (predToTH p) (typeToTH t)
 predToTH (DSigPr p k) = SigT (predToTH p) (typeToTH k)
@@ -388,6 +403,12 @@ predToTH (DConPr n)   = typeToTH (DConT n)
 predToTH DWildCardPr  = WildCardT
 #else
 predToTH DWildCardPr  = error "Wildcards supported only in GHC 8.0+"
+#endif
+#if __GLASGOW_HASKELL__ >= 805
+predToTH (DForallPr tvbs cxt p) =
+  ForallT (map tvbToTH tvbs) (map predToTH cxt) (predToTH p)
+#else
+predToTH (DForallPr {}) = error "Quantified constraints supported only in GHC 8.6+"
 #endif
 #endif
 

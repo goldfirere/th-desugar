@@ -20,6 +20,11 @@ rae@cs.brynmawr.edu
 {-# OPTIONS_GHC -Wno-partial-type-signatures -Wno-redundant-constraints #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 805
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE QuantifiedConstraints #-}
+#endif
+
 module Main where
 
 import Prelude hiding ( exp )
@@ -129,6 +134,9 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "over_label" ~: $test46_overloaded_label @=? $(dsSplice test46_overloaded_label)
 #endif
              , "do_partial_match" ~: $test47_do_partial_match @=? $(dsSplice test47_do_partial_match)
+#if __GLASGOW_HASKELL__ >= 805
+             , "quantified_constraints" ~: $test48_quantified_constraints @=? $(dsSplice test48_quantified_constraints)
+#endif
              ]
 
 test35a = $test35_expand

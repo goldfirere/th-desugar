@@ -57,7 +57,10 @@ substTy vars (DVarT n)
   = return ty
   | otherwise
   = return $ DVarT n
-substTy _ ty = return ty
+substTy _ ty@(DConT _)  = return ty
+substTy _ ty@DArrowT    = return ty
+substTy _ ty@(DLitT _)  = return ty
+substTy _ ty@DWildCardT = return ty
 
 substTyVarBndrs :: Quasi q => DSubst -> [DTyVarBndr]
                 -> (DSubst -> [DTyVarBndr] -> q a)
@@ -77,6 +80,11 @@ substTvb vars (DKindedTV n k) = do
   return (M.insert n (DVarT new_n) vars, DKindedTV new_n k')
 
 substPred :: Quasi q => DSubst -> DPred -> q DPred
+substPred vars (DForallPr tvbs cxt p) =
+  substTyVarBndrs vars tvbs $ \vars' tvbs' -> do
+    cxt' <- mapM (substPred vars') cxt
+    p'   <- substPred vars' p
+    return $ DForallPr tvbs' cxt' p'
 substPred vars (DAppPr p t) = DAppPr <$> substPred vars p <*> substTy vars t
 substPred vars (DSigPr p k) = DSigPr <$> substPred vars p <*> substTy vars k
 substPred vars (DVarPr n)
@@ -84,7 +92,8 @@ substPred vars (DVarPr n)
   = dTypeToDPred ty
   | otherwise
   = return $ DVarPr n
-substPred _ p = return p
+substPred _ p@(DConPr {}) = return p
+substPred _ p@DWildCardPr = return p
 
 -- | Computes the union of two substitutions. Fails if both subsitutions map
 -- the same variable to different types.

@@ -26,6 +26,11 @@ rae@cs.brynmawr.edu
 {-# OPTIONS_GHC -Wno-orphans #-}  -- IsLabel is an orphan
 #endif
 
+#if __GLASGOW_HASKELL__ >= 805
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE QuantifiedConstraints #-}
+#endif
+
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
@@ -251,6 +256,13 @@ test46_overloaded_label = [| let p = Point 3 4 in
 #endif
 
 test47_do_partial_match = [| do { Just () <- [Nothing]; return () } |]
+
+#if __GLASGOW_HASKELL__ >= 805
+test48_quantified_constraints =
+  [| let f :: forall f a. (forall x. Eq x => Eq (f x), Eq a) => f a -> f a -> Bool
+         f = (==)
+     in f (Proxy @Int) (Proxy @Int) |]
+#endif
 
 type family TFExpand x
 type instance TFExpand Int = Bool
@@ -535,6 +547,14 @@ reifyDecs = [d|
 
   llEx :: [a] -> Int
   llEx LLMeth = 5
+#endif
+
+#if __GLASGOW_HASKELL__ >= 805
+  newtype Id a = MkId a
+    deriving stock Eq
+
+  newtype R24 a = MkR24 [a]
+    deriving Eq via (Id [a])
 #endif
   |]
 

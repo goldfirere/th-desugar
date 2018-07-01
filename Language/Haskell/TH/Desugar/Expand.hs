@@ -55,9 +55,10 @@ import Language.Haskell.TH.Desugar.Subst
 expandType :: DsMonad q => DType -> q DType
 expandType = expand_type NoIgnore
 
-expand_type :: DsMonad q => IgnoreKinds -> DType -> q DType
+expand_type :: forall q. DsMonad q => IgnoreKinds -> DType -> q DType
 expand_type ign = go []
   where
+    go :: [DType] -> DType -> q DType
     go [] (DForallT tvbs cxt ty) =
       DForallT tvbs <$> mapM (expand_ ign) cxt <*> expand_type ign ty
     go _ (DForallT {}) =
@@ -68,25 +69,40 @@ expand_type ign = go []
     go args (DSigT ty ki) = do
       ty' <- go [] ty
       ki' <- go [] ki
-      return $ applyDType (DSigT ty' ki') args
+      finish (DSigT ty' ki') args
     go args (DConT n) = expand_con ign n args
-    go args ty = return $ applyDType ty args
+    go args ty@(DVarT _)  = finish ty args
+    go args ty@DArrowT    = finish ty args
+    go args ty@(DLitT _)  = finish ty args
+    go args ty@DWildCardT = finish ty args
+
+    finish :: DType -> [DType] -> q DType
+    finish ty args = return $ applyDType ty args
 
 -- | Expands all type synonyms in a desugared predicate.
-expand_pred :: DsMonad q => IgnoreKinds -> DPred -> q DPred
+expand_pred :: forall q. DsMonad q => IgnoreKinds -> DPred -> q DPred
 expand_pred ign = go []
   where
+    go :: [DType] -> DPred -> q DPred
+    go [] (DForallPr tvbs cxt p) =
+      DForallPr tvbs <$> mapM (expand_ ign) cxt <*> expand_pred ign p
+    go _ (DForallPr {}) =
+      impossible "A quantified constraint is applied to another constraint."
     go args (DAppPr p t) = do
       t' <- expand_type ign t
       go (t' : args) p
     go args (DSigPr p k) = do
       p' <- go [] p
       k' <- expand_type ign k
-      return $ foldl DAppPr (DSigPr p' k') args
+      finish (DSigPr p' k') args
     go args (DConPr n) = do
       ty <- expand_con ign n args
       dTypeToDPred ty
-    go args p = return $ foldl DAppPr p args
+    go args p@(DVarPr _)  = finish p args
+    go args p@DWildCardPr = finish p args
+
+    finish :: DPred -> [DType] -> q DPred
+    finish p args = return $ foldl DAppPr p args
 
 -- | Expand a constructor with given arguments
 expand_con :: forall q.
@@ -196,7 +212,8 @@ what you'll get:
 If you blindly charge ahead and recursively inspect the right-hand side of
 this type synonym, you'll desugar StarT into (DConT ''Type), reify ''Type,
 and get back another type synonym with StarT as its right-hand side. Then
-you'll recursively inspect StarT and yourself knee-deep in an infinite loop.
+you'll recursively inspect StarT and find yourself knee-deep in an infinite
+loop.
 
 To prevent these sorts of shenanigans, we simply stop whenever we see a type
 synonym with StarT as its right-hand side and return Type.

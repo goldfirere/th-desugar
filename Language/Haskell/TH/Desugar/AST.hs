@@ -57,7 +57,8 @@ type DKind = DType
 type DCxt = [DPred]
 
 -- | Corresponds to TH's @Pred@
-data DPred = DAppPr DPred DType
+data DPred = DForallPr [DTyVarBndr] DCxt DPred
+           | DAppPr DPred DType
            | DSigPr DPred DKind
            | DVarPr Name
            | DConPr Name
@@ -103,7 +104,7 @@ data DDec = DLetDec DLetDec
           | DDataInstD NewOrData DCxt Name [DType] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynInstD Name DTySynEqn
           | DRoleAnnotD Name [Role]
-          | DStandaloneDerivD (Maybe DerivStrategy) DCxt DType
+          | DStandaloneDerivD (Maybe DDerivStrategy) DCxt DType
           | DDefaultSigD Name DType
           | DPatSynD Name PatSynArgs DPatSynDir DPat
           | DPatSynSigD Name DPatSynType
@@ -293,13 +294,12 @@ data DInfo = DTyConI DDec (Maybe [DInstanceDec])
 type DInstanceDec = DDec -- ^ Guaranteed to be an instance declaration
 
 -- | Corresponds to TH's @DerivClause@ type.
-data DDerivClause = DDerivClause (Maybe DerivStrategy) DCxt
+data DDerivClause = DDerivClause (Maybe DDerivStrategy) DCxt
                   deriving (Show, Typeable, Data, Generic)
 
-#if __GLASGOW_HASKELL__ < 801
--- | Same as @DerivStrategy@ from TH; defined here for backwards compatibility.
-data DerivStrategy = StockStrategy    -- ^ A \"standard\" derived instance
-                   | AnyclassStrategy -- ^ @-XDeriveAnyClass@
-                   | NewtypeStrategy  -- ^ @-XGeneralizedNewtypeDeriving@
-                   deriving (Show, Typeable, Data, Generic)
-#endif
+-- | Corresponds to TH's @DerivStrategy@ type.
+data DDerivStrategy = DStockStrategy     -- ^ A \"standard\" derived instance
+                    | DAnyclassStrategy  -- ^ @-XDeriveAnyClass@
+                    | DNewtypeStrategy   -- ^ @-XGeneralizedNewtypeDeriving@
+                    | DViaStrategy DType -- ^ @-XDerivingVia@
+                    deriving (Show, Typeable, Data, Generic)
