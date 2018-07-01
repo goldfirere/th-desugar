@@ -195,8 +195,8 @@ test35_expand = [| let f :: Pair a -> a
                        f = fst in
                    f |]
 
-type Const a b = b
-test36_expand = [| let f :: Const Int (,) Bool Char -> Char
+type Constant a b = b
+test36_expand = [| let f :: Constant Int (,) Bool Char -> Char
                        f = snd in
                    f |]
 

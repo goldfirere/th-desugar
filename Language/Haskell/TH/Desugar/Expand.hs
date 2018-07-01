@@ -67,7 +67,8 @@ expand_type ign = go []
       go (t2' : args) t1
     go args (DSigT ty ki) = do
       ty' <- go [] ty
-      return $ applyDType (DSigT ty' ki) args
+      ki' <- go [] ki
+      return $ applyDType (DSigT ty' ki') args
     go args (DConT n) = expand_con ign n args
     go args ty = return $ applyDType ty args
 
@@ -80,7 +81,8 @@ expand_pred ign = go []
       go (t' : args) p
     go args (DSigPr p k) = do
       p' <- go [] p
-      return $ foldl DAppPr (DSigPr p' k) args
+      k' <- expand_type ign k
+      return $ foldl DAppPr (DSigPr p' k') args
     go args (DConPr n) = do
       ty <- expand_con ign n args
       dTypeToDPred ty
