@@ -67,7 +67,8 @@ expand_type ign = go []
       go (t2' : args) t1
     go args (DSigT ty ki) = do
       ty' <- go [] ty
-      return $ applyDType (DSigT ty' ki) args
+      ki' <- go [] ki
+      return $ applyDType (DSigT ty' ki') args
     go args (DConT n) = expand_con ign n args
     go args ty = return $ applyDType ty args
 
@@ -80,7 +81,8 @@ expand_pred ign = go []
       go (t' : args) p
     go args (DSigPr p k) = do
       p' <- go [] p
-      return $ foldl DAppPr (DSigPr p' k) args
+      k' <- expand_type ign k
+      return $ foldl DAppPr (DSigPr p' k') args
     go args (DConPr n) = do
       ty <- expand_con ign n args
       dTypeToDPred ty
@@ -151,7 +153,7 @@ expand_con ign n args = do
 
           where
              -- returns the substed rhs
-            check_eqn :: DsMonad q => [DType] -> DTySynEqn -> q (Maybe DType)
+            check_eqn :: [DType] -> DTySynEqn -> q (Maybe DType)
             check_eqn arg_tys (DTySynEqn lhs rhs) = do
               let m_subst = unionMaybeSubsts $ zipWith (matchTy ign) lhs arg_tys
               T.mapM (flip substTy rhs) m_subst
@@ -164,10 +166,10 @@ expand_con ign n args = do
     give_up :: q DType
     give_up = return $ applyDType (DConT n) args
 
-    no_tyvars_tyfams :: (DsMonad q, Data a) => a -> q Bool
+    no_tyvars_tyfams :: Data a => a -> q Bool
     no_tyvars_tyfams = everything (liftM2 (&&)) (mkQ (return True) no_tyvar_tyfam)
 
-    no_tyvar_tyfam :: DsMonad q => DType -> q Bool
+    no_tyvar_tyfam :: DType -> q Bool
     no_tyvar_tyfam (DVarT _) = return False
     no_tyvar_tyfam (DConT con_name) = do
       m_info <- dsReify con_name

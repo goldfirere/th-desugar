@@ -272,6 +272,15 @@ test_stuck_tyfam_expansion =
                    (expandType orig_ty)
        orig_ty `eqTHSplice` exp_ty)
 
+test_t85 :: Bool
+test_t85 =
+  $(do let orig_ty =
+             (DConT ''Constant `DAppT` DConT ''Int `DAppT` DConT 'True)
+             `DSigT` (DConT ''Constant `DAppT` DConT ''Char `DAppT` DConT ''Bool)
+           expected_ty = DConT 'True `DSigT` DConT ''Bool
+       expanded_ty <- expandType orig_ty
+       expected_ty `eqTHSplice` expanded_ty)
+
 test_getDataD_kind_sig :: Bool
 test_getDataD_kind_sig =
 #if __GLASGOW_HASKELL__ >= 800
@@ -446,6 +455,8 @@ main = hspec $ do
     it "doesn't expand local type families" $ test_local_tyfam_expansion
 
     it "doesn't crash on a stuck type family application" $ test_stuck_tyfam_expansion
+
+    it "expands type synonyms in kinds" $ test_t85
 
     it "reifies data type return kinds accurately" $ test_getDataD_kind_sig
 
