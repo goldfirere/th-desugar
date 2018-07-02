@@ -60,7 +60,7 @@ expand_type ign = go []
   where
     go :: [DType] -> DType -> q DType
     go [] (DForallT tvbs cxt ty) =
-      DForallT tvbs <$> mapM (expand_ ign) cxt <*> expand_type ign ty
+      DForallT tvbs <$> mapM (expand_pred ign) cxt <*> expand_type ign ty
     go _ (DForallT {}) =
       impossible "A forall type is applied to another type."
     go args (DAppT t1 t2) = do
@@ -85,7 +85,7 @@ expand_pred ign = go []
   where
     go :: [DType] -> DPred -> q DPred
     go [] (DForallPr tvbs cxt p) =
-      DForallPr tvbs <$> mapM (expand_ ign) cxt <*> expand_pred ign p
+      DForallPr tvbs <$> mapM (go []) cxt <*> expand_pred ign p
     go _ (DForallPr {}) =
       impossible "A quantified constraint is applied to another constraint."
     go args (DAppPr p t) = do
