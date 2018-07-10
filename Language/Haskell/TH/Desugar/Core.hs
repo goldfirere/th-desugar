@@ -1109,28 +1109,11 @@ dsPred t
   | Just ts <- splitTuple_maybe t
   = concatMapM dsPred ts
 dsPred (ForallT tvbs cxt p) = do
-  p' <- dsPred p
-  (:[]) <$> (DForallPr <$> mapM dsTvb tvbs <*> dsCxt cxt <*> pure (mkCTupleDPred p'))
-  where
-    -- Make a constraint tuple 'DPred' from a 'DCxt'. Avoids using a 1-tuple.
-    --
-    -- This is all a bit unfortunate, since 'dsPred' goes through the effort of
-    -- flattening constraint tuples in the first place. However, in general it
-    -- is the case that:
-    --
-    -- @forall x. (c x, d x)@
-    --
-    -- Is not equivalent to:
-    --
-    -- @(forall x. c x, forall x. d x)@
-    --
-    -- So in the event that a constraint tuple appears in a quantified
-    -- constraint, we have little choice but to convert it back into a
-    -- constraint tuple after passing through 'dsPred'.
-    mkCTupleDPred :: DCxt -> DPred
-    mkCTupleDPred [pr] = pr
-    mkCTupleDPred prs  = foldl (\f -> DAppPr f . dPredToDType)
-                              (DConPr (tupleDataName (length cxt))) prs
+  ps' <- dsPred p
+  case ps' of
+    [p'] -> (:[]) <$> (DForallPr <$> mapM dsTvb tvbs <*> dsCxt cxt <*> pure p')
+    _    -> fail "Cannot desugar constraint tuples in the body of a quantified constraint"
+              -- See Trac #15334.
 dsPred (AppT t1 t2) = do
   [p1] <- dsPred t1   -- tuples can't be applied!
   (:[]) <$> DAppPr p1 <$> dsType t2
