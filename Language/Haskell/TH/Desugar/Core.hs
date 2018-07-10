@@ -777,7 +777,7 @@ dsDec (PatSynD n args dir pat) = do
   return [DPatSynD n args dir' pat']
 dsDec (PatSynSigD n ty) = (:[]) <$> (DPatSynSigD n <$> dsType ty)
 dsDec (StandaloneDerivD mds cxt ty) =
-  (:[]) <$> (DStandaloneDerivD mds     <$> dsCxt cxt <*> dsType ty)
+  (:[]) <$> (DStandaloneDerivD <$> mapM dsDerivStrategy mds <*> dsCxt cxt <*> dsType ty)
 #else
 dsDec (StandaloneDerivD cxt ty) =
   (:[]) <$> (DStandaloneDerivD Nothing <$> dsCxt cxt <*> dsType ty)
@@ -1066,13 +1066,25 @@ dsCxt = concatMapM dsPred
 #if __GLASGOW_HASKELL__ >= 801
 -- | Desugar a @DerivClause@.
 dsDerivClause :: DsMonad q => DerivClause -> q DDerivClause
-dsDerivClause (DerivClause mds cxt) = DDerivClause mds <$> dsCxt cxt
+dsDerivClause (DerivClause mds cxt) =
+  DDerivClause <$> mapM dsDerivStrategy mds <*> dsCxt cxt
 #elif __GLASGOW_HASKELL__ >= 711
 dsDerivClause :: DsMonad q => Pred -> q DDerivClause
 dsDerivClause p = DDerivClause Nothing <$> dsPred p
 #else
 dsDerivClause :: DsMonad q => Name -> q DDerivClause
 dsDerivClause n = pure $ DDerivClause Nothing [DConPr n]
+#endif
+
+#if __GLASGOW_HASKELL__ >= 801
+-- | Desugar a @DerivStrategy@.
+dsDerivStrategy :: DsMonad q => DerivStrategy -> q DDerivStrategy
+dsDerivStrategy StockStrategy    = pure DStockStrategy
+dsDerivStrategy AnyclassStrategy = pure DAnyclassStrategy
+dsDerivStrategy NewtypeStrategy  = pure DNewtypeStrategy
+#if __GLASGOW_HASKELL__ >= 805
+dsDerivStrategy (ViaStrategy ty) = DViaStrategy <$> dsType ty
+#endif
 #endif
 
 #if __GLASGOW_HASKELL__ >= 801
@@ -1096,7 +1108,12 @@ dsPred (EqualP t1 t2) = do
 dsPred t
   | Just ts <- splitTuple_maybe t
   = concatMapM dsPred ts
-dsPred t@(ForallT _ _ _) = impossible $ "Forall seen in constraint: " ++ show t
+dsPred (ForallT tvbs cxt p) = do
+  ps' <- dsPred p
+  case ps' of
+    [p'] -> (:[]) <$> (DForallPr <$> mapM dsTvb tvbs <*> dsCxt cxt <*> pure p')
+    _    -> fail "Cannot desugar constraint tuples in the body of a quantified constraint"
+              -- See Trac #15334.
 dsPred (AppT t1 t2) = do
   [p1] <- dsPred t1   -- tuples can't be applied!
   (:[]) <$> DAppPr p1 <$> dsType t2
@@ -1239,9 +1256,10 @@ strictToBang :: Bang -> Bang
 strictToBang = id
 #endif
 
--- | Convert a 'DType' to a 'DPred'
+-- | Convert a 'DType' to a 'DPred'.
 dTypeToDPred :: Monad q => DType -> q DPred
-dTypeToDPred (DForallT _ _ _) = impossible "Forall-type used as constraint"
+dTypeToDPred (DForallT tvbs cxt ty)
+                             = DForallPr tvbs cxt `liftM` dTypeToDPred ty
 dTypeToDPred (DAppT t1 t2)   = liftM2 DAppPr (dTypeToDPred t1) (return t2)
 dTypeToDPred (DSigT ty ki)   = liftM2 DSigPr (dTypeToDPred ty) (return ki)
 dTypeToDPred (DVarT n)       = return $ DVarPr n
@@ -1249,6 +1267,15 @@ dTypeToDPred (DConT n)       = return $ DConPr n
 dTypeToDPred DArrowT         = impossible "Arrow used as head of constraint"
 dTypeToDPred (DLitT _)       = impossible "Type literal used as head of constraint"
 dTypeToDPred DWildCardT      = return DWildCardPr
+
+-- | Convert a 'DPred' to 'DType'.
+dPredToDType :: DPred -> DType
+dPredToDType (DForallPr tvbs cxt p) = DForallT tvbs cxt (dPredToDType p)
+dPredToDType (DAppPr p t)           = DAppT (dPredToDType p) t
+dPredToDType (DSigPr p k)           = DSigT (dPredToDType p) k
+dPredToDType (DVarPr n)             = DVarT n
+dPredToDType (DConPr n)             = DConT n
+dPredToDType DWildCardPr            = DWildCardT
 
 -- Take a data type name (which does not belong to a data family) and
 -- apply it to its type variable binders to form a DType.

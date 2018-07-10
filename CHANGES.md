@@ -3,6 +3,14 @@
 
 Version 1.9
 -----------
+* Suppose GHC 8.6.
+
+* Add support for `DerivingVia`. Correspondingly, there is now a
+  `DDerivStrategy` data type.
+
+* Add support for `QuantifiedConstraints`. Correspondingly, there is now a
+  `DForallPr` constructor in `DPred` to represent quantified constraint types.
+
 * Remove the `DStarT` constructor of `DType` in favor of `DConT ''Type`.
   Two utility functions have been added to `Language.Haskell.TH.Desugar` to
   ease this transition:
