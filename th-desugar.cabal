@@ -58,6 +58,7 @@ library
                       Language.Haskell.TH.Desugar.Subst
   other-modules:      Language.Haskell.TH.Desugar.AST,
                       Language.Haskell.TH.Desugar.Core,
+                      Language.Haskell.TH.Desugar.FV,
                       Language.Haskell.TH.Desugar.Match,
                       Language.Haskell.TH.Desugar.Util,
                       Language.Haskell.TH.Desugar.Reify

@@ -25,9 +25,9 @@ import Control.Monad.Zip
 import Control.Monad.Writer hiding (forM_, mapM)
 import Data.Foldable hiding (notElem)
 import Data.Graph
-import qualified Data.Map as Map
+import qualified Data.Map as M
 import Data.Map (Map)
-import qualified Data.Set as Set
+import qualified Data.Set as S
 import Data.Traversable
 #if __GLASGOW_HASKELL__ > 710
 import Data.Maybe (isJust)
@@ -41,10 +41,10 @@ import qualified Control.Monad.Fail as MonadFail
 import GHC.OverloadedLabels ( fromLabel )
 #endif
 
-import qualified Data.Set as S
 import GHC.Exts
 
 import Language.Haskell.TH.Desugar.AST
+import Language.Haskell.TH.Desugar.FV
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Reify
 
@@ -546,15 +546,6 @@ removeWilds (DTildePa pat) = DTildePa <$> removeWilds pat
 removeWilds (DBangPa pat) = DBangPa <$> removeWilds pat
 removeWilds (DSigPa pat ty) = DSigPa <$> removeWilds pat <*> pure ty
 removeWilds DWildPa = DVarPa <$> newUniqueName "wild"
-
-extractBoundNamesDPat :: DPat -> S.Set Name
-extractBoundNamesDPat (DLitPa _)      = S.empty
-extractBoundNamesDPat (DVarPa n)      = S.singleton n
-extractBoundNamesDPat (DConPa _ pats) = S.unions (map extractBoundNamesDPat pats)
-extractBoundNamesDPat (DTildePa p)    = extractBoundNamesDPat p
-extractBoundNamesDPat (DBangPa p)     = extractBoundNamesDPat p
-extractBoundNamesDPat (DSigPa p _)    = extractBoundNamesDPat p
-extractBoundNamesDPat DWildPa         = S.empty
 
 -- | Desugar @Info@
 dsInfo :: DsMonad q => Info -> q DInfo
@@ -1321,7 +1312,7 @@ dataFamInstTvbs = toposortTyVarsOf
 toposortTyVarsOf :: [DType] -> [DTyVarBndr]
 toposortTyVarsOf tys =
   let fvs :: [Name]
-      fvs = Set.toList $ foldMap fvDType tys
+      fvs = S.toList $ foldMap fvDType tys
 
       varKindSigs :: Map Name DKind
       varKindSigs = foldMap go_ty tys
@@ -1333,7 +1324,7 @@ toposortTyVarsOf tys =
           go_ty (DSigT t k) =
             let kSigs = go_ty k
             in case t of
-                 DVarT n -> Map.insert n k kSigs
+                 DVarT n -> M.insert n k kSigs
                  _       -> go_ty t `mappend` kSigs
           go_ty (DVarT {}) = mempty
           go_ty (DConT {}) = mempty
@@ -1354,16 +1345,16 @@ toposortTyVarsOf tys =
           go_tvbs tvbs m = foldr go_tvb m tvbs
 
           go_tvb :: DTyVarBndr -> Map Name DKind -> Map Name DKind
-          go_tvb (DPlainTV n)    m = Map.delete n m
-          go_tvb (DKindedTV n k) m = Map.delete n m `mappend` go_ty k
+          go_tvb (DPlainTV n)    m = M.delete n m
+          go_tvb (DKindedTV n k) m = M.delete n m `mappend` go_ty k
 
       (g, gLookup, _)
         = graphFromEdges [ (fv, fv, kindVars)
                          | fv <- fvs
                          , let kindVars =
-                                 case Map.lookup fv varKindSigs of
+                                 case M.lookup fv varKindSigs of
                                    Nothing -> []
-                                   Just ks -> Set.toList (fvDType ks)
+                                   Just ks -> S.toList (fvDType ks)
                          ]
       tg = reverse $ topSort g
 
@@ -1372,7 +1363,7 @@ toposortTyVarsOf tys =
           (n, _, _) -> n
 
       ascribeWithKind n
-        | Just k <- Map.lookup n varKindSigs
+        | Just k <- M.lookup n varKindSigs
         = DKindedTV n k
         | otherwise
         = DPlainTV n
@@ -1387,35 +1378,12 @@ toposortTyVarsOf tys =
 #else
         = (`elem` kindVars)
           where
-            kindVars = foldMap fvDType $ Map.elems varKindSigs
+            kindVars = foldMap fvDType $ M.elems varKindSigs
 #endif
 
   in map ascribeWithKind $
      filter (not . isKindBinderOnOldGHCs) $
      map lookupVertex tg
-
-fvDType :: DType -> S.Set Name
-fvDType = go_ty
-  where
-    go_ty :: DType -> S.Set Name
-    go_ty (DForallT tvbs cxt ty) = foldr go_tvb (foldMap go_pred cxt <> go_ty ty) tvbs
-    go_ty (DAppT t1 t2)          = go_ty t1 <> go_ty t2
-    go_ty (DSigT ty ki)          = go_ty ty <> go_ty ki
-    go_ty (DVarT n)              = S.singleton n
-    go_ty (DConT {})             = S.empty
-    go_ty DArrowT                = S.empty
-    go_ty (DLitT {})             = S.empty
-    go_ty DWildCardT             = S.empty
-
-    go_pred :: DPred -> S.Set Name
-    go_pred (DAppPr pr ty) = go_pred pr <> go_ty ty
-    go_pred (DSigPr pr ki) = go_pred pr <> go_ty ki
-    go_pred (DVarPr n)     = S.singleton n
-    go_pred _              = S.empty
-
-    go_tvb :: DTyVarBndr -> S.Set Name -> S.Set Name
-    go_tvb (DPlainTV n)    fvs = S.delete n fvs
-    go_tvb (DKindedTV n k) fvs = S.delete n fvs <> go_ty k
 
 dtvbName :: DTyVarBndr -> Name
 dtvbName (DPlainTV n)    = n

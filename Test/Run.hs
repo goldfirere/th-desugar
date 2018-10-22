@@ -47,6 +47,7 @@ import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 import Control.Monad
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
+import Data.Foldable (foldMap)
 #endif
 
 import Data.Generics ( geq )
@@ -313,6 +314,50 @@ test_getDataD_kind_sig =
   True -- DataD didn't have the ability to store kind signatures prior to GHC 8.0
 #endif
 
+-- Unit tests for functions that compute free variables (e.g., fvDType)
+test_fvs :: [Bool]
+test_fvs =
+  $(do a <- newName "a"
+       f <- newName "f"
+       g <- newName "g"
+       x <- newName "x"
+       y <- newName "y"
+       z <- newName "z"
+
+       let -- (Show a => Show (Maybe a)) => String
+           ty1 = DForallT
+                   []
+                   [DForallPr [] [DConPr ''Show `DAppPr` DVarT a]
+                                 (DConPr ''Show `DAppPr` (DConT ''Maybe `DAppT` DVarT a))]
+                   (DConT ''String)
+           b1 = fvDType ty1 `eqTH` S.singleton a -- #93
+
+           -- let f x = g x
+           --     g x = f x
+           -- in ()
+           lds2 = [ DFunD f [DClause [DVarPa x] (DVarE g `DAppE` DVarE x)]
+                  , DFunD g [DClause [DVarPa x] (DVarE f `DAppE` DVarE x)]
+                  ]
+           b2a = fvDLetDecs lds2 S.empty `eqTH` S.empty
+           b2b = foldMap extractBoundNamesDLetDec lds2 `eqTH` S.fromList [f, g]
+
+           -- case x of
+           --   Just y -> \z -> f x y z
+           e3 = DCaseE (DVarE x)
+                       [DMatch (DConPa 'Just [DVarPa y])
+                               (DLamE [z] (DVarE f `DAppE` DVarE x
+                                                   `DAppE` DVarE y
+                                                   `DAppE` DVarE z))]
+           b3 = fvDExp e3 `eqTH` S.fromList [f, x]
+
+           -- some_function (Just (x :: [a])) = f @a
+           p4  = DConPa 'Just [DSigPa (DVarPa x) (DConT ''[] `DAppT` DVarT a)]
+           c4  = DClause [p4] (DVarE f `DAppTypeE` DVarT a)
+           b4a = fvDClause c4 `eqTH` S.singleton f
+           b4b = extractBoundNamesDPat p4 `eqTH` S.fromList [x]
+
+       [| [b1, b2a, b2b, b3, b4a, b4b] |])
+
 test_kind_substitution :: [Bool]
 test_kind_substitution =
   $(do a <- newName "a"
@@ -476,6 +521,9 @@ main = hspec $ do
     it "toposorts free variables in polytypes" $ test_t92
 
     it "reifies data type return kinds accurately" $ test_getDataD_kind_sig
+
+    zipWithM (\b n -> it ("computes free variables correctly " ++ show n) b)
+      test_fvs [1..]
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')

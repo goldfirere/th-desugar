@@ -5,6 +5,9 @@ Version next
 ------------
 * Fix a bug in which `toposortTyVarsOf` would error at runtime if given types
   containing `forall`s as arguments.
+* Fix a bug in which `fvDType` would return incorrect results if given a type
+  containing quantified constraints.
+* Add more functions which compute free variables.
 
 Version 1.9
 -----------

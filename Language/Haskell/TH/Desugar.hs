@@ -78,6 +78,9 @@ module Language.Haskell.TH.Desugar (
   -- * Capture-avoiding substitution and utilities
   module Language.Haskell.TH.Desugar.Subst,
 
+  -- * Free variable calculation
+  module Language.Haskell.TH.Desugar.FV,
+
   -- * Utility functions
   applyDExp, applyDType,
   dPatToDExp, removeWilds,
@@ -85,7 +88,6 @@ module Language.Haskell.TH.Desugar (
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
   mkTypeName, mkDataName, newUniqueName,
   mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE, mkDLamEFromDPats,
-  fvDType,
   tupleDegree_maybe, tupleNameDegree_maybe,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
@@ -99,6 +101,7 @@ module Language.Haskell.TH.Desugar (
 
 import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.Core
+import Language.Haskell.TH.Desugar.FV
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Sweeten
 import Language.Haskell.TH.Syntax

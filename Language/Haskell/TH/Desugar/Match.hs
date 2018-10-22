@@ -34,6 +34,7 @@ import Language.Haskell.TH.Syntax
 
 import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.Core
+import Language.Haskell.TH.Desugar.FV
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Reify
 
