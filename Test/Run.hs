@@ -289,6 +289,13 @@ test_t85 =
        expanded_ty <- expandType orig_ty
        expected_ty `eqTHSplice` expanded_ty)
 
+test_t92 :: Bool
+test_t92 =
+  $(do a <- newName "a"
+       f <- newName "f"
+       let t = DForallT [DPlainTV f] [] (DVarT f `DAppT` DVarT a)
+       toposortTyVarsOf [t] `eqTHSplice` [DPlainTV a])
+
 test_getDataD_kind_sig :: Bool
 test_getDataD_kind_sig =
 #if __GLASGOW_HASKELL__ >= 800
@@ -465,6 +472,8 @@ main = hspec $ do
     it "doesn't crash on a stuck type family application" $ test_stuck_tyfam_expansion
 
     it "expands type synonyms in kinds" $ test_t85
+
+    it "toposorts free variables in polytypes" $ test_t92
 
     it "reifies data type return kinds accurately" $ test_getDataD_kind_sig
 
