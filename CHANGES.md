@@ -1,6 +1,11 @@
 `th-desugar` release notes
 ==========================
 
+Version next
+------------
+* Fix a bug in which `toposortTyVarsOf` would error at runtime if given types
+  containing `forall`s as arguments.
+
 Version 1.9
 -----------
 * Suppose GHC 8.6.

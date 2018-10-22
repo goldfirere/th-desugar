@@ -1324,21 +1324,38 @@ toposortTyVarsOf tys =
       fvs = Set.toList $ foldMap fvDType tys
 
       varKindSigs :: Map Name DKind
-      varKindSigs = foldMap go tys
+      varKindSigs = foldMap go_ty tys
         where
-          go :: DType -> Map Name DKind
-          go (DForallT {}) = error "`forall` type used in type family pattern"
-          go (DAppT t1 t2) = go t1 `mappend` go t2
-          go (DSigT t k) =
-            let kSigs = go k
+          go_ty :: DType -> Map Name DKind
+          go_ty (DForallT tvbs ctxt t) =
+            go_tvbs tvbs (foldMap go_pred ctxt `mappend` go_ty t)
+          go_ty (DAppT t1 t2) = go_ty t1 `mappend` go_ty t2
+          go_ty (DSigT t k) =
+            let kSigs = go_ty k
             in case t of
                  DVarT n -> Map.insert n k kSigs
-                 _       -> go t `mappend` kSigs
-          go (DVarT {}) = mempty
-          go (DConT {}) = mempty
-          go DArrowT    = mempty
-          go (DLitT {}) = mempty
-          go DWildCardT = mempty
+                 _       -> go_ty t `mappend` kSigs
+          go_ty (DVarT {}) = mempty
+          go_ty (DConT {}) = mempty
+          go_ty DArrowT    = mempty
+          go_ty (DLitT {}) = mempty
+          go_ty DWildCardT = mempty
+
+          go_pred :: DPred -> Map Name DKind
+          go_pred (DForallPr tvbs ctxt pr) =
+            go_tvbs tvbs (foldMap go_pred ctxt `mappend` go_pred pr)
+          go_pred (DAppPr pr ty) = go_pred pr `mappend` go_ty ty
+          go_pred (DSigPr pr ki) = go_pred pr `mappend` go_ty ki
+          go_pred (DVarPr{})     = mempty
+          go_pred (DConPr{})     = mempty
+          go_pred DWildCardPr    = mempty
+
+          go_tvbs :: [DTyVarBndr] -> Map Name DKind -> Map Name DKind
+          go_tvbs tvbs m = foldr go_tvb m tvbs
+
+          go_tvb :: DTyVarBndr -> Map Name DKind -> Map Name DKind
+          go_tvb (DPlainTV n)    m = Map.delete n m
+          go_tvb (DKindedTV n k) m = Map.delete n m `mappend` go_ty k
 
       (g, gLookup, _)
         = graphFromEdges [ (fv, fv, kindVars)
