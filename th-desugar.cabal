@@ -1,5 +1,5 @@
 name:           th-desugar
-version:        1.9
+version:        1.10
 cabal-version:  >= 1.10
 synopsis:       Functions to desugar Template Haskell
 homepage:       https://github.com/goldfirere/th-desugar
@@ -33,7 +33,7 @@ description:
 source-repository this
   type:     git
   location: https://github.com/goldfirere/th-desugar.git
-  tag:      v1.9
+  tag:      v1.10
 
 source-repository head
   type:     git
