@@ -1,12 +1,14 @@
 `th-desugar` release notes
 ==========================
 
-Version next
+Version 1.10
 ------------
 * Fix a bug in which `toposortTyVarsOf` would error at runtime if given types
   containing `forall`s as arguments.
 * Fix a bug in which `fvDType` would return incorrect results if given a type
   containing quantified constraints.
+* Fix a bug in which `expandType` would not expand type synonyms in the kinds
+  of type variable binders in `forall`s.
 * Add more functions which compute free variables.
 
 Version 1.9

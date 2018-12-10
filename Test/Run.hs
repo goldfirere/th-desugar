@@ -297,6 +297,17 @@ test_t92 =
        let t = DForallT [DPlainTV f] [] (DVarT f `DAppT` DVarT a)
        toposortTyVarsOf [t] `eqTHSplice` [DPlainTV a])
 
+test_t97 :: Bool
+test_t97 =
+  $(do a <- newName "a"
+       k <- newName "k"
+       let orig_ty = DForallT
+                       [DKindedTV a (DConT ''Constant `DAppT` DConT ''Int `DAppT` DVarT k)]
+                       [] (DVarT a)
+           expected_ty = DForallT [DKindedTV a (DVarT k)] [] (DVarT a)
+       expanded_ty <- expandType orig_ty
+       expected_ty `eqTHSplice` expanded_ty)
+
 test_getDataD_kind_sig :: Bool
 test_getDataD_kind_sig =
 #if __GLASGOW_HASKELL__ >= 800
@@ -519,6 +530,8 @@ main = hspec $ do
     it "expands type synonyms in kinds" $ test_t85
 
     it "toposorts free variables in polytypes" $ test_t92
+
+    it "expands type synonyms in type variable binders" $ test_t97
 
     it "reifies data type return kinds accurately" $ test_getDataD_kind_sig
 
