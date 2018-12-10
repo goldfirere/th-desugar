@@ -60,7 +60,9 @@ expand_type ign = go []
   where
     go :: [DType] -> DType -> q DType
     go [] (DForallT tvbs cxt ty) =
-      DForallT tvbs <$> mapM (expand_pred ign) cxt <*> expand_type ign ty
+      DForallT <$> mapM (expand_tvb ign) tvbs
+               <*> mapM (expand_pred ign) cxt
+               <*> expand_type ign ty
     go _ (DForallT {}) =
       impossible "A forall type is applied to another type."
     go args (DAppT t1 t2) = do
@@ -85,7 +87,9 @@ expand_pred ign = go []
   where
     go :: [DType] -> DPred -> q DPred
     go [] (DForallPr tvbs cxt p) =
-      DForallPr tvbs <$> mapM (go []) cxt <*> expand_pred ign p
+      DForallPr <$> mapM (expand_tvb ign) tvbs
+                <*> mapM (go []) cxt
+                <*> expand_pred ign p
     go _ (DForallPr {}) =
       impossible "A quantified constraint is applied to another constraint."
     go args (DAppPr p t) = do
@@ -103,6 +107,11 @@ expand_pred ign = go []
 
     finish :: DPred -> [DType] -> q DPred
     finish p args = return $ foldl DAppPr p args
+
+-- | Expands all type synonyms in a type variable binder's kind.
+expand_tvb :: DsMonad q => IgnoreKinds -> DTyVarBndr -> q DTyVarBndr
+expand_tvb _   tvb@DPlainTV{} = pure tvb
+expand_tvb ign (DKindedTV n k) = DKindedTV n <$> expand_type ign k
 
 -- | Expand a constructor with given arguments
 expand_con :: forall q.
