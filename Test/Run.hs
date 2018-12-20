@@ -17,6 +17,7 @@ rae@cs.brynmawr.edu
 #if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures -Wno-redundant-constraints #-}
 #endif
 
@@ -138,6 +139,10 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #if __GLASGOW_HASKELL__ >= 805
              , "quantified_constraints" ~: $test48_quantified_constraints @=? $(dsSplice test48_quantified_constraints)
 #endif
+#if __GLASGOW_HASKELL__ >= 807
+             , "implicit_params" ~: $test49_implicit_params @=? $(dsSplice test49_implicit_params)
+             , "vka"             ~: $test50_vka             @=? $(dsSplice test50_vka)
+#endif
              ]
 
 test35a = $test35_expand
@@ -209,15 +214,15 @@ test_mkName = and [ hasSameType (Proxy :: Proxy FuzzSyn) (Proxy :: Proxy Fuzz)
 test_bug8884 :: Bool
 test_bug8884 = $(do info <- reify ''Poly
                     dinfo@(DTyConI (DOpenTypeFamilyD (DTypeFamilyHead _name _tvbs (DKindSig resK) _ann))
-                                   (Just [DTySynInstD _name2 (DTySynEqn lhs _rhs)]))
+                                   (Just [DTySynInstD (DTySynEqn _ lhs _rhs)]))
                       <- dsInfo info
                     let isTypeKind (DConT n) = isTypeKindName n
                         isTypeKind _         = False
                     case (isTypeKind resK, lhs) of
 #if __GLASGOW_HASKELL__ < 709
-                      (True, [DVarT _]) -> [| True |]
+                      (True, _ `DAppT` DVarT _) -> [| True |]
 #else
-                      (True, [DSigT (DVarT _) (DVarT _)]) -> [| True |]
+                      (True, _ `DAppT` DSigT (DVarT _) (DVarT _)) -> [| True |]
 #endif
                       _                                     -> do
                         runIO $ do
@@ -257,7 +262,8 @@ test_local_tyfam_expansion =
        let orig_ty = DConT fam_name
        exp_ty <- withLocalDeclarations
                    (decsToTH [ DOpenTypeFamilyD (DTypeFamilyHead fam_name [] DNoSig Nothing)
-                             , DTySynInstD fam_name (DTySynEqn [] (DConT ''Int)) ])
+                             , DTySynInstD (DTySynEqn Nothing
+                                                      (DConT fam_name) (DConT ''Int)) ])
                    (expandType orig_ty)
        orig_ty `eqTHSplice` exp_ty)
 
@@ -275,8 +281,11 @@ test_stuck_tyfam_expansion =
                                                   (DKindSig (DVarT k))
                                                   Nothing)
                                -- type instance F (x :: ()) = x
-                             , DTySynInstD fam_name
-                                 (DTySynEqn [DSigT (DVarT x) (DConT ''())] (DVarT x))
+                             , DTySynInstD
+                                 (DTySynEqn Nothing
+                                            (DConT fam_name `DAppT`
+                                               DSigT (DVarT x) (DConT ''()))
+                                            (DVarT x))
                              ])
                    (expandType orig_ty)
        orig_ty `eqTHSplice` exp_ty)

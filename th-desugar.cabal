@@ -43,7 +43,8 @@ source-repository head
 library
   build-depends:
       base >= 4 && < 5,
-      template-haskell >= 2.8 && < 2.15,
+      ghc-prim,
+      template-haskell >= 2.8 && < 2.16,
       containers >= 0.5,
       mtl >= 2.1,
       syb >= 0.4,

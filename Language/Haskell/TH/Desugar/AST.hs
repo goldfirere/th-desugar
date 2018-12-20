@@ -42,6 +42,7 @@ data DPat = DLitP Lit
 -- types and kinds.
 data DType = DForallT [DTyVarBndr] DCxt DType
            | DAppT DType DType
+           | DAppKindT DType DKind
            | DSigT DType DKind
            | DVarT Name
            | DConT Name
@@ -95,8 +96,9 @@ data DDec = DLetDec DLetDec
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
           | DDataFamilyD Name [DTyVarBndr] (Maybe DKind)
-          | DDataInstD NewOrData DCxt Name [DType] (Maybe DKind) [DCon] [DDerivClause]
-          | DTySynInstD Name DTySynEqn
+          | DDataInstD NewOrData DCxt (Maybe [DTyVarBndr]) DType (Maybe DKind)
+                       [DCon] [DDerivClause]
+          | DTySynInstD DTySynEqn
           | DRoleAnnotD Name [Role]
           | DStandaloneDerivD (Maybe DDerivStrategy) DCxt DType
           | DDefaultSigD Name DType
@@ -245,7 +247,7 @@ data DForeign = DImportF Callconv Safety String Name DType
 data DPragma = DInlineP Name Inline RuleMatch Phases
              | DSpecialiseP Name DType (Maybe Inline) Phases
              | DSpecialiseInstP DType
-             | DRuleP String [DRuleBndr] DExp DExp Phases
+             | DRuleP String (Maybe [DTyVarBndr]) [DRuleBndr] DExp DExp Phases
              | DAnnP AnnTarget DExp
              | DLineP Int String
              | DCompleteP [Name] (Maybe Name)
@@ -257,7 +259,7 @@ data DRuleBndr = DRuleVar Name
                deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @TySynEqn@ type (to store type family equations).
-data DTySynEqn = DTySynEqn [DType] DType
+data DTySynEqn = DTySynEqn (Maybe [DTyVarBndr]) DType DType
                deriving (Show, Typeable, Data, Generic)
 
 #if __GLASGOW_HASKELL__ < 707

@@ -49,6 +49,8 @@ substTy vars (DForallT tvbs cxt ty) =
     return $ DForallT tvbs' cxt' ty'
 substTy vars (DAppT t1 t2) =
   DAppT <$> substTy vars t1 <*> substTy vars t2
+substTy vars (DAppKindT t k) =
+  DAppKindT <$> substTy vars t <*> substTy vars k
 substTy vars (DSigT ty ki) =
   DSigT <$> substTy vars ty <*> substTy vars ki
 substTy vars (DVarT n)

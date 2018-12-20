@@ -58,7 +58,7 @@ expandType = expand_type NoIgnore
 expand_type :: forall q. DsMonad q => IgnoreKinds -> DType -> q DType
 expand_type ign = go []
   where
-    go :: [DType] -> DType -> q DType
+    go :: [DTypeArg] -> DType -> q DType
     go [] (DForallT tvbs cxt ty) =
       DForallT <$> mapM (expand_tvb ign) tvbs
                <*> mapM (expand_type ign) cxt
@@ -67,7 +67,10 @@ expand_type ign = go []
       impossible "A forall type is applied to another type."
     go args (DAppT t1 t2) = do
       t2' <- expand_type ign t2
-      go (t2' : args) t1
+      go (DTANormal t2' : args) t1
+    go args (DAppKindT p k) = do
+      k' <- expand_type ign k
+      go (DTyArg k' : args) p
     go args (DSigT ty ki) = do
       ty' <- go [] ty
       ki' <- go [] ki
@@ -78,7 +81,7 @@ expand_type ign = go []
     go args ty@(DLitT _)  = finish ty args
     go args ty@DWildCardT = finish ty args
 
-    finish :: DType -> [DType] -> q DType
+    finish :: DType -> [DTypeArg] -> q DType
     finish ty args = return $ applyDType ty args
 
 -- | Expands all type synonyms in a type variable binder's kind.
@@ -90,9 +93,9 @@ expand_tvb ign (DKindedTV n k) = DKindedTV n <$> expand_type ign k
 expand_con :: forall q.
               DsMonad q
            => IgnoreKinds
-           -> Name     -- ^ Tycon name
-           -> [DType]  -- ^ Arguments
-           -> q DType  -- ^ Expanded type
+           -> Name       -- ^ Tycon name
+           -> [DTypeArg] -- ^ Arguments
+           -> q DType    -- ^ Expanded type
 expand_con ign n args = do
   info <- reifyWithLocals n
   case info of
@@ -101,26 +104,32 @@ expand_con ign n args = do
       -> return $ applyDType (DConT typeKindName) args
     _ -> go info
   where
+    -- Only the normal (i.e., non-visibly applied) arguments. These are
+    -- important since we need to align these with the arguments of the type
+    -- synonym/family, and visible kind arguments can mess with this.
+    normal_args :: [DType]
+    normal_args = filterDTANormals args
+
     go :: Info -> q DType
     go info = do
       dinfo <- dsInfo info
-      args_ok <- allM no_tyvars_tyfams args
+      args_ok <- allM no_tyvars_tyfams normal_args
       case dinfo of
         DTyConI (DTySynD _n tvbs rhs) _
-          |  length args >= length tvbs   -- this should always be true!
+          |  length normal_args >= length tvbs   -- this should always be true!
           -> do
-            let (syn_args, rest_args) = splitAtList tvbs args
+            let (syn_args, rest_args) = splitAtList tvbs normal_args
             ty <- substTy (M.fromList $ zip (map extractDTvbName tvbs) syn_args) rhs
             ty' <- expand_type ign ty
-            return $ applyDType ty' rest_args
+            return $ applyDType ty' $ map DTANormal rest_args
 
         DTyConI (DOpenTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann)) _
-          |  length args >= length tvbs   -- this should always be true!
+          |  length normal_args >= length tvbs   -- this should always be true!
 #if __GLASGOW_HASKELL__ < 709
           ,  args_ok
 #endif
           -> do
-            let (syn_args, rest_args) = splitAtList tvbs args
+            let (syn_args, rest_args) = splitAtList tvbs normal_args
             -- We need to get the correct instance. If we fail to reify anything
             -- (e.g., if a type family is quasiquoted), then fall back by
             -- pretending that there are no instances in scope.
@@ -128,32 +137,36 @@ expand_con ign n args = do
                      qReifyInstances n (map typeToTH syn_args)
             dinsts <- dsDecs insts
             case dinsts of
-              [DTySynInstD _n (DTySynEqn lhs rhs)]
-                |  Just subst <-
-                     unionMaybeSubsts $ zipWith (matchTy ign) lhs syn_args
+              [DTySynInstD (DTySynEqn _ lhs rhs)]
+                |  (_, lhs_args) <- unfoldDType lhs
+                ,  let lhs_normal_args = filterDTANormals lhs_args
+                ,  Just subst <-
+                     unionMaybeSubsts $ zipWith (matchTy ign) lhs_normal_args syn_args
                 -> do ty <- substTy subst rhs
                       ty' <- expand_type ign ty
-                      return $ applyDType ty' rest_args
+                      return $ applyDType ty' $ map DTANormal rest_args
               _ -> give_up
 
 
         DTyConI (DClosedTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann) eqns) _
-          |  length args >= length tvbs
+          |  length normal_args >= length tvbs
           ,  args_ok
           -> do
-            let (syn_args, rest_args) = splitAtList tvbs args
+            let (syn_args, rest_args) = splitAtList tvbs normal_args
             rhss <- mapMaybeM (check_eqn syn_args) eqns
             case rhss of
               (rhs : _) -> do
                 rhs' <- expand_type ign rhs
-                return $ applyDType rhs' rest_args
+                return $ applyDType rhs' $ map DTANormal rest_args
               [] -> give_up
 
           where
              -- returns the substed rhs
             check_eqn :: [DType] -> DTySynEqn -> q (Maybe DType)
-            check_eqn arg_tys (DTySynEqn lhs rhs) = do
-              let m_subst = unionMaybeSubsts $ zipWith (matchTy ign) lhs arg_tys
+            check_eqn arg_tys (DTySynEqn _ lhs rhs) = do
+              let (_, lhs_args) = unfoldDType lhs
+                  normal_lhs_args = filterDTANormals lhs_args
+                  m_subst = unionMaybeSubsts $ zipWith (matchTy ign) normal_lhs_args arg_tys
               T.mapM (flip substTy rhs) m_subst
 
         _ -> give_up

@@ -30,8 +30,10 @@ module Language.Haskell.TH.Desugar.Sweeten (
   conToTH, foreignToTH, pragmaToTH, ruleBndrToTH,
   clauseToTH, tvbToTH, cxtToTH, predToTH, derivClauseToTH,
 #if __GLASGOW_HASKELL__ >= 801
-  patSynDirToTH
+  patSynDirToTH,
 #endif
+
+  typeArgToTH
   ) where
 
 import Prelude hiding (exp)
@@ -40,6 +42,7 @@ import Control.Arrow
 import Language.Haskell.TH hiding (cxt)
 
 import Language.Haskell.TH.Desugar.AST
+import Language.Haskell.TH.Desugar.Core (DTypeArg(..))
 import Language.Haskell.TH.Desugar.Util
 
 import Data.Maybe ( maybeToList, mapMaybe )
@@ -125,38 +128,70 @@ decToTH (DDataFamilyD n tvbs mk) =
 #else
   [FamilyD DataFam n (map tvbToTH tvbs) (fmap typeToTH mk)]
 #endif
-decToTH (DDataInstD Data cxt n tys _mk cons derivings) =
-#if __GLASGOW_HASKELL__ > 710
-  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (fmap typeToTH _mk) (map conToTH cons)
+#if __GLASGOW_HASKELL__ >= 807
+decToTH (DDataInstD Data cxt mtvbs lhs mk cons derivings) =
+  [DataInstD (cxtToTH cxt) (fmap (fmap tvbToTH) mtvbs) (typeToTH lhs)
+             (fmap typeToTH mk) (map conToTH cons)
              (concatMap derivClauseToTH derivings)]
 #else
-  [DataInstD (cxtToTH cxt) n (map typeToTH tys) (map conToTH cons)
+decToTH (DDataInstD Data cxt _mtvbs lhs _mk cons derivings) =
+#if __GLASGOW_HASKELL__ > 710
+  [DataInstD (cxtToTH cxt) n lhs_args (fmap typeToTH _mk) (map conToTH cons)
+             (concatMap derivClauseToTH derivings)]
+#else
+  [DataInstD (cxtToTH cxt) n lhs_args (map conToTH cons)
              (map derivingToTH derivings)]
 #endif
-decToTH (DDataInstD Newtype cxt n tys _mk [con] derivings) =
-#if __GLASGOW_HASKELL__ > 710
-  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (fmap typeToTH _mk) (conToTH con)
+  where
+    lhs' = typeToTH lhs
+    (n, lhs_args) =
+      case unfoldType lhs' of
+        (ConT n', lhs_args') -> (n', filterTANormals lhs_args')
+        (_, _) -> error $ "Illegal data instance LHS: " ++ pprint lhs'
+#endif
+#if __GLASGOW_HASKELL__ >= 807
+decToTH (DDataInstD Newtype cxt mtvbs lhs mk [con] derivings) =
+  [NewtypeInstD (cxtToTH cxt) (fmap (fmap tvbToTH) mtvbs) (typeToTH lhs)
+                (fmap typeToTH mk) (conToTH con)
                 (concatMap derivClauseToTH derivings)]
 #else
-  [NewtypeInstD (cxtToTH cxt) n (map typeToTH tys) (conToTH con)
+decToTH (DDataInstD Newtype cxt _tvbs lhs _mk [con] derivings) =
+#if __GLASGOW_HASKELL__ > 710
+  [NewtypeInstD (cxtToTH cxt) n lhs_args (fmap typeToTH _mk) (conToTH con)
+                (concatMap derivClauseToTH derivings)]
+#else
+  [NewtypeInstD (cxtToTH cxt) n lhs_args (conToTH con)
                 (map derivingToTH derivings)]
 #endif
+  where
+    lhs' = typeToTH lhs
+    (n, lhs_args) =
+      case unfoldType lhs' of
+        (ConT n', lhs_args') -> (n', filterTANormals lhs_args')
+        (_, _) -> error $ "Illegal newtype instance LHS: " ++ pprint lhs'
+#endif
 #if __GLASGOW_HASKELL__ < 707
-decToTH (DTySynInstD n eqn) = [tySynEqnToTHDec n eqn]
+decToTH (DTySynInstD eqn) = [tySynEqnToTHDec eqn]
 decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
   (FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)) :
-  (map (tySynEqnToTHDec n) eqns)
+  (map tySynEqnToTHDec eqns)
 decToTH (DRoleAnnotD {}) = []
 #else
-decToTH (DTySynInstD n eqn) = [TySynInstD n (tySynEqnToTH eqn)]
+#if __GLASGOW_HASKELL__ >= 807
+decToTH (DTySynInstD eqn) = [TySynInstD (snd $ tySynEqnToTH eqn)]
+#else
+decToTH (DTySynInstD eqn) =
+  let (n, eqn') = tySynEqnToTH eqn in
+  [TySynInstD n eqn']
+#endif
 #if __GLASGOW_HASKELL__ > 710
 decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs ann) eqns) =
   [ClosedTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)
-                     (map tySynEqnToTH eqns)
+                     (map (snd . tySynEqnToTH) eqns)
   ]
 #else
 decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
-  [ClosedTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) (map tySynEqnToTH eqns)]
+  [ClosedTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) (map (snd . tySynEqnToTH) eqns)]
 #endif
 decToTH (DRoleAnnotD n roles) = [RoleAnnotD n roles]
 #endif
@@ -268,14 +303,16 @@ conToTH (DCon tvbs cxt n fields rty)
     num_univ_tvs = go rty
       where
         go :: DType -> Int
-        go (DForallT {}) = error "`forall` type used in GADT return type"
         go (DAppT t1 t2) = go t1 + go t2
         go (DSigT t _)   = go t
         go (DVarT {})    = 1
         go (DConT {})    = 0
         go DArrowT       = 0
         go (DLitT {})    = 0
-        go DWildCardT    = 0
+        -- These won't show up on pre-8.0 GHCs
+        go (DForallT {})  = error "`forall` type used in GADT return type"
+        go DWildCardT     = 0
+        go (DAppKindT {}) = 0
 
     con' :: Con
     con' = conToTH $ DCon [] [] n fields rty
@@ -291,8 +328,14 @@ pragmaToTH (DInlineP n inl rm phases) = Just $ InlineP n inl rm phases
 pragmaToTH (DSpecialiseP n ty m_inl phases) =
   Just $ SpecialiseP n (typeToTH ty) m_inl phases
 pragmaToTH (DSpecialiseInstP ty) = Just $ SpecialiseInstP (typeToTH ty)
-pragmaToTH (DRuleP str rbs lhs rhs phases) =
+#if __GLASGOW_HASKELL__ >= 807
+pragmaToTH (DRuleP str mtvbs rbs lhs rhs phases) =
+  Just $ RuleP str (fmap (fmap tvbToTH) mtvbs) (map ruleBndrToTH rbs)
+               (expToTH lhs) (expToTH rhs) phases
+#else
+pragmaToTH (DRuleP str _ rbs lhs rhs phases) =
   Just $ RuleP str (map ruleBndrToTH rbs) (expToTH lhs) (expToTH rhs) phases
+#endif
 #if __GLASGOW_HASKELL__ < 707
 pragmaToTH (DAnnP {}) = Nothing
 #else
@@ -313,15 +356,31 @@ ruleBndrToTH :: DRuleBndr -> RuleBndr
 ruleBndrToTH (DRuleVar n) = RuleVar n
 ruleBndrToTH (DTypedRuleVar n ty) = TypedRuleVar n (typeToTH ty)
 
-#if __GLASGOW_HASKELL__ < 707
+#if __GLASGOW_HASKELL__ >= 807
+-- | It's convenient to also return a 'Name' here, since some call sites make
+-- use of it.
+tySynEqnToTH :: DTySynEqn -> (Name, TySynEqn)
+tySynEqnToTH (DTySynEqn tvbs lhs rhs) =
+  let lhs' = typeToTH lhs in
+  case unfoldType lhs' of
+    (ConT n, _lhs_args) -> (n, TySynEqn (fmap (fmap tvbToTH) tvbs) lhs' (typeToTH rhs))
+    (_, _) -> error $ "Illegal type instance LHS: " ++ pprint lhs'
+#elif __GLASGOW_HASKELL__ >= 707
+tySynEqnToTH :: DTySynEqn -> (Name, TySynEqn)
+tySynEqnToTH (DTySynEqn _ lhs rhs) =
+  let lhs' = typeToTH lhs in
+  case unfoldType lhs' of
+    (ConT n, lhs_args) -> (n, TySynEqn (filterTANormals lhs_args) (typeToTH rhs))
+    (_, _) -> error $ "Illegal type instance LHS: " ++ pprint lhs'
+#else
 -- | GHC 7.6.3 doesn't have TySynEqn, so we sweeten to a Dec in GHC 7.6.3;
 -- GHC 7.8+ does not use this function
-tySynEqnToTHDec :: Name -> DTySynEqn -> Dec
-tySynEqnToTHDec n (DTySynEqn lhs rhs) =
-  TySynInstD n (map typeToTH lhs) (typeToTH rhs)
-#else
-tySynEqnToTH :: DTySynEqn -> TySynEqn
-tySynEqnToTH (DTySynEqn lhs rhs) = TySynEqn (map typeToTH lhs) (typeToTH rhs)
+tySynEqnToTHDec :: DTySynEqn -> Dec
+tySynEqnToTHDec (DTySynEqn _ lhs rhs) =
+  let lhs' = typeToTH lhs in
+  case unfoldType lhs' of
+    (ConT n, lhs_args) -> TySynInstD n (filterTANormals lhs_args) (typeToTH rhs)
+    (_, _) -> error $ "Illegal type instance LHS: " ++ pprint lhs'
 #endif
 
 clauseToTH :: DClause -> Clause
@@ -339,6 +398,13 @@ typeToTH (DLitT lit)            = LitT lit
 typeToTH DWildCardT = WildCardT
 #else
 typeToTH DWildCardT = error "Wildcards supported only in GHC 8.0+"
+#endif
+#if __GLASGOW_HASKELL__ >= 807
+typeToTH (DAppKindT t k)        = AppKindT (typeToTH t) (typeToTH k)
+#else
+-- In the event that we're on a version of Template Haskell without support for
+-- kind applications, we will simply drop the applied kind.
+typeToTH (DAppKindT t _)        = typeToTH t
 #endif
 
 tvbToTH :: DTyVarBndr -> TyVarBndr
@@ -382,27 +448,31 @@ predToTH = go []
   where
     go acc (DAppT p t) = go (typeToTH t : acc) p
     go acc (DSigT p _) = go acc                p  -- this shouldn't happen.
-    go _   (DVarT _)
-      = error "Template Haskell in GHC <= 7.8 does not support variable constraints."
     go acc (DConT n)
       | nameBase n == "~"
       , [t1, t2] <- acc
       = EqualP t1 t2
       | otherwise
       = ClassP n acc
+    go _   (DVarT _)
+      = error "Template Haskell in GHC <= 7.8 does not support variable constraints."
     go _ DWildCardT
       = error "Wildcards supported only in GHC 8.0+"
     go _ (DForallT {})
       = error "Quantified constraints supported only in GHC 8.6+"
     go _ DArrowT
       = error "(->) spotted at head of a constraint"
-    go _ (DLitT lit)
+    go _ (DLitT {})
       = error "Type-level literal spotted at head of a constraint"
+    go _ (DAppKindT {})
+      = error "Visible kind applications supported only in GHC 8.8+"
 #else
 predToTH (DAppT p t) = AppT (predToTH p) (typeToTH t)
 predToTH (DSigT p k) = SigT (predToTH p) (typeToTH k)
 predToTH (DVarT n)   = VarT n
 predToTH (DConT n)   = typeToTH (DConT n)
+predToTH DArrowT     = ArrowT
+predToTH (DLitT lit) = LitT lit
 #if __GLASGOW_HASKELL__ > 710
 predToTH DWildCardT  = WildCardT
 #else
@@ -414,8 +484,13 @@ predToTH (DForallT tvbs cxt p) =
 #else
 predToTH (DForallT {}) = error "Quantified constraints supported only in GHC 8.6+"
 #endif
-predToTH DArrowT     = ArrowT
-predToTH (DLitT lit) = LitT lit
+#if __GLASGOW_HASKELL__ >= 807
+predToTH (DAppKindT p k) = AppKindT (predToTH p) (typeToTH k)
+#else
+-- In the event that we're on a version of Template Haskell without support for
+-- kind applications, we will simply drop the applied kind.
+predToTH (DAppKindT p _) = predToTH p
+#endif
 #endif
 
 tyconToTH :: Name -> Type
@@ -444,6 +519,10 @@ tyconToTH n
   | Just deg <- unboxedSumNameDegree_maybe n   = UnboxedSumT deg
 #endif
   | otherwise                   = ConT n
+
+typeArgToTH :: DTypeArg -> TypeArg
+typeArgToTH (DTANormal t) = TANormal (typeToTH t)
+typeArgToTH (DTyArg k)    = TyArg    (typeToTH k)
 
 #if __GLASGOW_HASKELL__ <= 710
 -- | Convert a 'Bang' to a 'Strict'

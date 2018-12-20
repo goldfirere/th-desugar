@@ -59,6 +59,7 @@ fvDType = go
     go :: DType -> Set Name
     go (DForallT tvbs ctxt ty) = fv_dtvbs tvbs (foldMap fvDType ctxt <> go ty)
     go (DAppT t1 t2)           = go t1 <> go t2
+    go (DAppKindT t k)         = go t <> go k
     go (DSigT ty ki)           = go ty <> go ki
     go (DVarT n)               = S.singleton n
     go (DConT {})              = S.empty
@@ -85,13 +86,13 @@ fv_dpragma :: DPragma -> Set Name
 fv_dpragma = go
   where
     go :: DPragma -> Set Name
-    go (DInlineP {})               = S.empty
-    go (DSpecialiseP _ ty _ _)     = fvDType ty
-    go (DSpecialiseInstP ty)       = fvDType ty
-    go (DRuleP _ rbndrs lhs rhs _) = fv_drule_bndrs rbndrs (fvDExp lhs <> fvDExp rhs)
-    go (DAnnP _ e)                 = fvDExp e
-    go (DLineP {})                 = S.empty
-    go (DCompleteP cns tn)         = S.fromList cns <> foldMap S.singleton tn
+    go (DInlineP {})                 = S.empty
+    go (DSpecialiseP _ ty _ _)       = fvDType ty
+    go (DSpecialiseInstP ty)         = fvDType ty
+    go (DRuleP _ _ rbndrs lhs rhs _) = fv_drule_bndrs rbndrs (fvDExp lhs <> fvDExp rhs)
+    go (DAnnP _ e)                   = fvDExp e
+    go (DLineP {})                   = S.empty
+    go (DCompleteP cns tn)           = S.fromList cns <> foldMap S.singleton tn
 
 -----
 -- Extracting bound term names

@@ -85,3 +85,6 @@ The following constructs are known to be susceptible to this issue:
 1. Desugared Haskell98-style constructors
 2. Locally reified class methods
 3. Locally reified record selectors
+4. Locally reified data constructors
+5. Locally reified type family instances (on GHC 8.8 and later, in which the
+   Template Haskell AST supports explicit `foralls` in type family equations)

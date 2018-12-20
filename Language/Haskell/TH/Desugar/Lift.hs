@@ -38,4 +38,6 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DTyVarBndr
 #if __GLASGOW_HASKELL__ < 801
                  , ''PatSynArgs
 #endif
+
+                 , ''TypeArg, ''DTypeArg
                  ])
