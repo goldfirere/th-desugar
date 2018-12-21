@@ -44,7 +44,7 @@ import qualified Control.Monad.Fail as Fail
 import qualified Control.Monad as Fail
 #endif
 
-import Language.Haskell.TH.ExpandSyns ( expandSyns )
+import Language.Haskell.TH.Datatype
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax hiding ( lift )
 
@@ -113,7 +113,7 @@ getDataD err name = do
     _ -> badDeclaration
   where
     go tvbs mk cons = do
-      k <- maybe (pure (ConT typeKindName)) (runQ . expandSyns) mk
+      k <- maybe (pure (ConT typeKindName)) (runQ . resolveTypeSynonyms) mk
       extra_tvbs <- mkExtraKindBindersGeneric unravelType KindedTV k
       let all_tvbs = tvbs ++ extra_tvbs
       return (all_tvbs, cons)
@@ -265,17 +265,17 @@ reifyInDec n decs (PatSynD n' _ _ _) | n `nameMatches` n'
 
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) cons
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToTypeWithSig tvbs) cons
   = Just info
 reifyInDec n decs (NewtypeD _ ty_name tvbs _mk con _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) [con]
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToTypeWithSig tvbs) [con]
   = Just info
 #else
 reifyInDec n decs (DataD _ ty_name tvbs cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) cons
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToTypeWithSig tvbs) cons
   = Just info
 reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToType tvbs) [con]
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToTypeWithSig tvbs) [con]
   = Just info
 #endif
 #if __GLASGOW_HASKELL__ > 710
@@ -341,7 +341,17 @@ maybeReifyCon n decs ty_name ty_args cons
   = Just (n', VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing fixity)
 #endif
   where
-    result_ty = foldl AppT (ConT ty_name) ty_args
+    result_ty = foldl AppT (ConT ty_name) (map unSigType ty_args)
+      -- Make sure to call unSigType here. Otherwise, if you have this:
+      --
+      --   data D (a :: k) = MkD { unD :: Proxy a }
+      --
+      -- Then the type of unD will be reified as:
+      --
+      --   unD :: forall k (a :: k). D (a :: k) -> Proxy a
+      --
+      -- This is contrast to GHC's own reification, which will produce `D a`
+      -- (without the explicit kind signature) as the type of the first argument.
 
     con_to_type (NormalC _ stys) = mkArrows (map snd    stys)  result_ty
     con_to_type (RecC _ vstys)   = mkArrows (map thdOf3 vstys) result_ty
@@ -354,7 +364,7 @@ maybeReifyCon n decs ty_name ty_args cons
 #if __GLASGOW_HASKELL__ < 711
     fixity = fromMaybe defaultFixity $ reifyFixityInDecs n decs
 #endif
-    tvbs = map PlainTV $ S.elems $ freeNamesOfTypes ty_args
+    tvbs = freeVariablesWellScoped ty_args
 maybeReifyCon _ _ _ _ _ = Nothing
 
 mkVarI :: Name -> [Dec] -> Info
@@ -439,7 +449,7 @@ stripClassDec (ClassD cxt name tvbs fds sub_decs)
 stripClassDec dec = dec
 
 addClassCxt :: Name -> [TyVarBndr] -> Type -> Type
-addClassCxt class_name tvbs ty = ForallT tvbs class_cxt ty
+addClassCxt class_name tvbs ty = quantifyType $ ForallT tvbs class_cxt ty
   where
 #if __GLASGOW_HASKELL__ < 709
     class_cxt = [ClassP class_name (map tvbToType tvbs)]

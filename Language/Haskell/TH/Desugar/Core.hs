@@ -15,7 +15,7 @@ import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
 import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (lift)
-import Language.Haskell.TH.ExpandSyns ( expandSyns )
+import Language.Haskell.TH.Datatype ( resolveTypeSynonyms )
 
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
@@ -780,7 +780,8 @@ dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 -- argument instead of DKind.
 mkExtraKindBinders :: DsMonad q => Maybe Kind -> q [DTyVarBndr]
 mkExtraKindBinders =
-  maybe (pure (DConT typeKindName)) (runQ . expandSyns >=> dsType) >=> mkExtraDKindBinders'
+  maybe (pure (DConT typeKindName)) (runQ . resolveTypeSynonyms >=> dsType)
+    >=> mkExtraDKindBinders'
 
 -- | Like mkExtraDKindBinders, but assumes kind synonyms have been expanded.
 mkExtraDKindBinders' :: Quasi q => DKind -> q [DTyVarBndr]
