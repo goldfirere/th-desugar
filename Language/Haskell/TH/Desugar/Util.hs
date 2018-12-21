@@ -228,7 +228,7 @@ unSigType t = t
 
 -- | Remove all of the explicit kind signatures from a 'Pred'.
 unSigPred :: Pred -> Pred
-#if __GLASGOW_HASKELL__ >= 708
+#if __GLASGOW_HASKELL__ >= 710
 unSigPred = unSigType
 #else
 unSigPred (ClassP n tys) = ClassP n (map unSigType tys)
