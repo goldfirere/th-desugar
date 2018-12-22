@@ -58,8 +58,6 @@ import qualified Data.Set as S
 import Data.Proxy
 #endif
 
-import Debug.Trace
-
 -- |
 -- Convert a HUnit test suite to a spec.  This can be used to run existing
 -- HUnit tests with Hspec.
@@ -547,7 +545,7 @@ main = hspec $ do
                mapM (\ t -> withLocalDeclarations [] (dsType t >>= expandType >>= return . typeToTH)) >>=
               Syn.lift . map pprint)
 
-    zipWith3M (\a b n -> it ("reifies local definition " ++ show n) $ (if (a == b) then id else traceShow (a, b)) $ a == b)
+    zipWith3M (\a b n -> it ("reifies local definition " ++ show n) $ a == b)
       local_reifications normal_reifications [1..]
 
     zipWithM (\b n -> it ("works on simplCase test " ++ show n) b) simplCase [1..]
