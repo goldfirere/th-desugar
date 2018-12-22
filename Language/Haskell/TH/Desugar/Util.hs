@@ -21,18 +21,19 @@ module Language.Haskell.TH.Desugar.Util (
   stripPlainTV_maybe,
   thirdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat,
-  tvbName, tvbToType, nameMatches, freeNamesOfTypes, thdOf3, firstMatch,
+  tvbToType, tvbToTypeWithSig, nameMatches, thdOf3, firstMatch,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
   topEverywhereM, isInfixDataCon,
   isTypeKindName, typeKindName,
-  mkExtraKindBindersGeneric, unravelType
+  mkExtraKindBindersGeneric, unravelType, unSigType
   ) where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
 
 import Language.Haskell.TH hiding ( cxt )
+import Language.Haskell.TH.Datatype (tvName)
 import Language.Haskell.TH.Syntax
 
 import Control.Monad ( replicateM )
@@ -107,14 +108,16 @@ stripPlainTV_maybe _           = Nothing
 impossible :: Monad q => String -> q a
 impossible err = fail (err ++ "\n    This should not happen in Haskell.\n    Please email rae@cs.brynmawr.edu with your code if you see this.")
 
--- | Extract a 'Name' from a 'TyVarBndr'
-tvbName :: TyVarBndr -> Name
-tvbName (PlainTV n)    = n
-tvbName (KindedTV n _) = n
-
--- | Convert a 'TyVarBndr' into a 'Type'
+-- | Convert a 'TyVarBndr' into a 'Type', dropping the kind signature
+-- (if it has one).
 tvbToType :: TyVarBndr -> Type
-tvbToType = VarT . tvbName
+tvbToType = VarT . tvName
+
+-- | Convert a 'TyVarBndr' into a 'Type', preserving the kind signature
+-- (if it has one).
+tvbToTypeWithSig :: TyVarBndr -> Type
+tvbToTypeWithSig (PlainTV n)    = VarT n
+tvbToTypeWithSig (KindedTV n k) = SigT (VarT n) k
 
 -- | Do two names name the same thing?
 nameMatches :: Name -> Name -> Bool
@@ -210,6 +213,28 @@ unravelType (AppT (AppT ArrowT t1) t2) =
   (tvbs, cxt, t1 : tys, res)
 unravelType t = ([], [], [], t)
 
+-- | Remove all of the explicit kind signatures from a 'Type'.
+unSigType :: Type -> Type
+unSigType (SigT t _) = t
+unSigType (AppT f x) = AppT (unSigType f) (unSigType x)
+unSigType (ForallT tvbs ctxt t) =
+  ForallT tvbs (map unSigPred ctxt) (unSigType t)
+#if __GLASGOW_HASKELL__ >= 800
+unSigType (InfixT t1 n t2)  = InfixT (unSigType t1) n (unSigType t2)
+unSigType (UInfixT t1 n t2) = UInfixT (unSigType t1) n (unSigType t2)
+unSigType (ParensT t)       = ParensT (unSigType t)
+#endif
+unSigType t = t
+
+-- | Remove all of the explicit kind signatures from a 'Pred'.
+unSigPred :: Pred -> Pred
+#if __GLASGOW_HASKELL__ >= 710
+unSigPred = unSigType
+#else
+unSigPred (ClassP n tys) = ClassP n (map unSigType tys)
+unSigPred (EqualP t1 t2) = EqualP (unSigType t1) (unSigType t2)
+#endif
+
 ----------------------------------------
 -- Free names, etc.
 ----------------------------------------
@@ -259,26 +284,6 @@ extractBoundNamesPat (ViewP _ pat)         = extractBoundNamesPat pat
 #if __GLASGOW_HASKELL__ >= 801
 extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
 #endif
-
-freeNamesOfTypes :: [Type] -> S.Set Name
-freeNamesOfTypes = foldMap go
-  where
-    go (ForallT tvbs cxt ty) = (foldMap go_tvb tvbs <> go ty <> foldMap go_pred cxt)
-                               S.\\ S.fromList (map tvbName tvbs)
-    go (AppT t1 t2)          = go t1 <> go t2
-    go (SigT ty ki)          = go ty <> go ki
-    go (VarT n)              = S.singleton n
-    go _                     = S.empty
-
-#if __GLASGOW_HASKELL__ >= 709
-    go_pred = go
-#else
-    go_pred (ClassP _ tys) = freeNamesOfTypes tys
-    go_pred (EqualP t1 t2) = go t1 <> go t2
-#endif
-
-    go_tvb (PlainTV{})    = S.empty
-    go_tvb (KindedTV _ k) = go k
 
 ----------------------------------------
 -- General utility

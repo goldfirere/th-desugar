@@ -556,6 +556,13 @@ reifyDecs = [d|
   newtype R24 a = MkR24 [a]
     deriving Eq via (Id [a])
 #endif
+
+#if __GLASGOW_HASKELL__ >= 800
+  class R25 (f :: k -> *) where
+    r26 :: forall (a :: k). f a
+
+  data R27 (a :: k) = R28 { r29 :: Proxy a }
+#endif
   |]
 
 reifyDecsNames :: [Name]
@@ -570,6 +577,9 @@ reifyDecsNames = map mkName
   , "R21"
 #endif
   , "r22"
+#if __GLASGOW_HASKELL__ >= 800
+  , "r26", "R28", "r29"
+#endif
   ]
 
 simplCaseTests :: [Q Exp]

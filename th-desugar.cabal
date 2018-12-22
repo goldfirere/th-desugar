@@ -47,9 +47,9 @@ library
       containers >= 0.5,
       mtl >= 2.1,
       syb >= 0.4,
+      th-abstraction >= 0.2.10,
       th-lift >= 0.6.1,
-      th-orphans >= 0.9.1,
-      th-expand-syns >= 0.3.0.6
+      th-orphans >= 0.9.1
   default-extensions: TemplateHaskell
   exposed-modules:    Language.Haskell.TH.Desugar,
                       Language.Haskell.TH.Desugar.Sweeten,
