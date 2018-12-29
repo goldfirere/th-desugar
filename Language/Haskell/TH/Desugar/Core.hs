@@ -27,6 +27,7 @@ import Data.Foldable hiding (notElem)
 import Data.Graph
 import qualified Data.Map as M
 import Data.Map (Map)
+import Data.Maybe (mapMaybe)
 import qualified Data.Set as S
 import Data.Traversable
 #if __GLASGOW_HASKELL__ > 710
@@ -870,8 +871,10 @@ dsCon univ_dtvbs data_type con = do
   return $ flip map dcons' $ \(n, dtvbs, dcxt, fields, m_gadt_type) ->
     case m_gadt_type of
       Nothing ->
-        let ex_dtvbs = dtvbs in
-        DCon (univ_dtvbs ++ ex_dtvbs) dcxt n fields data_type
+        let ex_dtvbs   = dtvbs
+            expl_dtvbs = univ_dtvbs ++ ex_dtvbs
+            impl_dtvbs = toposortTyVarsOf $ mapMaybe extractTvbKind expl_dtvbs in
+        DCon (impl_dtvbs ++ expl_dtvbs) dcxt n fields data_type
       Just gadt_type ->
         let univ_ex_dtvbs = dtvbs in
         DCon univ_ex_dtvbs dcxt n fields gadt_type
@@ -1400,3 +1403,8 @@ unravel (DAppT (DAppT DArrowT t1) t2) =
   let (tvbs, cxt, tys, res) = unravel t2 in
   (tvbs, cxt, t1 : tys, res)
 unravel t = ([], [], [], t)
+
+-- | Extract the kind from a 'TyVarBndr', if one is present.
+extractTvbKind :: DTyVarBndr -> Maybe DKind
+extractTvbKind (DPlainTV _) = Nothing
+extractTvbKind (DKindedTV _ k) = Just k

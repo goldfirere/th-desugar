@@ -9,8 +9,11 @@ Version 1.10
   containing quantified constraints.
 * Fix a bug in which `expandType` would not expand type synonyms in the kinds
   of type variable binders in `forall`s.
+* Fix a bug in which `getRecordSelectors` would omit record selectors from
+  GADT constructors.
 * Locally reified class methods, data constructors, and record selectors now
   quantify kind variables properly.
+* Desugared ADT constructors now quantify kind variables properly.
 * Add more functions which compute free variables.
 
 Version 1.9

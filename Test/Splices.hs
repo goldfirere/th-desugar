@@ -43,6 +43,7 @@ import GHC.TypeLits
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Desugar
+import Language.Haskell.TH.Syntax (Quasi)
 import Data.Generics
 
 #if __GLASGOW_HASKELL__ >= 803
@@ -104,8 +105,8 @@ dropTrailing0s = everywhere (mkT (mkName . frob . nameBase))
 eqTH :: (Data a, Show a) => a -> a -> Bool
 eqTH a b = show (unqualify a) == show (unqualify b)
 
-eqTHSplice :: (Data a, Show a) => a -> a -> Q Exp
-eqTHSplice a b =
+eqTHSplice :: (Quasi q, Data a, Show a) => a -> a -> q Exp
+eqTHSplice a b = runQ $
   if a `eqTH` b
   then [| True |]
   else [| False |]

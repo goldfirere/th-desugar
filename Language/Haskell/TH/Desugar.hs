@@ -111,6 +111,8 @@ import Language.Haskell.TH.Desugar.Match
 import Language.Haskell.TH.Desugar.Subst
 
 import Control.Monad
+import Data.Function
+import Data.List
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Prelude hiding ( exp )
@@ -207,28 +209,32 @@ flattenDValD other_dec = return [other_dec]
 -- See https://github.com/goldfirere/singletons/issues/180 for an example where
 -- the latter behavior can bite you.
 
-getRecordSelectors :: Quasi q
+getRecordSelectors :: DsMonad q
                    => DType        -- ^ the type of the argument
                    -> [DCon]
                    -> q [DLetDec]
 getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sels cons
   where
-    get_record_sels (DCon _ _ con_name con _) = case con of
-      DRecC fields -> go fields
-      _ -> return []
-      where
-        go fields = do
-          varName <- qNewName "field"
-          let tvbs     = fvDType arg_ty
-              forall'  = DForallT (map DPlainTV $ S.toList tvbs) []
-              num_pats = length fields
-          return $ concat
-            [ [ DSigD name (forall' $ DArrowT `DAppT` arg_ty `DAppT` res_ty)
-              , DFunD name [DClause [DConPa con_name (mk_field_pats n num_pats varName)]
-                                    (DVarE varName)] ]
-            | ((name, _strict, res_ty), n) <- zip fields [0..]
-            , fvDType res_ty `S.isSubsetOf` tvbs   -- exclude "naughty" selectors
-            ]
+    get_record_sels con@(DCon con_tvbs _ con_name con_fields con_ret_ty) =
+      case con_fields of
+        DRecC fields -> go fields
+        DNormalC{}   -> return []
+        where
+          go fields = do
+            varName <- qNewName "field"
+            con_ex_tvbs <- conExistentialTvbs arg_ty con
+            let con_univ_tvbs  = deleteFirstsBy ((==) `on` dtvbName) con_tvbs con_ex_tvbs
+                con_ex_tvb_set = S.fromList $ map dtvbName con_ex_tvbs
+                forall'        = DForallT con_univ_tvbs []
+                num_pats       = length fields
+            return $ concat
+              [ [ DSigD name (forall' $ DArrowT `DAppT` con_ret_ty `DAppT` field_ty)
+                , DFunD name [DClause [DConPa con_name (mk_field_pats n num_pats varName)]
+                                      (DVarE varName)] ]
+              | ((name, _strict, field_ty), n) <- zip fields [0..]
+              , S.null (fvDType field_ty `S.intersection` con_ex_tvb_set)
+                  -- exclude "naughty" selectors
+              ]
 
     mk_field_pats :: Int -> Int -> Name -> [DPat]
     mk_field_pats 0 total name = DVarPa name : (replicate (total-1) DWildPa)
@@ -369,23 +375,16 @@ conExistentialTvbs :: DsMonad q
                    => DType -- ^ The type of the original data declaration
                    -> DCon
                    -> q [DTyVarBndr]
-conExistentialTvbs data_ty (DCon tvbs _ _ _ ret_ty) =
-  -- Due to GHC Trac #13885, it's possible that the type variables bound by
-  -- a GADT constructor will shadow those that are bound by the data type.
-  -- This function assumes this isn't the case in certain parts (e.g., when
-  -- unifying types), so we do an alpha-renaming of the
-  -- constructor-bound variables before proceeding.
-  substTyVarBndrs M.empty tvbs $ \subst tvbs' -> do
-    renamed_ret_ty <- substTy subst ret_ty
-    data_ty'       <- expandType data_ty
-    ret_ty'        <- expandType renamed_ret_ty
-    case matchTy YesIgnore ret_ty' data_ty' of
-      Nothing -> fail $ showString "Unable to match type "
-                      . showsPrec 11 ret_ty'
-                      . showString " with "
-                      . showsPrec 11 data_ty'
-                      $ ""
-      Just gadtSubt -> return [ tvb
-                              | tvb <- tvbs'
-                              , M.notMember (dtvbName tvb) gadtSubt
-                              ]
+conExistentialTvbs data_ty (DCon tvbs _ _ _ ret_ty) = do
+  data_ty' <- expandType data_ty
+  ret_ty'  <- expandType ret_ty
+  case matchTy YesIgnore ret_ty' data_ty' of
+    Nothing -> fail $ showString "Unable to match type "
+                    . showsPrec 11 ret_ty'
+                    . showString " with "
+                    . showsPrec 11 data_ty'
+                    $ ""
+    Just gadtSubt -> return [ tvb
+                            | tvb <- tvbs
+                            , M.notMember (dtvbName tvb) gadtSubt
+                            ]
