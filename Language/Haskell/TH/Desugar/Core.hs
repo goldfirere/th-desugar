@@ -1065,7 +1065,7 @@ dsDerivClause :: DsMonad q => Pred -> q DDerivClause
 dsDerivClause p = DDerivClause Nothing <$> dsPred p
 #else
 dsDerivClause :: DsMonad q => Name -> q DDerivClause
-dsDerivClause n = pure $ DDerivClause Nothing [DConPr n]
+dsDerivClause n = pure $ DDerivClause Nothing [DConT n]
 #endif
 
 #if __GLASGOW_HASKELL__ >= 801
@@ -1092,10 +1092,10 @@ dsPred :: DsMonad q => Pred -> q DCxt
 #if __GLASGOW_HASKELL__ < 709
 dsPred (ClassP n tys) = do
   ts' <- mapM dsType tys
-  return [foldl DAppPr (DConPr n) ts']
+  return [foldl DAppT (DConT n) ts']
 dsPred (EqualP t1 t2) = do
   ts' <- mapM dsType [t1, t2]
-  return [foldl DAppPr (DConPr ''(~)) ts']
+  return [foldl DAppT (DConT ''(~)) ts']
 #else
 dsPred t
   | Just ts <- splitTuple_maybe t
