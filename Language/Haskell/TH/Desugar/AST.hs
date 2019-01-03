@@ -53,7 +53,7 @@ data DType = DForallT [DTyVarBndr] DCxt DType
 -- | Kinds are types. Corresponds to TH's @Kind@
 type DKind = DType
 
--- | Predicates are types, too. Corresponds to TH's @Pred@
+-- | Predicates are types. Corresponds to TH's @Pred@
 type DPred = DType
 
 -- | Corresponds to TH's @Cxt@
