@@ -338,16 +338,16 @@ test_fvs =
        let -- (Show a => Show (Maybe a)) => String
            ty1 = DForallT
                    []
-                   [DForallPr [] [DConPr ''Show `DAppPr` DVarT a]
-                                 (DConPr ''Show `DAppPr` (DConT ''Maybe `DAppT` DVarT a))]
+                   [DForallT [] [DConT ''Show `DAppT` DVarT a]
+                                (DConT ''Show `DAppT` (DConT ''Maybe `DAppT` DVarT a))]
                    (DConT ''String)
            b1 = fvDType ty1 `eqTH` S.singleton a -- #93
 
            -- let f x = g x
            --     g x = f x
            -- in ()
-           lds2 = [ DFunD f [DClause [DVarPa x] (DVarE g `DAppE` DVarE x)]
-                  , DFunD g [DClause [DVarPa x] (DVarE f `DAppE` DVarE x)]
+           lds2 = [ DFunD f [DClause [DVarP x] (DVarE g `DAppE` DVarE x)]
+                  , DFunD g [DClause [DVarP x] (DVarE f `DAppE` DVarE x)]
                   ]
            b2a = fvDLetDecs lds2 S.empty `eqTH` S.empty
            b2b = foldMap extractBoundNamesDLetDec lds2 `eqTH` S.fromList [f, g]
@@ -355,14 +355,14 @@ test_fvs =
            -- case x of
            --   Just y -> \z -> f x y z
            e3 = DCaseE (DVarE x)
-                       [DMatch (DConPa 'Just [DVarPa y])
+                       [DMatch (DConP 'Just [DVarP y])
                                (DLamE [z] (DVarE f `DAppE` DVarE x
                                                    `DAppE` DVarE y
                                                    `DAppE` DVarE z))]
            b3 = fvDExp e3 `eqTH` S.fromList [f, x]
 
            -- some_function (Just (x :: [a])) = f @a
-           p4  = DConPa 'Just [DSigPa (DVarPa x) (DConT ''[] `DAppT` DVarT a)]
+           p4  = DConP 'Just [DSigP (DVarP x) (DConT ''[] `DAppT` DVarT a)]
            c4  = DClause [p4] (DVarE f `DAppTypeE` DVarT a)
            b4a = fvDClause c4 `eqTH` S.singleton f
            b4b = extractBoundNamesDPat p4 `eqTH` S.fromList [x]
@@ -413,7 +413,7 @@ test_lookup_value_type_names =
        typeName <- newName nameStr
        let tyDec = DTySynD typeName [] (DConT ''Bool)
            decs  = decsToTH [ DLetDec (DSigD valName (DConT ''Bool))
-                            , DLetDec (DValD (DVarPa valName) (DConE 'False))
+                            , DLetDec (DValD (DVarP valName) (DConE 'False))
                             , tyDec ]
            lookupReify lookup_fun = withLocalDeclarations decs $ do
                                       Just n <- lookup_fun nameStr

@@ -70,13 +70,13 @@ matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
 
 patToTH :: DPat -> Pat
-patToTH (DLitPa lit)    = LitP lit
-patToTH (DVarPa n)      = VarP n
-patToTH (DConPa n pats) = ConP n (map patToTH pats)
-patToTH (DTildePa pat)  = TildeP (patToTH pat)
-patToTH (DBangPa pat)   = BangP (patToTH pat)
-patToTH (DSigPa pat ty) = SigP (patToTH pat) (typeToTH ty)
-patToTH DWildPa         = WildP
+patToTH (DLitP lit)    = LitP lit
+patToTH (DVarP n)      = VarP n
+patToTH (DConP n pats) = ConP n (map patToTH pats)
+patToTH (DTildeP pat)  = TildeP (patToTH pat)
+patToTH (DBangP pat)   = BangP (patToTH pat)
+patToTH (DSigP pat ty) = SigP (patToTH pat) (typeToTH ty)
+patToTH DWildP         = WildP
 
 decsToTH :: [DDec] -> [Dec]
 decsToTH = concatMap decToTH
@@ -380,37 +380,43 @@ predToTH :: DPred -> Pred
 #if __GLASGOW_HASKELL__ < 709
 predToTH = go []
   where
-    go acc (DAppPr p t) = go (typeToTH t : acc) p
-    go acc (DSigPr p _) = go acc                p  -- this shouldn't happen.
-    go _   (DVarPr _)
+    go acc (DAppT p t) = go (typeToTH t : acc) p
+    go acc (DSigT p _) = go acc                p  -- this shouldn't happen.
+    go _   (DVarT _)
       = error "Template Haskell in GHC <= 7.8 does not support variable constraints."
-    go acc (DConPr n)
+    go acc (DConT n)
       | nameBase n == "~"
       , [t1, t2] <- acc
       = EqualP t1 t2
       | otherwise
       = ClassP n acc
-    go _ DWildCardPr
+    go _ DWildCardT
       = error "Wildcards supported only in GHC 8.0+"
-    go _ (DForallPr {})
+    go _ (DForallT {})
       = error "Quantified constraints supported only in GHC 8.6+"
+    go _ DArrowT
+      = ArrowT
+    go _ (DLitT lit)
+      = LitT lit
 #else
-predToTH (DAppPr p t) = AppT (predToTH p) (typeToTH t)
-predToTH (DSigPr p k) = SigT (predToTH p) (typeToTH k)
-predToTH (DVarPr n)   = VarT n
-predToTH (DConPr n)   = typeToTH (DConT n)
+predToTH (DAppT p t) = AppT (predToTH p) (typeToTH t)
+predToTH (DSigT p k) = SigT (predToTH p) (typeToTH k)
+predToTH (DVarT n)   = VarT n
+predToTH (DConT n)   = typeToTH (DConT n)
 #if __GLASGOW_HASKELL__ > 710
-predToTH DWildCardPr  = WildCardT
+predToTH DWildCardT  = WildCardT
 #else
-predToTH DWildCardPr  = error "Wildcards supported only in GHC 8.0+"
+predToTH DWildCardT  = error "Wildcards supported only in GHC 8.0+"
 #endif
 #if __GLASGOW_HASKELL__ >= 805
-predToTH (DForallPr tvbs cxt p) =
+predToTH (DForallT tvbs cxt p) =
   ForallT (map tvbToTH tvbs) (map predToTH cxt) (predToTH p)
 #else
-predToTH (DForallPr {}) = error "Quantified constraints supported only in GHC 8.6+"
+predToTH (DForallT {}) = error "Quantified constraints supported only in GHC 8.6+"
 #endif
 #endif
+predToTH DArrowT     = ArrowT
+predToTH (DLitT lit) = LitT lit
 
 tyconToTH :: Name -> Type
 tyconToTH n

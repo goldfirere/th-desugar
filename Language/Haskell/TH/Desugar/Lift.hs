@@ -23,7 +23,7 @@ import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Lift
 
-$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DPred, ''DTyVarBndr
+$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DTyVarBndr
                  , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DDerivClause, ''DCon
                  , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
                  , ''DPatSynDir , ''NewOrData, ''DDerivStrategy
