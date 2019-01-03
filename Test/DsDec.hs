@@ -28,8 +28,8 @@ module DsDec where
 import qualified Splices as S
 import Splices ( dsDecSplice, unqualify )
 
-import Language.Haskell.TH  ( reportError )
 import Language.Haskell.TH.Desugar
+import Language.Haskell.TH.Syntax ( qReport )
 
 import Control.Monad
 import Data.Maybe( mapMaybe )
@@ -75,19 +75,20 @@ $(dsDecSplice S.dectest15)
 #endif
 
 $(do decs <- S.rec_sel_test
-     [DDataD nd [] name [DPlainTV tvbName] k cons []] <- dsDecs decs
-     let arg_ty = (DConT name) `DAppT` (DVarT tvbName)
-     recsels <- getRecordSelectors arg_ty cons
-     let num_sels = length recsels `div` 2 -- ignore type sigs
-     when (num_sels /= S.rec_sel_test_num_sels) $
-       reportError $ "Wrong number of record selectors extracted.\n"
-                  ++ "Wanted " ++ show S.rec_sel_test_num_sels
-                  ++ ", Got " ++ show num_sels
-     let unrecord c@(DCon _ _ _ (DNormalC {}) _) = c
-         unrecord (DCon tvbs cxt con_name (DRecC fields) rty) =
-           let (_names, stricts, types) = unzip3 fields
-               fields' = zip stricts types
-           in
-           DCon tvbs cxt con_name (DNormalC False fields') rty
-         plaindata = [DDataD nd [] name [DPlainTV tvbName] k (map unrecord cons) []]
-     return (decsToTH plaindata ++ mapMaybe letDecToTH recsels))
+     withLocalDeclarations decs $ do
+       [DDataD nd [] name [DPlainTV tvbName] k cons []] <- dsDecs decs
+       let arg_ty = (DConT name) `DAppT` (DVarT tvbName)
+       recsels <- getRecordSelectors arg_ty cons
+       let num_sels = length recsels `div` 2 -- ignore type sigs
+       when (num_sels /= S.rec_sel_test_num_sels) $
+         qReport True $ "Wrong number of record selectors extracted.\n"
+                     ++ "Wanted " ++ show S.rec_sel_test_num_sels
+                     ++ ", Got " ++ show num_sels
+       let unrecord c@(DCon _ _ _ (DNormalC {}) _) = c
+           unrecord (DCon tvbs cxt con_name (DRecC fields) rty) =
+             let (_names, stricts, types) = unzip3 fields
+                 fields' = zip stricts types
+             in
+             DCon tvbs cxt con_name (DNormalC False fields') rty
+           plaindata = [DDataD nd [] name [DPlainTV tvbName] k (map unrecord cons) []]
+       return (decsToTH plaindata ++ mapMaybe letDecToTH recsels))

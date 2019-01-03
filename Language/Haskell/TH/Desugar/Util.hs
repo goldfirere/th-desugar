@@ -43,12 +43,12 @@ import Data.Generics hiding ( Fixity )
 import Data.Traversable
 import Data.Maybe
 
-#if __GLASGOW_HASKELL__ >= 800
-import qualified Data.Kind as Kind
+#if __GLASGOW_HASKELL__ < 710
+import Data.Monoid
 #endif
 
-#if __GLASGOW_HASKELL__ < 804
-import Data.Monoid
+#if __GLASGOW_HASKELL__ >= 800
+import qualified Data.Kind as Kind
 #endif
 
 ----------------------------------------

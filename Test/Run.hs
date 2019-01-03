@@ -325,6 +325,31 @@ test_getDataD_kind_sig =
   True -- DataD didn't have the ability to store kind signatures prior to GHC 8.0
 #endif
 
+test_t102 :: Bool
+test_t102 =
+  $(do decs <- [d| data Foo x where MkFoo :: forall a. { unFoo :: a } -> Foo a |]
+       withLocalDeclarations decs $ do
+         [DDataD _ _ foo [DPlainTV x] _ cons _] <- dsDecs decs
+         recs <- getRecordSelectors (DConT foo `DAppT` DVarT x) cons
+         (length recs `div` 2) `eqTHSplice` 1)
+
+test_t103 :: Bool
+test_t103 =
+#if __GLASGOW_HASKELL__ >= 800
+  $(do decs <- [d| data P (a :: k) = MkP |]
+       [DDataD _ _ _ _ _ [DCon tvbs _ _ _ _] _] <- dsDecs decs
+       case tvbs of
+         [DPlainTV k, DKindedTV a (DVarT k')]
+           |  nameBase k == "k"
+           ,  nameBase a == "a"
+           ,  k == k'
+           -> [| True |]
+           |  otherwise
+           -> [| False |])
+#else
+  True -- No explicit kind variable binders prior to GHC 8.0
+#endif
+
 -- Unit tests for functions that compute free variables (e.g., fvDType)
 test_fvs :: [Bool]
 test_fvs =
@@ -532,6 +557,10 @@ main = hspec $ do
     it "toposorts free variables in polytypes" $ test_t92
 
     it "expands type synonyms in type variable binders" $ test_t97
+
+    it "collects GADT record selectors correctly" $ test_t102
+
+    it "quantifies kind variables in desugared ADT constructors" $ test_t103
 
     it "reifies data type return kinds accurately" $ test_getDataD_kind_sig
 
