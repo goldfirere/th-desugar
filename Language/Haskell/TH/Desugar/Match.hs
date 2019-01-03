@@ -51,7 +51,7 @@ scExp (DCaseE scrut matches)
   | otherwise
   = do scrut_name <- newUniqueName "scrut"
        case_exp <- simplCaseExp [scrut_name] clauses
-       return $ DLetE [DValD (DVarPa scrut_name) scrut] case_exp
+       return $ DLetE [DValD (DVarP scrut_name) scrut] case_exp
   where
     clauses = map match_to_clause matches
     match_to_clause (DMatch pat exp) = DClause [pat] exp
@@ -70,7 +70,7 @@ scLetDec (DFunD name clauses@(DClause pats1 _ : _)) = do
   arg_names <- mapM (const (newUniqueName "_arg")) pats1
   clauses' <- mapM sc_clause_rhs clauses
   case_exp <- simplCaseExp arg_names clauses'
-  return $ DFunD name [DClause (map DVarPa arg_names) case_exp]
+  return $ DFunD name [DClause (map DVarP arg_names) case_exp]
   where
     sc_clause_rhs (DClause pats exp) = DClause pats <$> scExp exp
 scLetDec (DValD pat exp) = DValD pat <$> scExp exp
@@ -143,22 +143,22 @@ tidy1 :: DsMonad q
       => Name   -- the name of the variable that ...
       -> DPat   -- ... this pattern is matching against
       -> q (DExp -> DExp, DPat)   -- a wrapper and tidied pattern
-tidy1 _ p@(DLitPa {}) = return (id, p)
-tidy1 v (DVarPa var) = return (wrapBind var v, DWildPa)
-tidy1 _ p@(DConPa {}) = return (id, p)
-tidy1 v (DTildePa pat) = do
+tidy1 _ p@(DLitP {}) = return (id, p)
+tidy1 v (DVarP var) = return (wrapBind var v, DWildP)
+tidy1 _ p@(DConP {}) = return (id, p)
+tidy1 v (DTildeP pat) = do
   sel_decs <- mkSelectorDecs pat v
-  return (maybeDLetE sel_decs, DWildPa)
-tidy1 v (DBangPa pat) =
+  return (maybeDLetE sel_decs, DWildP)
+tidy1 v (DBangP pat) =
   case pat of
-    DLitPa _   -> tidy1 v pat   -- already strict
-    DVarPa _   -> return (id, DBangPa pat)  -- no change
-    DConPa _ _ -> tidy1 v pat   -- already strict
-    DTildePa p -> tidy1 v (DBangPa p) -- discard ~ under !
-    DBangPa p  -> tidy1 v (DBangPa p) -- discard ! under !
-    DSigPa p _ -> tidy1 v (DBangPa p) -- discard sig under !
-    DWildPa    -> return (id, DBangPa pat)  -- no change
-tidy1 v (DSigPa pat ty)
+    DLitP _   -> tidy1 v pat   -- already strict
+    DVarP _   -> return (id, DBangP pat)  -- no change
+    DConP _ _ -> tidy1 v pat   -- already strict
+    DTildeP p -> tidy1 v (DBangP p) -- discard ~ under !
+    DBangP p  -> tidy1 v (DBangP p) -- discard ! under !
+    DSigP p _ -> tidy1 v (DBangP p) -- discard sig under !
+    DWildP    -> return (id, DBangP pat)  -- no change
+tidy1 v (DSigP pat ty)
   | no_tyvars_ty ty = tidy1 v pat
   -- The match-flattener doesn't know how to deal with patterns that mention
   -- type variables properly, so we give up if we encounter one.
@@ -173,19 +173,19 @@ tidy1 v (DSigPa pat ty)
     no_tyvar_ty :: DType -> Bool
     no_tyvar_ty (DVarT{}) = False
     no_tyvar_ty t         = gmapQl (&&) True no_tyvars_ty t
-tidy1 _ DWildPa = return (id, DWildPa)
+tidy1 _ DWildP = return (id, DWildP)
 
 wrapBind :: Name -> Name -> DExp -> DExp
 wrapBind new old
   | new == old = id
-  | otherwise  = DLetE [DValD (DVarPa new) (DVarE old)]
+  | otherwise  = DLetE [DValD (DVarP new) (DVarE old)]
 
 -- like GHC's mkSelectorBinds
 mkSelectorDecs :: DsMonad q
                => DPat      -- pattern to deconstruct
                -> Name      -- variable being matched against
                -> q [DLetDec]
-mkSelectorDecs (DVarPa v) name = return [DValD (DVarPa v) (DVarE name)]
+mkSelectorDecs (DVarP v) name = return [DValD (DVarP v) (DVarE name)]
 mkSelectorDecs pat name
   | S.null binders
   = return []
@@ -194,8 +194,8 @@ mkSelectorDecs pat name
   = do val_var <- newUniqueName "var"
        err_var <- newUniqueName "err"
        bind    <- mk_bind val_var err_var (head $ S.elems binders)
-       return [DValD (DVarPa val_var) (DVarE name),
-               DValD (DVarPa err_var) (DVarE 'error `DAppE`
+       return [DValD (DVarP val_var) (DVarE name),
+               DValD (DVarP err_var) (DVarE 'error `DAppE`
                                        (DLitE $ StringL "Irrefutable match failed")),
                bind]
 
@@ -203,8 +203,8 @@ mkSelectorDecs pat name
   = do tuple_expr <- simplCaseExp [name] [DClause [pat] local_tuple]
        tuple_var <- newUniqueName "tuple"
        projections <- mapM (mk_projection tuple_var) [0 .. tuple_size-1]
-       return (DValD (DVarPa tuple_var) tuple_expr :
-               zipWith DValD (map DVarPa binders_list) projections)
+       return (DValD (DVarP tuple_var) tuple_expr :
+               zipWith DValD (map DVarP binders_list) projections)
 
   where
     binders = extractBoundNamesDPat pat
@@ -218,17 +218,17 @@ mkSelectorDecs pat name
                   -> q DExp
     mk_projection tup_name i = do
       var_name <- newUniqueName "proj"
-      return $ DCaseE (DVarE tup_name) [DMatch (DConPa (tupleDataName tuple_size) (mk_tuple_pats var_name i))
+      return $ DCaseE (DVarE tup_name) [DMatch (DConP (tupleDataName tuple_size) (mk_tuple_pats var_name i))
                                                (DVarE var_name)]
 
     mk_tuple_pats :: Name   -- of the projected element
                   -> Int    -- which element to get (0-indexed)
                   -> [DPat]
-    mk_tuple_pats elt_name i = replicate i DWildPa ++ DVarPa elt_name : replicate (tuple_size - i - 1) DWildPa
+    mk_tuple_pats elt_name i = replicate i DWildP ++ DVarP elt_name : replicate (tuple_size - i - 1) DWildP
 
     mk_bind scrut_var err_var bndr_var = do
       rhs_mr <- simplCase [scrut_var] [EquationInfo [pat] (\_ -> DVarE bndr_var)]
-      return (DValD (DVarPa bndr_var) (rhs_mr (DVarE err_var)))
+      return (DValD (DVarP bndr_var) (rhs_mr (DVarE err_var)))
 
 data PatGroup
   = PgAny         -- immediate match (wilds, vars, lazies)
@@ -245,13 +245,13 @@ groupClauses clauses
     (pg1,_) `same_gp` (pg2,_) = pg1 `sameGroup` pg2
 
 patGroup :: DPat -> PatGroup
-patGroup (DLitPa l)     = PgLit l
-patGroup (DVarPa {})    = error "Internal error in th-desugar (patGroup DVarPa)"
-patGroup (DConPa con _) = PgCon con
-patGroup (DTildePa {})  = error "Internal error in th-desugar (patGroup DTildePa)"
-patGroup (DBangPa {})   = PgBang
-patGroup (DSigPa{})     = error "Internal error in th-desugar (patGroup DSigPa)"
-patGroup DWildPa        = PgAny
+patGroup (DLitP l)     = PgLit l
+patGroup (DVarP {})    = error "Internal error in th-desugar (patGroup DVarP)"
+patGroup (DConP con _) = PgCon con
+patGroup (DTildeP {})  = error "Internal error in th-desugar (patGroup DTildeP)"
+patGroup (DBangP {})   = PgBang
+patGroup (DSigP{})     = error "Internal error in th-desugar (patGroup DSigP)"
+patGroup DWildP        = PgAny
 
 sameGroup :: PatGroup -> PatGroup -> Bool
 sameGroup PgAny     PgAny     = True
@@ -295,17 +295,17 @@ matchOneCon vars eqns@(eqn1 : _)
   where
     pat1 = firstPat eqn1
 
-    pat_args (DConPa _ pats) = pats
-    pat_args _               = error "Internal error in th-desugar (pat_args)"
+    pat_args (DConP _ pats) = pats
+    pat_args _              = error "Internal error in th-desugar (pat_args)"
 
-    pat_con (DConPa con _) = con
-    pat_con _              = error "Internal error in th-desugar (pat_con)"
+    pat_con (DConP con _) = con
+    pat_con _             = error "Internal error in th-desugar (pat_con)"
 
     match_group :: DsMonad q => [Name] -> q MatchResult
     match_group arg_vars
       = simplCase (arg_vars ++ vars) (map shift eqns)
 
-    shift (EquationInfo (DConPa _ args : pats) exp) = EquationInfo (args ++ pats) exp
+    shift (EquationInfo (DConP _ args : pats) exp) = EquationInfo (args ++ pats) exp
     shift _ = error "Internal error in th-desugar (shift)"
 matchOneCon _ _ = error "Internal error in th-desugar (matchOneCon)"
 
@@ -318,10 +318,10 @@ mkDataConCase var case_alts = do
   where
     mk_alt fail (CaseAlt con args body_fn)
       = let body = body_fn fail in
-        DMatch (DConPa con (map DVarPa args)) body
+        DMatch (DConP con (map DVarP args)) body
 
     mk_default all_ctors fail | exhaustive_case all_ctors = []
-                              | otherwise       = [DMatch DWildPa fail]
+                              | otherwise       = [DMatch DWildP fail]
 
     mentioned_ctors = S.fromList $ map alt_con case_alts
     exhaustive_case all_ctors = all_ctors `S.isSubsetOf` mentioned_ctors
@@ -341,7 +341,7 @@ mkDataConCase var case_alts = do
 matchEmpty :: DsMonad q => Name -> q [MatchResult]
 matchEmpty var = return [mk_seq]
   where
-    mk_seq fail = DCaseE (DVarE var) [DMatch DWildPa fail]
+    mk_seq fail = DCaseE (DVarE var) [DMatch DWildP fail]
 
 matchLiterals :: DsMonad q => [Name] -> [[EquationInfo]] -> q MatchResult
 matchLiterals (var:vars) sub_groups
@@ -350,7 +350,7 @@ matchLiterals (var:vars) sub_groups
   where
     match_group :: DsMonad q => [EquationInfo] -> q (Lit, MatchResult)
     match_group eqns
-      = do let DLitPa lit = firstPat (head eqns)
+      = do let DLitP lit = firstPat (head eqns)
            match_result <- simplCase vars (shiftEqns eqns)
            return (lit, match_result)
 matchLiterals [] _ = error "Internal error in th-desugar (matchLiterals)"
@@ -361,9 +361,9 @@ mkCoPrimCaseMatchResult :: Name -- Scrutinee
 mkCoPrimCaseMatchResult var match_alts = mk_case
   where
     mk_case fail = let alts = map (mk_alt fail) match_alts in
-                   DCaseE (DVarE var) (alts ++ [DMatch DWildPa fail])
+                   DCaseE (DVarE var) (alts ++ [DMatch DWildP fail])
     mk_alt fail (lit, body_fn)
-      = DMatch (DLitPa lit) (body_fn fail)
+      = DMatch (DLitP lit) (body_fn fail)
 
 matchBangs :: DsMonad q => [Name] -> [EquationInfo] -> q MatchResult
 matchBangs (var:vars) eqns
@@ -378,8 +378,8 @@ decomposeFirstPat extractpat (EquationInfo (pat:pats) body)
 decomposeFirstPat _ _ = error "Internal error in th-desugar (decomposeFirstPat)"
 
 getBangPat :: DPat -> DPat
-getBangPat (DBangPa p) = p
-getBangPat _           = error "Internal error in th-desugar (getBangPat)"
+getBangPat (DBangP p) = p
+getBangPat _          = error "Internal error in th-desugar (getBangPat)"
 
 mkEvalMatchResult :: Name -> MatchResult -> MatchResult
 mkEvalMatchResult var body_fn fail
@@ -404,10 +404,10 @@ selectMatchVars = mapM selectMatchVar
 
 -- from DsUtils
 selectMatchVar :: DsMonad q => DPat -> q Name
-selectMatchVar (DBangPa pat)  = selectMatchVar pat
-selectMatchVar (DTildePa pat) = selectMatchVar pat
-selectMatchVar (DVarPa var)   = newUniqueName ('_' : nameBase var)
-selectMatchVar _              = newUniqueName "_pat"
+selectMatchVar (DBangP pat)  = selectMatchVar pat
+selectMatchVar (DTildeP pat) = selectMatchVar pat
+selectMatchVar (DVarP var)   = newUniqueName ('_' : nameBase var)
+selectMatchVar _             = newUniqueName "_pat"
 
 -- like GHC's runs
 runs :: (a -> a -> Bool) -> [a] -> [[a]]

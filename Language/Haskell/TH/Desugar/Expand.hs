@@ -61,7 +61,7 @@ expand_type ign = go []
     go :: [DType] -> DType -> q DType
     go [] (DForallT tvbs cxt ty) =
       DForallT <$> mapM (expand_tvb ign) tvbs
-               <*> mapM (expand_pred ign) cxt
+               <*> mapM (expand_type ign) cxt
                <*> expand_type ign ty
     go _ (DForallT {}) =
       impossible "A forall type is applied to another type."
@@ -80,33 +80,6 @@ expand_type ign = go []
 
     finish :: DType -> [DType] -> q DType
     finish ty args = return $ applyDType ty args
-
--- | Expands all type synonyms in a desugared predicate.
-expand_pred :: forall q. DsMonad q => IgnoreKinds -> DPred -> q DPred
-expand_pred ign = go []
-  where
-    go :: [DType] -> DPred -> q DPred
-    go [] (DForallPr tvbs cxt p) =
-      DForallPr <$> mapM (expand_tvb ign) tvbs
-                <*> mapM (go []) cxt
-                <*> expand_pred ign p
-    go _ (DForallPr {}) =
-      impossible "A quantified constraint is applied to another constraint."
-    go args (DAppPr p t) = do
-      t' <- expand_type ign t
-      go (t' : args) p
-    go args (DSigPr p k) = do
-      p' <- go [] p
-      k' <- expand_type ign k
-      finish (DSigPr p' k') args
-    go args (DConPr n) = do
-      ty <- expand_con ign n args
-      dTypeToDPred ty
-    go args p@(DVarPr _)  = finish p args
-    go args p@DWildCardPr = finish p args
-
-    finish :: DPred -> [DType] -> q DPred
-    finish p args = return $ foldl DAppPr p args
 
 -- | Expands all type synonyms in a type variable binder's kind.
 expand_tvb :: DsMonad q => IgnoreKinds -> DTyVarBndr -> q DTyVarBndr
@@ -260,4 +233,4 @@ expandUnsoundly = expand_ YesIgnore
 
 -- | Generalization of 'expand' that either can or won't ignore kind annotations.sx
 expand_ :: (DsMonad q, Data a) => IgnoreKinds -> a -> q a
-expand_ ign = everywhereM (mkM (expand_type ign) >=> mkM (expand_pred ign))
+expand_ ign = everywhereM (mkM (expand_type ign))

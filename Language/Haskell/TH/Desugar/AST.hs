@@ -29,13 +29,13 @@ data DExp = DVarE Name
 
 
 -- | Corresponds to TH's @Pat@ type.
-data DPat = DLitPa Lit
-          | DVarPa Name
-          | DConPa Name [DPat]
-          | DTildePa DPat
-          | DBangPa DPat
-          | DSigPa DPat DType
-          | DWildPa
+data DPat = DLitP Lit
+          | DVarP Name
+          | DConP Name [DPat]
+          | DTildeP DPat
+          | DBangP DPat
+          | DSigP DPat DType
+          | DWildP
           deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Type@ type, used to represent
@@ -50,20 +50,14 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DWildCardT
            deriving (Show, Typeable, Data, Generic)
 
--- | Kinds are types.
+-- | Kinds are types. Corresponds to TH's @Kind@
 type DKind = DType
+
+-- | Predicates are types. Corresponds to TH's @Pred@
+type DPred = DType
 
 -- | Corresponds to TH's @Cxt@
 type DCxt = [DPred]
-
--- | Corresponds to TH's @Pred@
-data DPred = DForallPr [DTyVarBndr] DCxt DPred
-           | DAppPr DPred DType
-           | DSigPr DPred DKind
-           | DVarPr Name
-           | DConPr Name
-           | DWildCardPr
-           deriving (Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @TyVarBndr@
 data DTyVarBndr = DPlainTV Name

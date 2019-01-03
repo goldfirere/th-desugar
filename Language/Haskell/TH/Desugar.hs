@@ -23,7 +23,7 @@ rae@cs.brynmawr.edu
 
 module Language.Haskell.TH.Desugar (
   -- * Desugared data types
-  DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred(..),
+  DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred,
   DTyVarBndr(..), DMatch(..), DClause(..), DDec(..),
   DDerivClause(..), DDerivStrategy(..), DPatSynDir(..), DPatSynType,
   Overlap(..), PatSynArgs(..), NewOrData(..),
@@ -152,10 +152,10 @@ instance Desugar [Dec] [DDec] where
 -- less efficient than those that come in: they have many more pattern
 -- matches.
 flattenDValD :: Quasi q => DLetDec -> q [DLetDec]
-flattenDValD dec@(DValD (DVarPa _) _) = return [dec]
+flattenDValD dec@(DValD (DVarP _) _) = return [dec]
 flattenDValD (DValD pat exp) = do
   x <- newUniqueName "x" -- must use newUniqueName here because we might be top-level
-  let top_val_d = DValD (DVarPa x) exp
+  let top_val_d = DValD (DVarP x) exp
       bound_names = S.elems $ extractBoundNamesDPat pat
   other_val_ds <- mapM (mk_val_d x) bound_names
   return $ top_val_d : other_val_ds
@@ -165,19 +165,19 @@ flattenDValD (DValD pat exp) = do
       let pat'  = wildify name y pat
           match = DMatch pat' (DVarE y)
           cas   = DCaseE (DVarE x) [match]
-      return $ DValD (DVarPa name) cas
+      return $ DValD (DVarP name) cas
 
     wildify name y p =
       case p of
-        DLitPa lit -> DLitPa lit
-        DVarPa n
-          | n == name -> DVarPa y
-          | otherwise -> DWildPa
-        DConPa con ps -> DConPa con (map (wildify name y) ps)
-        DTildePa pa -> DTildePa (wildify name y pa)
-        DBangPa pa -> DBangPa (wildify name y pa)
-        DSigPa pa ty -> DSigPa (wildify name y pa) ty
-        DWildPa -> DWildPa
+        DLitP lit -> DLitP lit
+        DVarP n
+          | n == name -> DVarP y
+          | otherwise -> DWildP
+        DConP con ps -> DConP con (map (wildify name y) ps)
+        DTildeP pa -> DTildeP (wildify name y pa)
+        DBangP pa -> DBangP (wildify name y pa)
+        DSigP pa ty -> DSigP (wildify name y pa) ty
+        DWildP -> DWildP
 
 flattenDValD other_dec = return [other_dec]
 
@@ -196,8 +196,8 @@ flattenDValD other_dec = return [other_dec]
 --
 -- @
 -- [ DSigD y (DAppT (DAppT DArrowT (DConT X)) (DConT Symbol))
--- , DFunD y [ DClause [DConPa X1 [DVarPa field]] (DVarE field)
---           , DClause [DConPa X2 [DVarPa field]] (DVarE field) ] ]
+-- , DFunD y [ DClause [DConP X1 [DVarP field]] (DVarE field)
+--           , DClause [DConP X2 [DVarP field]] (DVarE field) ] ]
 -- @
 --
 -- instead of returning one binding for @X1@ and another binding for @X2@.
@@ -229,7 +229,7 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
                 num_pats       = length fields
             return $ concat
               [ [ DSigD name (forall' $ DArrowT `DAppT` con_ret_ty `DAppT` field_ty)
-                , DFunD name [DClause [DConPa con_name (mk_field_pats n num_pats varName)]
+                , DFunD name [DClause [DConP con_name (mk_field_pats n num_pats varName)]
                                       (DVarE varName)] ]
               | ((name, _strict, field_ty), n) <- zip fields [0..]
               , S.null (fvDType field_ty `S.intersection` con_ex_tvb_set)
@@ -237,8 +237,8 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
               ]
 
     mk_field_pats :: Int -> Int -> Name -> [DPat]
-    mk_field_pats 0 total name = DVarPa name : (replicate (total-1) DWildPa)
-    mk_field_pats n total name = DWildPa : mk_field_pats (n-1) (total-1) name
+    mk_field_pats 0 total name = DVarP name : (replicate (total-1) DWildP)
+    mk_field_pats n total name = DWildP : mk_field_pats (n-1) (total-1) name
 
     merge_let_decs :: [DLetDec] -> [DLetDec]
     merge_let_decs decs =

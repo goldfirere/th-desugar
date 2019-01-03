@@ -11,7 +11,6 @@ module Language.Haskell.TH.Desugar.FV
   , fvDMatch
   , fvDClause
   , fvDType
-  , fvDPred
   , fvDLetDecs
 
   , extractBoundNamesDLetDec
@@ -58,7 +57,7 @@ fvDType :: DType -> Set Name
 fvDType = go
   where
     go :: DType -> Set Name
-    go (DForallT tvbs ctxt ty) = fv_dtvbs tvbs (foldMap fvDPred ctxt <> go ty)
+    go (DForallT tvbs ctxt ty) = fv_dtvbs tvbs (foldMap fvDType ctxt <> go ty)
     go (DAppT t1 t2)           = go t1 <> go t2
     go (DSigT ty ki)           = go ty <> go ki
     go (DVarT n)               = S.singleton n
@@ -66,18 +65,6 @@ fvDType = go
     go DArrowT                 = S.empty
     go (DLitT {})              = S.empty
     go DWildCardT              = S.empty
-
--- | Compute the free variables of a 'DPred'.
-fvDPred :: DPred -> Set Name
-fvDPred = go
-  where
-    go :: DPred -> Set Name
-    go (DForallPr tvbs ctxt pr) = fv_dtvbs tvbs (foldMap go ctxt <> go pr)
-    go (DAppPr pr ty)           = go pr <> fvDType ty
-    go (DSigPr pr ki)           = go pr <> fvDType ki
-    go (DVarPr n)               = S.singleton n
-    go (DConPr {})              = S.empty
-    go DWildCardPr              = S.empty
 
 -- | Compute the free variables of a single 'DLetDec'.
 --
@@ -133,13 +120,13 @@ extractBoundNamesDPat :: DPat -> Set Name
 extractBoundNamesDPat = go
   where
     go :: DPat -> Set Name
-    go (DLitPa _)      = S.empty
-    go (DVarPa n)      = S.singleton n
-    go (DConPa _ pats) = foldMap go pats
-    go (DTildePa p)    = go p
-    go (DBangPa p)     = go p
-    go (DSigPa p _)    = go p
-    go DWildPa         = S.empty
+    go (DLitP _)      = S.empty
+    go (DVarP n)      = S.singleton n
+    go (DConP _ pats) = foldMap go pats
+    go (DTildeP p)    = go p
+    go (DBangP p)     = go p
+    go (DSigP p _)    = go p
+    go DWildP         = S.empty
 
 -----
 -- Binding forms
@@ -168,15 +155,15 @@ fv_dpat :: DPat -> Set Name -> Set Name
 fv_dpat dpa fvs = go dpa
   where
     go :: DPat -> Set Name
-    go (DLitPa {})    = fvs
-    go (DVarPa n)     = S.delete n fvs
-    go (DConPa _ pas) = fv_dpats pas fvs
-    go (DTildePa pa)  = go pa
-    go (DBangPa  pa)  = go pa
-    go (DSigPa pa t)  = go pa S.\\ fvDType t
+    go (DLitP {})    = fvs
+    go (DVarP n)     = S.delete n fvs
+    go (DConP _ pas) = fv_dpats pas fvs
+    go (DTildeP pa)  = go pa
+    go (DBangP  pa)  = go pa
+    go (DSigP pa t)  = go pa S.\\ fvDType t
                           -- Unlike extractBoundNamesDPat, this /does/ extract
                           -- type variables bound by pattern signatures.
-    go DWildPa        = fvs
+    go DWildP        = fvs
 
 -- | Adjust the free variables of something following 'DTyVarBndr's.
 fv_dtvbs :: [DTyVarBndr] -> Set Name -> Set Name

@@ -30,7 +30,6 @@ import Data.Generics
 import Data.List
 
 import Language.Haskell.TH.Desugar.AST
-import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Desugar.Util
 
@@ -45,7 +44,7 @@ type DSubst = M.Map Name DType
 substTy :: Quasi q => DSubst -> DType -> q DType
 substTy vars (DForallT tvbs cxt ty) =
   substTyVarBndrs vars tvbs $ \vars' tvbs' -> do
-    cxt' <- mapM (substPred vars') cxt
+    cxt' <- mapM (substTy vars') cxt
     ty' <- substTy vars' ty
     return $ DForallT tvbs' cxt' ty'
 substTy vars (DAppT t1 t2) =
@@ -78,22 +77,6 @@ substTvb vars (DKindedTV n k) = do
   new_n <- qNewName (nameBase n)
   k' <- substTy vars k
   return (M.insert n (DVarT new_n) vars, DKindedTV new_n k')
-
-substPred :: Quasi q => DSubst -> DPred -> q DPred
-substPred vars (DForallPr tvbs cxt p) =
-  substTyVarBndrs vars tvbs $ \vars' tvbs' -> do
-    cxt' <- mapM (substPred vars') cxt
-    p'   <- substPred vars' p
-    return $ DForallPr tvbs' cxt' p'
-substPred vars (DAppPr p t) = DAppPr <$> substPred vars p <*> substTy vars t
-substPred vars (DSigPr p k) = DSigPr <$> substPred vars p <*> substTy vars k
-substPred vars (DVarPr n)
-  | Just ty <- M.lookup n vars
-  = dTypeToDPred ty
-  | otherwise
-  = return $ DVarPr n
-substPred _ p@(DConPr {}) = return p
-substPred _ p@DWildCardPr = return p
 
 -- | Computes the union of two substitutions. Fails if both subsitutions map
 -- the same variable to different types.
