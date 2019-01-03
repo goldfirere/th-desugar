@@ -1309,7 +1309,15 @@ dataFamInstTvbs :: [DType] -> [DTyVarBndr]
 dataFamInstTvbs = toposortTyVarsOf
 
 -- | Take a list of 'DType's, find their free variables, and sort them in
--- reverse topological order to ensure that they are well scoped.
+-- reverse topological order to ensure that they are well scoped. In other
+-- words, the free variables are ordered such that:
+--
+-- 1. Whenever an explicit kind signature of the form @(A :: K)@ is
+--    encountered, the free variables of @K@ will always appear to the left of
+--    the free variables of @A@ in the returned result.
+--
+-- 2. The constraint in (1) notwithstanding, free variables will appear in
+--    left-to-right order of their original appearance.
 --
 -- On older GHCs, this takes measures to avoid returning explicitly bound
 -- kind variables, which was not possible before @TypeInType@.
