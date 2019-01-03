@@ -395,9 +395,9 @@ predToTH = go []
     go _ (DForallT {})
       = error "Quantified constraints supported only in GHC 8.6+"
     go _ DArrowT
-      = ArrowT
+      = error "(->) spotted at head of a constraint"
     go _ (DLitT lit)
-      = LitT lit
+      = error "Type-level literal spotted at head of a constraint"
 #else
 predToTH (DAppT p t) = AppT (predToTH p) (typeToTH t)
 predToTH (DSigT p k) = SigT (predToTH p) (typeToTH k)
