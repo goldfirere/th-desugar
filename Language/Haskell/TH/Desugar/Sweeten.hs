@@ -201,7 +201,7 @@ frsToTH (DTyVarSig (DKindedTV _ k)) = Just (typeToTH k)
 
 #if __GLASGOW_HASKELL__ <= 710
 derivingToTH :: DDerivClause -> Name
-derivingToTH (DDerivClause _ [DConPr nm]) = nm
+derivingToTH (DDerivClause _ [DConT nm]) = nm
 derivingToTH p =
   error ("Template Haskell in GHC < 8.0 only allows simple derivings: " ++ show p)
 #endif
