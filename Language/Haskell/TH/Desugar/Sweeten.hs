@@ -414,9 +414,9 @@ predToTH (DForallT tvbs cxt p) =
 #else
 predToTH (DForallT {}) = error "Quantified constraints supported only in GHC 8.6+"
 #endif
-#endif
 predToTH DArrowT     = ArrowT
 predToTH (DLitT lit) = LitT lit
+#endif
 
 tyconToTH :: Name -> Type
 tyconToTH n
