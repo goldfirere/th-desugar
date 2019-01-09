@@ -128,48 +128,12 @@ decToTH (DDataFamilyD n tvbs mk) =
 #else
   [FamilyD DataFam n (map tvbToTH tvbs) (fmap typeToTH mk)]
 #endif
-#if __GLASGOW_HASKELL__ >= 807
-decToTH (DDataInstD Data cxt mtvbs lhs mk cons derivings) =
-  [DataInstD (cxtToTH cxt) (fmap (fmap tvbToTH) mtvbs) (typeToTH lhs)
-             (fmap typeToTH mk) (map conToTH cons)
-             (concatMap derivClauseToTH derivings)]
-#else
-decToTH (DDataInstD Data cxt _mtvbs lhs _mk cons derivings) =
-#if __GLASGOW_HASKELL__ > 710
-  [DataInstD (cxtToTH cxt) n lhs_args (fmap typeToTH _mk) (map conToTH cons)
-             (concatMap derivClauseToTH derivings)]
-#else
-  [DataInstD (cxtToTH cxt) n lhs_args (map conToTH cons)
-             (map derivingToTH derivings)]
-#endif
-  where
-    lhs' = typeToTH lhs
-    (n, lhs_args) =
-      case unfoldType lhs' of
-        (ConT n', lhs_args') -> (n', filterTANormals lhs_args')
-        (_, _) -> error $ "Illegal data instance LHS: " ++ pprint lhs'
-#endif
-#if __GLASGOW_HASKELL__ >= 807
-decToTH (DDataInstD Newtype cxt mtvbs lhs mk [con] derivings) =
-  [NewtypeInstD (cxtToTH cxt) (fmap (fmap tvbToTH) mtvbs) (typeToTH lhs)
-                (fmap typeToTH mk) (conToTH con)
-                (concatMap derivClauseToTH derivings)]
-#else
-decToTH (DDataInstD Newtype cxt _tvbs lhs _mk [con] derivings) =
-#if __GLASGOW_HASKELL__ > 710
-  [NewtypeInstD (cxtToTH cxt) n lhs_args (fmap typeToTH _mk) (conToTH con)
-                (concatMap derivClauseToTH derivings)]
-#else
-  [NewtypeInstD (cxtToTH cxt) n lhs_args (conToTH con)
-                (map derivingToTH derivings)]
-#endif
-  where
-    lhs' = typeToTH lhs
-    (n, lhs_args) =
-      case unfoldType lhs' of
-        (ConT n', lhs_args') -> (n', filterTANormals lhs_args')
-        (_, _) -> error $ "Illegal newtype instance LHS: " ++ pprint lhs'
-#endif
+decToTH (DDataInstD nd cxt mtvbs lhs mk cons derivings) =
+  let ndc = case (nd, cons) of
+              (Newtype, [con]) -> DNewtypeCon con
+              (Newtype, _)     -> error "Newtype that doesn't have only one constructor"
+              (Data,    _)     -> DDataCons cons
+  in dataInstDecToTH ndc cxt mtvbs lhs mk derivings
 #if __GLASGOW_HASKELL__ < 707
 decToTH (DTySynInstD eqn) = [tySynEqnToTHDec eqn]
 decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
@@ -220,6 +184,49 @@ decToTH dec
     patSynErr = error "Pattern synonyms supported only in GHC 8.2+"
 #endif
 decToTH _ = error "Newtype declaration without exactly 1 constructor."
+
+-- | Indicates whether something is a newtype or data type, bundling its
+-- constructor(s) along with it.
+data DNewOrDataCons
+  = DNewtypeCon DCon
+  | DDataCons   [DCon]
+
+-- | Sweeten a 'DDataInstD'.
+dataInstDecToTH :: DNewOrDataCons -> DCxt -> Maybe [DTyVarBndr] -> DType
+                -> Maybe DKind -> [DDerivClause] -> [Dec]
+dataInstDecToTH ndc cxt _mtvbs lhs _mk derivings =
+  case ndc of
+    DNewtypeCon con ->
+#if __GLASGOW_HASKELL__ >= 807
+      [NewtypeInstD (cxtToTH cxt) (fmap (fmap tvbToTH) _mtvbs) (typeToTH lhs)
+                    (fmap typeToTH _mk) (conToTH con)
+                    (concatMap derivClauseToTH derivings)]
+#elif __GLASGOW_HASKELL__ > 710
+      [NewtypeInstD (cxtToTH cxt) _n _lhs_args (fmap typeToTH _mk) (conToTH con)
+                    (concatMap derivClauseToTH derivings)]
+#else
+      [NewtypeInstD (cxtToTH cxt) _n _lhs_args (conToTH con)
+                    (map derivingToTH derivings)]
+#endif
+
+    DDataCons cons ->
+#if __GLASGOW_HASKELL__ >= 807
+      [DataInstD (cxtToTH cxt) (fmap (fmap tvbToTH) _mtvbs) (typeToTH lhs)
+                 (fmap typeToTH _mk) (map conToTH cons)
+                 (concatMap derivClauseToTH derivings)]
+#elif __GLASGOW_HASKELL__ > 710
+      [DataInstD (cxtToTH cxt) _n _lhs_args (fmap typeToTH _mk) (map conToTH cons)
+                 (concatMap derivClauseToTH derivings)]
+#else
+      [DataInstD (cxtToTH cxt) _n _lhs_args (map conToTH cons)
+                 (map derivingToTH derivings)]
+#endif
+  where
+    _lhs' = typeToTH lhs
+    (_n, _lhs_args) =
+      case unfoldType _lhs' of
+        (ConT n, lhs_args) -> (n, filterTANormals lhs_args)
+        (_, _) -> error $ "Illegal data instance LHS: " ++ pprint _lhs'
 
 #if __GLASGOW_HASKELL__ > 710
 frsToTH :: DFamilyResultSig -> FamilyResultSig
@@ -447,6 +454,9 @@ predToTH :: DPred -> Pred
 predToTH = go []
   where
     go acc (DAppT p t) = go (typeToTH t : acc) p
+    -- In the event that we're on a version of Template Haskell without support
+    -- for kind applications, we will simply drop the applied kind.
+    go acc (DAppKindT t _) = go acc t
     go acc (DSigT p _) = go acc                p  -- this shouldn't happen.
     go acc (DConT n)
       | nameBase n == "~"
@@ -464,8 +474,6 @@ predToTH = go []
       = error "(->) spotted at head of a constraint"
     go _ (DLitT {})
       = error "Type-level literal spotted at head of a constraint"
-    go _ (DAppKindT {})
-      = error "Visible kind applications supported only in GHC 8.8+"
 #else
 predToTH (DAppT p t) = AppT (predToTH p) (typeToTH t)
 predToTH (DSigT p k) = SigT (predToTH p) (typeToTH k)

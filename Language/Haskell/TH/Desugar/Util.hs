@@ -30,7 +30,7 @@ module Language.Haskell.TH.Desugar.Util (
   topEverywhereM, isInfixDataCon,
   isTypeKindName, typeKindName,
   mkExtraKindBindersGeneric, unravelType, unSigType, unfoldType,
-  TypeArg(..), applyType, filterTANormals, unSigTypeArg, unTypeArg
+  TypeArg(..), applyType, filterTANormals, unSigTypeArg, probablyWrongUnTypeArg
 #if __GLASGOW_HASKELL__ >= 800
   , bindIP
 #endif
@@ -319,9 +319,9 @@ unSigTypeArg (TyArg k)    = TyArg (unSigType k)
 -- | Extract the underlying 'Type' or 'Kind' from a 'TypeArg'. This forgets
 -- information about whether a type is a normal argument or not, so use with
 -- caution.
-unTypeArg :: TypeArg -> Type
-unTypeArg (TANormal t) = t
-unTypeArg (TyArg k)    = k
+probablyWrongUnTypeArg :: TypeArg -> Type
+probablyWrongUnTypeArg (TANormal t) = t
+probablyWrongUnTypeArg (TyArg k)    = k
 
 ----------------------------------------
 -- Free names, etc.

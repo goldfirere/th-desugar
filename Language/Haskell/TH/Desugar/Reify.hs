@@ -373,7 +373,7 @@ maybeReifyCon n decs ty_name ty_args cons
 #if __GLASGOW_HASKELL__ < 711
     fixity = fromMaybe defaultFixity $ reifyFixityInDecs n decs
 #endif
-    tvbs = freeVariablesWellScoped $ map unTypeArg ty_args
+    tvbs = freeVariablesWellScoped $ map probablyWrongUnTypeArg ty_args
 maybeReifyCon _ _ _ _ _ = Nothing
 
 mkVarI :: Name -> [Dec] -> Info

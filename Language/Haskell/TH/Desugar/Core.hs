@@ -680,40 +680,18 @@ dsDecs = concatMapM dsDec
 
 -- | Desugar a single @Dec@, perhaps producing multiple 'DDec's
 dsDec :: DsMonad q => Dec -> q [DDec]
-dsDec d@(FunD {}) = fmap (map DLetDec . fst) $ dsLetDec d
-dsDec d@(ValD {}) = fmap (map DLetDec . fst) $ dsLetDec d
+dsDec d@(FunD {}) = dsTopLevelLetDec d
+dsDec d@(ValD {}) = dsTopLevelLetDec d
 #if __GLASGOW_HASKELL__ > 710
-dsDec (DataD cxt n tvbs mk cons derivings) = do
-  tvbs'    <- mapM dsTvb tvbs
-  all_tvbs <- nonFamilyDataTvbs tvbs' mk
-  let data_type = nonFamilyDataReturnType n all_tvbs
-  (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> pure tvbs' <*> mapM dsType mk
-                         <*> concatMapM (dsCon tvbs' data_type) cons
-                         <*> mapM dsDerivClause derivings)
-dsDec (NewtypeD cxt n tvbs mk con derivings) = do
-  tvbs'    <- mapM dsTvb tvbs
-  all_tvbs <- nonFamilyDataTvbs tvbs' mk
-  let data_type = nonFamilyDataReturnType n all_tvbs
-  (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> pure tvbs' <*> mapM dsType mk
-                            <*> dsCon tvbs' data_type con
-                            <*> mapM dsDerivClause derivings)
+dsDec (DataD cxt n tvbs mk cons derivings) =
+  dsDataDec Data cxt n tvbs mk cons derivings
+dsDec (NewtypeD cxt n tvbs mk con derivings) =
+  dsDataDec Newtype cxt n tvbs mk [con] derivings
 #else
-dsDec (DataD cxt n tvbs cons derivings) = do
-  tvbs' <- mapM dsTvb tvbs
-  let data_type = nonFamilyDataReturnType n tvbs'
-  (:[]) <$> (DDataD Data <$> dsCxt cxt <*> pure n
-                         <*> pure tvbs' <*> pure Nothing
-                         <*> concatMapM (dsCon tvbs' data_type) cons
-                         <*> mapM dsDerivClause derivings)
-dsDec (NewtypeD cxt n tvbs con derivings) = do
-  tvbs' <- mapM dsTvb tvbs
-  let data_type = nonFamilyDataReturnType n tvbs'
-  (:[]) <$> (DDataD Newtype <$> dsCxt cxt <*> pure n
-                            <*> pure tvbs' <*> pure Nothing
-                            <*> dsCon tvbs' data_type con
-                            <*> mapM dsDerivClause derivings)
+dsDec (DataD cxt n tvbs cons derivings) =
+  dsDataDec Data cxt n tvbs Nothing cons derivings
+dsDec (NewtypeD cxt n tvbs con derivings) =
+  dsDataDec Newtype cxt n tvbs Nothing [con] derivings
 #endif
 dsDec (TySynD n tvbs ty) =
   (:[]) <$> (DTySynD n <$> mapM dsTvb tvbs <*> dsType ty)
@@ -727,10 +705,10 @@ dsDec (InstanceD over cxt ty decs) =
 dsDec (InstanceD cxt ty decs) =
   (:[]) <$> (DInstanceD <$> pure Nothing <*> dsCxt cxt <*> dsType ty <*> dsDecs decs)
 #endif
-dsDec d@(SigD {}) = fmap (map DLetDec . fst) $ dsLetDec d
+dsDec d@(SigD {}) = dsTopLevelLetDec d
 dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
-dsDec d@(InfixD {}) = fmap (map DLetDec . fst) $ dsLetDec d
-dsDec d@(PragmaD {}) = fmap (map DLetDec . fst) $ dsLetDec d
+dsDec d@(InfixD {}) = dsTopLevelLetDec d
+dsDec d@(PragmaD {}) = dsTopLevelLetDec d
 #if __GLASGOW_HASKELL__ > 710
 dsDec (OpenTypeFamilyD tfHead) =
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead tfHead)
@@ -743,83 +721,27 @@ dsDec (FamilyD DataFam n tvbs m_k) =
   (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsType m_k)
 #endif
 #if __GLASGOW_HASKELL__ >= 807
-dsDec (DataInstD cxt mtvbs lhs mk cons derivings) = do
+dsDec (DataInstD cxt mtvbs lhs mk cons derivings) =
   case unfoldType lhs of
-    (ConT n, tys) -> do
-      mtvbs'     <- mapM (mapM dsTvb) mtvbs
-      tys'       <- mapM dsTypeArg tys
-      extra_tvbs <- mkExtraKindBinders mk
-      let lhs'          = applyDType (DConT n) tys'
-          all_tys       = tys' ++ map (DTANormal . dTyVarBndrToDType) extra_tvbs
-          all_tvbs      = case mtvbs' of
-                            Nothing    -> dataFamInstTvbsCompat all_tys
-                            Just tvbs' -> tvbs' ++ extra_tvbs
-          fam_inst_type = dataFamInstReturnType n all_tys
-      (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure mtvbs'
-                                 <*> pure lhs' <*> mapM dsType mk
-                                 <*> concatMapM (dsCon all_tvbs fam_inst_type) cons
-                                 <*> mapM dsDerivClause derivings)
-    (_, _) -> fail $ "Unexpected data instance LHS: " ++ pprint lhs
-dsDec (NewtypeInstD cxt mtvbs lhs mk con derivings) = do
+    (ConT n, tys) -> dsDataInstDec Data cxt n mtvbs tys mk cons derivings
+    (_, _)        -> fail $ "Unexpected data instance LHS: " ++ pprint lhs
+dsDec (NewtypeInstD cxt mtvbs lhs mk con derivings) =
   case unfoldType lhs of
-    (ConT n, tys) -> do
-      mtvbs'     <- mapM (mapM dsTvb) mtvbs
-      tys'       <- mapM dsTypeArg tys
-      extra_tvbs <- mkExtraKindBinders mk
-      let lhs'          = applyDType (DConT n) tys'
-          all_tys       = tys' ++ map (DTANormal . dTyVarBndrToDType) extra_tvbs
-          all_tvbs      = case mtvbs' of
-                            Nothing    -> dataFamInstTvbsCompat all_tys
-                            Just tvbs' -> tvbs' ++ extra_tvbs
-          fam_inst_type = dataFamInstReturnType n all_tys
-      (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure mtvbs'
-                                    <*> pure lhs' <*> mapM dsType mk
-                                    <*> dsCon all_tvbs fam_inst_type con
-                                    <*> mapM dsDerivClause derivings)
-    (_, _) -> fail $ "Unexpected newtype instance LHS: " ++ pprint lhs
+    (ConT n, tys) -> dsDataInstDec Newtype cxt n mtvbs tys mk [con] derivings
+    (_, _)        -> fail $ "Unexpected newtype instance LHS: " ++ pprint lhs
 #elif __GLASGOW_HASKELL__ > 710
-dsDec (DataInstD cxt n tys mk cons derivings) = do
-  tys'    <- mapM (fmap DTANormal . dsType) tys
-  all_tys <- dataFamInstTypeArgs tys' mk
-  let tvbs = dataFamInstTvbsCompat all_tys
-      fam_inst_type = dataFamInstReturnType n all_tys
-      lhs' = applyDType (DConT n) tys'
-  (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure Nothing
-                             <*> pure lhs' <*> mapM dsType mk
-                             <*> concatMapM (dsCon tvbs fam_inst_type) cons
-                             <*> mapM dsDerivClause derivings)
-dsDec (NewtypeInstD cxt n tys mk con derivings) = do
-  tys'    <- mapM (fmap DTANormal . dsType) tys
-  all_tys <- dataFamInstTypeArgs tys' mk
-  let tvbs = dataFamInstTvbsCompat all_tys
-      fam_inst_type = dataFamInstReturnType n all_tys
-      lhs' = applyDType (DConT n) tys'
-  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure Nothing
-                                <*> pure lhs' <*> mapM dsType mk
-                                <*> dsCon tvbs fam_inst_type con
-                                <*> mapM dsDerivClause derivings)
+dsDec (DataInstD cxt n tys mk cons derivings) =
+  dsDataInstDec Data cxt n Nothing (map TANormal tys) mk cons derivings
+dsDec (NewtypeInstD cxt n tys mk con derivings) =
+  dsDataInstDec Newtype cxt n Nothing (map TANormal tys) mk [con] derivings
 #else
-dsDec (DataInstD cxt n tys cons derivings) = do
-  tys' <- mapM (fmap DTANormal . dsType) tys
-  let tvbs = dataFamInstTvbsCompat tys'
-      fam_inst_type = dataFamInstReturnType n tys'
-      lhs' = applyDType (DConT n) tys'
-  (:[]) <$> (DDataInstD Data <$> dsCxt cxt <*> pure Nothing
-                             <*> pure lhs' <*> pure Nothing
-                             <*> concatMapM (dsCon tvbs fam_inst_type) cons
-                             <*> mapM dsDerivClause derivings)
-dsDec (NewtypeInstD cxt n tys con derivings) = do
-  tys' <- mapM (fmap DTANormal . dsType) tys
-  let tvbs = dataFamInstTvbsCompat tys'
-      fam_inst_type = dataFamInstReturnType n tys'
-      lhs' = applyDType (DConT n) tys'
-  (:[]) <$> (DDataInstD Newtype <$> dsCxt cxt <*> pure Nothing
-                                <*> pure lhs' <*> pure Nothing
-                                <*> dsCon tvbs fam_inst_type con
-                                <*> mapM dsDerivClause derivings)
+dsDec (DataInstD cxt n tys cons derivings) =
+  dsDataInstDec Data cxt n Nothing (map TANormal tys) Nothing cons derivings
+dsDec (NewtypeInstD cxt n tys con derivings) =
+  dsDataInstDec Newtype cxt n Nothing (map TANormal tys) Nothing [con] derivings
 #endif
 #if __GLASGOW_HASKELL__ >= 807
-dsDec (TySynInstD eqn) = (:[]) <$> (DTySynInstD <$> dsTySynEqn (error "Unused") eqn)
+dsDec (TySynInstD eqn) = (:[]) <$> (DTySynInstD <$> dsTySynEqn unusedArgument eqn)
 #elif __GLASGOW_HASKELL__ >= 707
 dsDec (TySynInstD n eqn) = (:[]) <$> (DTySynInstD <$> dsTySynEqn n eqn)
 #else
@@ -861,6 +783,48 @@ dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 dsDec (ImplicitParamBindD {}) = impossible "Non-`let`-bound implicit param binding"
 #endif
 
+-- | Desugar a 'DataD' or 'NewtypeD'.
+dsDataDec :: DsMonad q
+          => NewOrData -> Cxt -> Name -> [TyVarBndr]
+          -> Maybe Kind -> [Con] -> [DerivingClause] -> q [DDec]
+dsDataDec nd cxt n tvbs mk cons derivings = do
+  tvbs' <- mapM dsTvb tvbs
+  let h98_tvbs = case mk of
+                   -- If there's an explicit return kind, we're dealing with a
+                   -- GADT, so this argument goes unused in dsCon.
+                   Just {} -> unusedArgument
+                   Nothing -> tvbs'
+      h98_return_type = nonFamilyDataReturnType n tvbs'
+  (:[]) <$> (DDataD nd <$> dsCxt cxt <*> pure n
+                       <*> pure tvbs' <*> mapM dsType mk
+                       <*> concatMapM (dsCon h98_tvbs h98_return_type) cons
+                       <*> mapM dsDerivClause derivings)
+
+-- | Desugar a 'DataInstD' or a 'NewtypeInstD'.
+dsDataInstDec :: DsMonad q
+              => NewOrData -> Cxt -> Name -> Maybe [TyVarBndr] -> [TypeArg]
+              -> Maybe Kind -> [Con] -> [DerivingClause] -> q [DDec]
+dsDataInstDec nd cxt n mtvbs tys mk cons derivings = do
+  mtvbs' <- mapM (mapM dsTvb) mtvbs
+  tys'   <- mapM dsTypeArg tys
+  let lhs' = applyDType (DConT n) tys'
+      h98_tvbs =
+        case (mk, mtvbs') of
+          -- If there's an explicit return kind, we're dealing with a
+          -- GADT, so this argument goes unused in dsCon.
+          (Just {}, _)          -> unusedArgument
+          -- H98, and there is an explicit `forall` in front. Just reuse the
+          -- type variable binders from the `forall`.
+          (Nothing, Just tvbs') -> tvbs'
+          -- H98, and no explicit `forall`. Compute the bound variables
+          -- manually.
+          (Nothing, Nothing)    -> dataFamInstTvbs tys'
+      h98_fam_inst_type = dataFamInstReturnType n tys'
+  (:[]) <$> (DDataInstD nd <$> dsCxt cxt <*> pure mtvbs'
+                           <*> pure lhs' <*> mapM dsType mk
+                           <*> concatMapM (dsCon h98_tvbs h98_fam_inst_type) cons
+                           <*> mapM dsDerivClause derivings)
+
 -- Like mkExtraDKindBinders, but accepts a Maybe Kind
 -- argument instead of DKind.
 mkExtraKindBinders :: DsMonad q => Maybe Kind -> q [DTyVarBndr]
@@ -901,7 +865,9 @@ dsTypeFamilyHead n tvbs m_kind = do
                     <*> pure Nothing
 #endif
 
--- | Desugar @Dec@s that can appear in a @let@ expression.
+-- | Desugar @Dec@s that can appear in a @let@ expression. See the
+-- documentation for 'dsLetDec' for an explanation of what the return type
+-- represents.
 dsLetDecs :: DsMonad q => [Dec] -> q ([DLetDec], DExp -> DExp)
 dsLetDecs decs = do
   (let_decss, ip_binders) <- mapAndUnzipM dsLetDec decs
@@ -940,7 +906,8 @@ dsLetDecs decs = do
 --
 -- This way, the expression
 -- @let { new_x_val = 42 } in 'bindIP' \@"x" new_x_val ('ip' \@\"x\")@ can be
--- formed.
+-- formed. The implicit param binders always come after all the other
+-- 'DLetDec's to support parallel assignment of implicit params.
 dsLetDec :: DsMonad q => Dec -> q ([DLetDec], DExp -> DExp)
 dsLetDec (FunD name clauses) = do
   clauses' <- dsClauses name clauses
@@ -974,6 +941,18 @@ dsLetDec (ImplicitParamBindD n e) = do
   return ([let_dec], ip_binder)
 #endif
 dsLetDec _dec = impossible "Illegal declaration in let expression."
+
+-- | Desugar a single 'Dec' corresponding to something that could appear after
+-- the @let@ in a @let@ expression, but occurring at the top level. Because the
+-- 'Dec' occurs at the top level, there is nothing that would correspond to the
+-- @in ...@ part of the @let@ expression. As a consequence, this function does
+-- not return a @'DExp' -> 'DExp'@ function corresonding to implicit param
+-- binders (these cannot occur at the top level).
+dsTopLevelLetDec :: DsMonad q => Dec -> q [DDec]
+dsTopLevelLetDec = fmap (map DLetDec . fst) . dsLetDec
+  -- Note the use of fst above: we're silently throwing away any implicit param
+  -- binders that dsLetDec returns, since there is invariant that there will be
+  -- no implicit params in the first place.
 
 -- | Desugar a single @Con@.
 --
@@ -1223,15 +1202,24 @@ dsCxt :: DsMonad q => Cxt -> q DCxt
 dsCxt = concatMapM dsPred
 
 #if __GLASGOW_HASKELL__ >= 801
--- | Desugar a @DerivClause@.
-dsDerivClause :: DsMonad q => DerivClause -> q DDerivClause
+-- | A backwards-compatible type synonym for the thing representing a single
+-- derived class in a @deriving@ clause. (This is a @DerivClause@, @Pred@, or
+-- @Name@ depending on the GHC version.)
+type DerivingClause = DerivClause
+
+-- | Desugar a @DerivingClause@.
+dsDerivClause :: DsMonad q => DerivingClause -> q DDerivClause
 dsDerivClause (DerivClause mds cxt) =
   DDerivClause <$> mapM dsDerivStrategy mds <*> dsCxt cxt
 #elif __GLASGOW_HASKELL__ >= 711
-dsDerivClause :: DsMonad q => Pred -> q DDerivClause
+type DerivingClause = Pred
+
+dsDerivClause :: DsMonad q => DerivingClause -> q DDerivClause
 dsDerivClause p = DDerivClause Nothing <$> dsPred p
 #else
-dsDerivClause :: DsMonad q => Name -> q DDerivClause
+type DerivingClause = Name
+
+dsDerivClause :: DsMonad q => DerivingClause -> q DDerivClause
 dsDerivClause n = pure $ DDerivClause Nothing [DConT n]
 #endif
 
@@ -1440,9 +1428,9 @@ dTyVarBndrToDType (DKindedTV a k) = DVarT a `DSigT` k
 -- | Extract the underlying 'DType' or 'DKind' from a 'DTypeArg'. This forgets
 -- information about whether a type is a normal argument or not, so use with
 -- caution.
-unDTypeArg :: DTypeArg -> DType
-unDTypeArg (DTANormal t) = t
-unDTypeArg (DTyArg k)    = k
+probablyWrongUnDTypeArg :: DTypeArg -> DType
+probablyWrongUnDTypeArg (DTANormal t) = t
+probablyWrongUnDTypeArg (DTyArg k)    = k
 
 -- | Convert a 'Strict' to a 'Bang' in GHCs 7.x. This is just
 -- the identity operation in GHC 8.x, which has no 'Strict'.
@@ -1468,22 +1456,6 @@ nonFamilyDataReturnType con_name =
 dataFamInstReturnType :: Name -> [DTypeArg] -> DType
 dataFamInstReturnType fam_name = applyDType (DConT fam_name)
 
--- Take a data type (which does not belong to a data family) of the form
--- @Foo a :: k -> Type -> Type@ and return @Foo a (b :: k) (c :: Type)@, where
--- @b@ and @c@ are fresh type variable names.
-nonFamilyDataTvbs :: DsMonad q => [DTyVarBndr] -> Maybe Kind -> q [DTyVarBndr]
-nonFamilyDataTvbs tvbs mk = do
-  extra_tvbs <- mkExtraKindBinders mk
-  pure $ tvbs ++ extra_tvbs
-
--- Take a data family instance of the form @Foo a :: k -> Type -> Type@ and
--- return @Foo a (b :: k) (c :: Type)@, where @b@ and @c@ are fresh type
--- variable names.
-dataFamInstTypeArgs :: DsMonad q => [DTypeArg] -> Maybe Kind -> q [DTypeArg]
-dataFamInstTypeArgs tys mk = do
-  extra_tvbs <- mkExtraKindBinders mk
-  pure $ tys ++ map (DTANormal . dTyVarBndrToDType) extra_tvbs
-
 -- Data family instance declarations did not come equipped with a list of bound
 -- type variables until GHC 8.8 (and even then, it's optional whether the user
 -- provides them or not). This means that there are situations where we must
@@ -1491,8 +1463,8 @@ dataFamInstTypeArgs tys mk = do
 -- arguments. We accomplish this by taking the free variables of the types
 -- and performing a reverse topological sort on them to ensure that the
 -- returned list is well scoped.
-dataFamInstTvbsCompat :: [DTypeArg] -> [DTyVarBndr]
-dataFamInstTvbsCompat = toposortTyVarsOf . map unDTypeArg
+dataFamInstTvbs :: [DTypeArg] -> [DTyVarBndr]
+dataFamInstTvbs = toposortTyVarsOf . map probablyWrongUnDTypeArg
 
 -- | Take a list of 'DType's, find their free variables, and sort them in
 -- reverse topological order to ensure that they are well scoped. In other
@@ -1615,3 +1587,12 @@ unfoldDType = go []
 extractTvbKind :: DTyVarBndr -> Maybe DKind
 extractTvbKind (DPlainTV _) = Nothing
 extractTvbKind (DKindedTV _ k) = Just k
+
+-- | Some functions in this module only use certain arguments on particular
+-- versions of GHC. Other versions of GHC (that don't make use of those
+-- arguments) might need to conjure up those arguments out of thin air at the
+-- functions' call sites, so this function serves as a placeholder to use in
+-- those situations. (In other words, this is a slightly more informative
+-- version of 'undefined'.)
+unusedArgument :: a
+unusedArgument = error "Unused"

@@ -44,7 +44,8 @@ module Language.Haskell.TH.Desugar (
   dsCon, dsForeign, dsPragma, dsRuleBndr,
 
   -- ** Secondary desugaring functions
-  PatM, dsPred, dsPat, dsDec, dsDerivClause, dsLetDec,
+  PatM, dsPred, dsPat, dsDec, dsDataDec, dsDataInstDec,
+  DerivingClause, dsDerivClause, dsLetDec,
   dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses,
   dsBangType, dsVarBangType,
 #if __GLASGOW_HASKELL__ > 710
@@ -100,10 +101,10 @@ module Language.Haskell.TH.Desugar (
   dTyVarBndrToDType, toposortTyVarsOf,
 
   -- ** 'TypeArg'
-  TypeArg(..), applyType, filterTANormals, unfoldType, unTypeArg,
+  TypeArg(..), applyType, filterTANormals, unfoldType,
 
   -- ** 'DTypeArg'
-  DTypeArg(..), applyDType, filterDTANormals, unfoldDType, unDTypeArg,
+  DTypeArg(..), applyDType, filterDTANormals, unfoldDType,
 
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat

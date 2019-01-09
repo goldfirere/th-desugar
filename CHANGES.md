@@ -51,7 +51,6 @@ Version 1.10
 * Locally reified class methods, data constructors, and record selectors now
   quantify kind variables properly.
 * Desugared ADT constructors now quantify kind variables properly.
-* Add more functions which compute free variables.
 * Remove `DPred`, as it has become too similar to `DType`. This also means
   that the `DPat` constructors, which previously ended with the suffix `Pa`,
   can now use the suffix `P`, mirroring TH.
