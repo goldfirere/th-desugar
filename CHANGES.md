@@ -3,6 +3,43 @@
 
 Version 1.10
 ------------
+* Support GHC 8.8.
+* Add support for visible kind application, type variable `foralls` in `RULES`,
+  and explicit `forall`s in type family instances. Correspondingly,
+  * There is now a `DAppKindT` constructor in `DType`.
+  * Previously, the `DDataInstD` constructor had fields of type `Name` and
+    `[DType]`. Those have been scrapped in favor of a single field of type
+    `DType`, representing the application of the data family name (which was
+    previously the `Name`) to its arguments (which was previously the
+    `[DType]`).
+
+    `DDataInstD` also has a new field of type `Maybe [DTyVarBndr]` to represent
+    its explicitly quantified type variables (if present).
+  * Previously, the `DTySynEqn` constructor had a field of type `[DType]`.
+    That has been scrapped in favor of a field of type `DType`, representing
+    the application of the type family name (which `DTySynEqn` did not used to
+    contain!) to its arguments (which was previously the `[DType]`).
+
+    `DTySynEqn` also has a new field of type `Maybe [DTyVarBndr]` to represent
+    its explicitly quantified type variables (if present).
+  * `DTySynInstD` no longer has a field of type `Name`, as that is redundant
+    now that each `DTySynEqn` contains the same `Name`.
+  * There is now a field of type `Maybe [DTyVarBndr]` in the `DRuleP`
+    constructor to represent bound type variables in `RULES` (if present).
+* Add support for desugaring implicit params. This does not involve any changes
+  to the `th-desugar` AST, as:
+  * `(?x :: a) => ...` is desugared to `IP "x" a => ...`.
+  * `id ?x` is desugared to `id (ip @"x")`.
+  * `let ?x = 42 in ...` is desugared to
+    `let new_x_val = 42 in bindIP @"x" new_x_val ...` (where `bindIP` is a new
+    utility function exported by `Language.Haskell.TH.Desugar` on GHC 8.0 or
+    later).
+
+  In order to support this desugaring, the type signatures of `dsLetDec` and
+  `dsLetDecs` now return `([DLetDec], DExp -> DExp)` instead of just
+  `[DLetDec]`, where `DExp -> DExp` is the expression which binds the values of
+  implicit params (e.g., `\z -> bindIP @"x" new_x_val z`) if any are bound.
+  (If none are bound, this is simply the `id` function.)
 * Fix a bug in which `toposortTyVarsOf` would error at runtime if given types
   containing `forall`s as arguments.
 * Fix a bug in which `fvDType` would return incorrect results if given a type
@@ -14,10 +51,18 @@ Version 1.10
 * Locally reified class methods, data constructors, and record selectors now
   quantify kind variables properly.
 * Desugared ADT constructors now quantify kind variables properly.
-* Add more functions which compute free variables.
 * Remove `DPred`, as it has become too similar to `DType`. This also means
   that the `DPat` constructors, which previously ended with the suffix `Pa`,
   can now use the suffix `P`, mirroring TH.
+* The type of `applyDType` has changed from `DType -> [DType] -> DType` to
+  `DType -> [DTypeArg] -> DType`, where `DTypeArg` is a new data type that
+  encodes whether an argument is a normal type argument (e.g., the `Int` in
+  `Maybe Int`) or a visible kind argument (e.g., the `@Type` in
+  `Proxy @Type Char`). A `TypeArg` data type (which is like `DTypeArg`, but
+  with `Type`s/`Kind`s instead of `DType`s/`DKind`s) is also provided.
+
+  A handful of utility functions for manipulating `TypeArg`s and `DTypeArg`s
+  are also exported.
 
 Version 1.9
 -----------

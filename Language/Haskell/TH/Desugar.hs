@@ -44,7 +44,8 @@ module Language.Haskell.TH.Desugar (
   dsCon, dsForeign, dsPragma, dsRuleBndr,
 
   -- ** Secondary desugaring functions
-  PatM, dsPred, dsPat, dsDec, dsDerivClause, dsLetDec,
+  PatM, dsPred, dsPat, dsDec, dsDataDec, dsDataInstDec,
+  DerivingClause, dsDerivClause, dsLetDec,
   dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses,
   dsBangType, dsVarBangType,
 #if __GLASGOW_HASKELL__ > 710
@@ -53,6 +54,7 @@ module Language.Haskell.TH.Desugar (
 #if __GLASGOW_HASKELL__ >= 801
   dsPatSynDir,
 #endif
+  dsTypeArg,
 
   -- * Converting desugared AST back to TH AST
   module Language.Haskell.TH.Desugar.Sweeten,
@@ -82,7 +84,7 @@ module Language.Haskell.TH.Desugar (
   module Language.Haskell.TH.Desugar.FV,
 
   -- * Utility functions
-  applyDExp, applyDType,
+  applyDExp,
   dPatToDExp, removeWilds,
   getDataD, dataConNameToDataName, dataConNameToCon,
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
@@ -92,8 +94,17 @@ module Language.Haskell.TH.Desugar (
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
   strictToBang, isTypeKindName, typeKindName,
+#if __GLASGOW_HASKELL__ >= 800
+  bindIP,
+#endif
   unravel, conExistentialTvbs, mkExtraDKindBinders,
   dTyVarBndrToDType, toposortTyVarsOf,
+
+  -- ** 'TypeArg'
+  TypeArg(..), applyType, filterTANormals, unfoldType,
+
+  -- ** 'DTypeArg'
+  DTypeArg(..), applyDType, filterDTANormals, unfoldDType,
 
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
@@ -144,6 +155,10 @@ instance Desugar TyVarBndr DTyVarBndr where
 instance Desugar [Dec] [DDec] where
   desugar = dsDecs
   sweeten = decsToTH
+
+instance Desugar TypeArg DTypeArg where
+  desugar = dsTypeArg
+  sweeten = typeArgToTH
 
 -- | If the declaration passed in is a 'DValD', creates new, equivalent
 -- declarations such that the 'DPat' in all 'DValD's is just a plain

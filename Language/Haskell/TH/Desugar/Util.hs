@@ -6,10 +6,12 @@ rae@cs.brynmawr.edu
 Utility functions for th-desugar package.
 -}
 
-{-# LANGUAGE CPP, TupleSections #-}
+{-# LANGUAGE CPP, DeriveDataTypeable, RankNTypes, ScopedTypeVariables, TupleSections #-}
 
 #if __GLASGOW_HASKELL__ >= 800
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
+{-# LANGUAGE TypeApplications #-}
 #endif
 
 module Language.Haskell.TH.Desugar.Util (
@@ -21,13 +23,17 @@ module Language.Haskell.TH.Desugar.Util (
   stripPlainTV_maybe,
   thirdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat,
-  tvbToType, tvbToTypeWithSig, nameMatches, thdOf3, firstMatch,
+  tvbToType, tvbToTANormalWithSig, nameMatches, thdOf3, firstMatch,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
   topEverywhereM, isInfixDataCon,
   isTypeKindName, typeKindName,
-  mkExtraKindBindersGeneric, unravelType, unSigType
+  mkExtraKindBindersGeneric, unravelType, unSigType, unfoldType,
+  TypeArg(..), applyType, filterTANormals, unSigTypeArg, probablyWrongUnTypeArg
+#if __GLASGOW_HASKELL__ >= 800
+  , bindIP
+#endif
   ) where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
@@ -49,6 +55,8 @@ import Data.Monoid
 
 #if __GLASGOW_HASKELL__ >= 800
 import qualified Data.Kind as Kind
+import GHC.Classes ( IP )
+import Unsafe.Coerce ( unsafeCoerce )
 #endif
 
 ----------------------------------------
@@ -118,6 +126,11 @@ tvbToType = VarT . tvName
 tvbToTypeWithSig :: TyVarBndr -> Type
 tvbToTypeWithSig (PlainTV n)    = VarT n
 tvbToTypeWithSig (KindedTV n k) = SigT (VarT n) k
+
+-- | Convert a 'TyVarBndr' into a 'TypeArg' (specifically, a 'TANormal'),
+-- preserving the kind signature (if it has one).
+tvbToTANormalWithSig :: TyVarBndr -> TypeArg
+tvbToTANormalWithSig = TANormal . tvbToTypeWithSig
 
 -- | Do two names name the same thing?
 nameMatches :: Name -> Name -> Bool
@@ -224,6 +237,10 @@ unSigType (InfixT t1 n t2)  = InfixT (unSigType t1) n (unSigType t2)
 unSigType (UInfixT t1 n t2) = UInfixT (unSigType t1) n (unSigType t2)
 unSigType (ParensT t)       = ParensT (unSigType t)
 #endif
+#if __GLASGOW_HASKELL__ >= 807
+unSigType (AppKindT t k)       = AppKindT (unSigType t) (unSigType k)
+unSigType (ImplicitParamT n t) = ImplicitParamT n (unSigType t)
+#endif
 unSigType t = t
 
 -- | Remove all of the explicit kind signatures from a 'Pred'.
@@ -234,6 +251,77 @@ unSigPred = unSigType
 unSigPred (ClassP n tys) = ClassP n (map unSigType tys)
 unSigPred (EqualP t1 t2) = EqualP (unSigType t1) (unSigType t2)
 #endif
+
+-- | Decompose an applied type into its individual components. For example, this:
+--
+-- @
+-- Proxy \@Type Char
+-- @
+--
+-- would be unfolded to this:
+--
+-- @
+-- ('ConT' ''Proxy, ['TyArg' ('ConT' ''Type), 'TANormal' ('ConT' ''Char)])
+-- @
+unfoldType :: Type -> (Type, [TypeArg])
+unfoldType = go []
+  where
+    go :: [TypeArg] -> Type -> (Type, [TypeArg])
+    go acc (ForallT _ _ ty) = go acc ty
+    go acc (AppT ty1 ty2)   = go (TANormal ty2:acc) ty1
+    go acc (SigT ty _)      = go acc ty
+#if __GLASGOW_HASKELL__ >= 800
+    go acc (ParensT ty)     = go acc ty
+#endif
+#if __GLASGOW_HASKELL__ >= 807
+    go acc (AppKindT ty ki) = go (TyArg ki:acc) ty
+#endif
+    go acc ty               = (ty, acc)
+
+-- | An argument to a type, either a normal type ('TANormal') or a visible
+-- kind application ('TyArg').
+--
+-- 'TypeArg' is useful when decomposing an application of a 'Type' to its
+-- arguments (e.g., in 'unfoldType').
+data TypeArg
+  = TANormal Type
+  | TyArg Kind
+  deriving (Show, Typeable, Data)
+
+-- | Apply one 'Type' to a list of arguments.
+applyType :: Type -> [TypeArg] -> Type
+applyType = foldl apply
+  where
+    apply :: Type -> TypeArg -> Type
+    apply f (TANormal x) = f `AppT` x
+    apply f (TyArg _x)   =
+#if __GLASGOW_HASKELL__ >= 807
+                           f `AppKindT` _x
+#else
+                           -- VKA isn't supported, so
+                           -- conservatively drop the argument
+                           f
+#endif
+
+-- | Filter the normal type arguments from a list of 'TypeArg's.
+filterTANormals :: [TypeArg] -> [Type]
+filterTANormals = mapMaybe getTANormal
+  where
+    getTANormal :: TypeArg -> Maybe Type
+    getTANormal (TANormal t) = Just t
+    getTANormal (TyArg {})   = Nothing
+
+-- | Remove all of the explicit kind signatures from a 'TypeArg'.
+unSigTypeArg :: TypeArg -> TypeArg
+unSigTypeArg (TANormal t) = TANormal (unSigType t)
+unSigTypeArg (TyArg k)    = TyArg (unSigType k)
+
+-- | Extract the underlying 'Type' or 'Kind' from a 'TypeArg'. This forgets
+-- information about whether a type is a normal argument or not, so use with
+-- caution.
+probablyWrongUnTypeArg :: TypeArg -> Type
+probablyWrongUnTypeArg (TANormal t) = t
+probablyWrongUnTypeArg (TyArg k)    = k
 
 ----------------------------------------
 -- Free names, etc.
@@ -253,6 +341,9 @@ extractBoundNamesStmt (BindS pat _) = extractBoundNamesPat pat
 extractBoundNamesStmt (LetS decs)   = foldMap extractBoundNamesDec decs
 extractBoundNamesStmt (NoBindS _)   = S.empty
 extractBoundNamesStmt (ParS stmtss) = foldMap (foldMap extractBoundNamesStmt) stmtss
+#if __GLASGOW_HASKELL__ >= 807
+extractBoundNamesStmt (RecS stmtss) = foldMap extractBoundNamesStmt stmtss
+#endif
 
 -- | Extract the names bound in a @Dec@ that could appear in a @let@ expression.
 extractBoundNamesDec :: Dec -> S.Set Name
@@ -288,6 +379,18 @@ extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
 ----------------------------------------
 -- General utility
 ----------------------------------------
+
+#if __GLASGOW_HASKELL__ >= 800
+-- dirty implementation of explicit-to-implicit conversion
+newtype MagicIP name a r = MagicIP (IP name a => r)
+
+-- | Get an implicit param constraint (@IP name a@, which is the desugared
+-- form of @(?name :: a)@) from an explicit value.
+--
+-- This function is only available with GHC 8.0 or later.
+bindIP :: forall name a r. a -> (IP name a => r) -> r
+bindIP val k = (unsafeCoerce (MagicIP @name k) :: a -> r) val
+#endif
 
 -- like GHC's
 splitAtList :: [a] -> [b] -> ([b], [b])

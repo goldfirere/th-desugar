@@ -265,17 +265,17 @@ reifyInDec n decs (PatSynD n' _ _ _) | n `nameMatches` n'
 
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTypeWithSig tvbs) cons
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
   = Just info
 reifyInDec n decs (NewtypeD _ ty_name tvbs _mk con _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTypeWithSig tvbs) [con]
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) [con]
   = Just info
 #else
 reifyInDec n decs (DataD _ ty_name tvbs cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTypeWithSig tvbs) cons
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
   = Just info
 reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTypeWithSig tvbs) [con]
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) [con]
   = Just info
 #endif
 #if __GLASGOW_HASKELL__ > 710
@@ -303,25 +303,34 @@ reifyInDec n decs (InstanceD _ _ sub_decs)
     reify_in_instance dec@(DataInstD {})    = reifyInDec n (sub_decs ++ decs) dec
     reify_in_instance dec@(NewtypeInstD {}) = reifyInDec n (sub_decs ++ decs) dec
     reify_in_instance _                     = Nothing
-#if __GLASGOW_HASKELL__ > 710
+#if __GLASGOW_HASKELL__ >= 807
+reifyInDec n decs (DataInstD _ _ lhs _ cons _)
+  | (ConT ty_name, tys) <- unfoldType lhs
+  , Just info <- maybeReifyCon n decs ty_name tys cons
+  = Just info
+reifyInDec n decs (NewtypeInstD _ _ lhs _ con _)
+  | (ConT ty_name, tys) <- unfoldType lhs
+  , Just info <- maybeReifyCon n decs ty_name tys [con]
+  = Just info
+#elif __GLASGOW_HASKELL__ > 710
 reifyInDec n decs (DataInstD _ ty_name tys _ cons _)
-  | Just info <- maybeReifyCon n decs ty_name tys cons
+  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) cons
   = Just info
 reifyInDec n decs (NewtypeInstD _ ty_name tys _ con _)
-  | Just info <- maybeReifyCon n decs ty_name tys [con]
+  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) [con]
   = Just info
 #else
 reifyInDec n decs (DataInstD _ ty_name tys cons _)
-  | Just info <- maybeReifyCon n decs ty_name tys cons
+  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) cons
   = Just info
 reifyInDec n decs (NewtypeInstD _ ty_name tys con _)
-  | Just info <- maybeReifyCon n decs ty_name tys [con]
+  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) [con]
   = Just info
 #endif
 
 reifyInDec _ _ _ = Nothing
 
-maybeReifyCon :: Name -> [Dec] -> Name -> [Type] -> [Con] -> Maybe (Named Info)
+maybeReifyCon :: Name -> [Dec] -> Name -> [TypeArg] -> [Con] -> Maybe (Named Info)
 #if __GLASGOW_HASKELL__ > 710
 maybeReifyCon n _decs ty_name ty_args cons
   | Just (n', con) <- findCon n cons
@@ -341,8 +350,8 @@ maybeReifyCon n decs ty_name ty_args cons
   = Just (n', VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing fixity)
 #endif
   where
-    result_ty = foldl AppT (ConT ty_name) (map unSigType ty_args)
-      -- Make sure to call unSigType here. Otherwise, if you have this:
+    result_ty = applyType (ConT ty_name) (map unSigTypeArg ty_args)
+      -- Make sure to call unSigTypeArg here. Otherwise, if you have this:
       --
       --   data D (a :: k) = MkD { unD :: Proxy a }
       --
@@ -364,7 +373,7 @@ maybeReifyCon n decs ty_name ty_args cons
 #if __GLASGOW_HASKELL__ < 711
     fixity = fromMaybe defaultFixity $ reifyFixityInDecs n decs
 #endif
-    tvbs = freeVariablesWellScoped ty_args
+    tvbs = freeVariablesWellScoped $ map probablyWrongUnTypeArg ty_args
 maybeReifyCon _ _ _ _ _ = Nothing
 
 mkVarI :: Name -> [Dec] -> Info
@@ -409,14 +418,34 @@ findInstances n = map stripInstanceDec . concatMap match_instance
 #endif
                                                | ConT n' <- ty_head ty
                                                , n `nameMatches` n' = [d]
-#if __GLASGOW_HASKELL__ > 710
+#if __GLASGOW_HASKELL__ >= 807
+    match_instance (DataInstD ctxt _ lhs mk cons derivs)
+                                                  | ConT n' <- ty_head lhs
+                                                  , n `nameMatches` n' = [d]
+      where
+        mtvbs = rejig_data_inst_tvbs ctxt lhs mk
+        d = DataInstD ctxt mtvbs lhs mk cons derivs
+    match_instance (NewtypeInstD ctxt _ lhs mk con derivs)
+                                                  | ConT n' <- ty_head lhs
+                                                  , n `nameMatches` n' = [d]
+      where
+        mtvbs = rejig_data_inst_tvbs ctxt lhs mk
+        d = NewtypeInstD ctxt mtvbs lhs mk con derivs
+#elif __GLASGOW_HASKELL__ > 710
     match_instance d@(DataInstD _ n' _ _ _ _)    | n `nameMatches` n' = [d]
     match_instance d@(NewtypeInstD _ n' _ _ _ _) | n `nameMatches` n' = [d]
 #else
     match_instance d@(DataInstD _ n' _ _ _)    | n `nameMatches` n' = [d]
     match_instance d@(NewtypeInstD _ n' _ _ _) | n `nameMatches` n' = [d]
 #endif
-#if __GLASGOW_HASKELL__ >= 707
+#if __GLASGOW_HASKELL__ >= 807
+    match_instance (TySynInstD (TySynEqn _ lhs rhs))
+                                               | ConT n' <- ty_head lhs
+                                               , n `nameMatches` n' = [d]
+      where
+        mtvbs = rejig_tvbs [lhs, rhs]
+        d = TySynInstD (TySynEqn mtvbs lhs rhs)
+#elif __GLASGOW_HASKELL__ >= 707
     match_instance d@(TySynInstD n' _)         | n `nameMatches` n' = [d]
 #else
     match_instance d@(TySynInstD n' _ _)       | n `nameMatches` n' = [d]
@@ -430,10 +459,52 @@ findInstances n = map stripInstanceDec . concatMap match_instance
                                         = concatMap match_instance decs
     match_instance _                    = []
 
-    ty_head (ForallT _ _ ty) = ty_head ty
-    ty_head (AppT ty _)      = ty_head ty
-    ty_head (SigT ty _)      = ty_head ty
-    ty_head ty               = ty
+#if __GLASGOW_HASKELL__ >= 807
+    -- See Note [Rejigging reified type family equations variable binders]
+    -- for why this is necessary.
+    rejig_tvbs :: [Type] -> Maybe [TyVarBndr]
+    rejig_tvbs ts =
+      let tvbs = freeVariablesWellScoped ts
+      in if null tvbs
+         then Nothing
+         else Just tvbs
+
+    rejig_data_inst_tvbs :: Cxt -> Type -> Maybe Kind -> Maybe [TyVarBndr]
+    rejig_data_inst_tvbs cxt lhs mk =
+      rejig_tvbs $ cxt ++ [lhs] ++ maybeToList mk
+#endif
+
+    ty_head = fst . unfoldType
+
+{-
+Note [Rejigging reified type family equations variable binders]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+When reifying a type family instance (on GHC 8.8 or later), which quantified
+type variables do you use? This might seem like a strange question to ask since
+these instances already come equipped with a field of type `Maybe [TyVarBndr]`,
+but it's not always the case that you want to use exactly that field. Here is
+an example to better explain it:
+
+  class C a where
+    type T b a
+  instance C (Maybe a) where
+    type forall b. T b (Maybe a) = a
+
+If the above instance were quoted, it would give you `Just [PlainTV b]`. But if
+you were to reify ''T (and therefore retrieve the instance for T), you wouldn't
+want to use that as your list of type variable binders! This is because
+reifiying any type family always presents the information as though the type
+family were top-level. Therefore, reifying T (in GHC, at least) would yield:
+
+  type family T b a
+  type instance forall b a. T b (Maybe a) = a
+
+Note that we quantify over `b` *and* `a` here, not just `b`. To emulate this
+GHC quirk, whenever we reify any type family instance, we just ignore the field
+of type `Maybe [TyVarBndr]` and quantify over the instance afresh. It's a bit
+tedious, but it gets the job done. (This is accomplished by the rejig_tvbs
+function.)
+-}
 
 stripClassDec :: Dec -> Dec
 stripClassDec (ClassD cxt name tvbs fds sub_decs)

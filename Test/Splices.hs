@@ -31,6 +31,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE QuantifiedConstraints #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 807
+{-# LANGUAGE ImplicitParams #-}
+#endif
+
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
@@ -265,6 +269,21 @@ test48_quantified_constraints =
      in f (Proxy @Int) (Proxy @Int) |]
 #endif
 
+#if __GLASGOW_HASKELL__ >= 807
+test49_implicit_params = [| let f :: (?x :: Int, ?y :: Int) => (Int, Int)
+                                f =
+                                  let ?x = ?y
+                                      ?y = ?x
+                                  in (?x, ?y)
+                            in (let ?x = 42
+                                    ?y = 27
+                                in f) |]
+
+test50_vka = [| let hrefl :: (:~~:) @Bool @Bool 'True 'True
+                    hrefl = HRefl
+                in hrefl |]
+#endif
+
 type family TFExpand x
 type instance TFExpand Int = Bool
 type instance TFExpand (Maybe a) = [a]
@@ -351,12 +370,14 @@ dectest9 = [d| data family Dec9 a (b :: * -> *) :: * -> * |]
 #if __GLASGOW_HASKELL__ < 707
 ds_dectest10 = DClosedTypeFamilyD
                  (DTypeFamilyHead
-                    (mkName "Dec10")
+                    dec10Name
                     [DPlainTV (mkName "a")]
                     (DKindSig (DAppT (DAppT DArrowT (DConT typeKindName)) (DConT typeKindName)))
                     Nothing)
-                 [ DTySynEqn [DConT ''Int]  (DConT ''Maybe)
-                 , DTySynEqn [DConT ''Bool] (DConT ''[]) ]
+                 [ DTySynEqn Nothing (DConT dec10Name `DAppT` DConT ''Int)  (DConT ''Maybe)
+                 , DTySynEqn Nothing (DConT dec10Name `DAppT` DConT ''Bool) (DConT ''[]) ]
+  where
+    dec10Name = mkName "Dec10"
 dectest10 = [d| type family Dec10 a :: * -> *
                 type instance Dec10 Int = Maybe
                 type instance Dec10 Bool = [] |]
@@ -502,7 +523,10 @@ reifyDecs = [d|
 #if __GLASGOW_HASKELL__ >= 707
   type family R21 (a :: k) (b :: k) :: k where
 #if __GLASGOW_HASKELL__ >= 801
-    R21 (a :: k) (b :: k) = b
+#if __GLASGOW_HASKELL__ >= 807
+    forall k (a :: k) (b :: k).
+#endif
+      R21 (a :: k) (b :: k) = b
 #else
     -- Due to GHC Trac #12646, R21 will get reified without kind signatures on
     -- a and b on older GHCs, so we must reflect that here.
@@ -658,5 +682,13 @@ test_exprs = [ test1_sections
              , test45_empty_record_con
 #if __GLASGOW_HASKELL__ >= 803
              , test46_overloaded_label
+#endif
+             , test47_do_partial_match
+#if __GLASGOW_HASKELL__ >= 805
+             , test48_quantified_constraints
+#endif
+#if __GLASGOW_HASKELL__ >= 807
+             -- , test49_implicit_params
+             , test50_vka
 #endif
              ]

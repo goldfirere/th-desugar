@@ -17,6 +17,7 @@ rae@cs.brynmawr.edu
 #if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures -Wno-redundant-constraints #-}
 #endif
 
@@ -47,7 +48,6 @@ import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 import Control.Monad
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
-import Data.Foldable (foldMap)
 #endif
 
 import Data.Generics ( geq )
@@ -138,6 +138,10 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #if __GLASGOW_HASKELL__ >= 805
              , "quantified_constraints" ~: $test48_quantified_constraints @=? $(dsSplice test48_quantified_constraints)
 #endif
+#if __GLASGOW_HASKELL__ >= 807
+             , "implicit_params" ~: $test49_implicit_params @=? $(dsSplice test49_implicit_params)
+             , "vka"             ~: $test50_vka             @=? $(dsSplice test50_vka)
+#endif
              ]
 
 test35a = $test35_expand
@@ -209,15 +213,15 @@ test_mkName = and [ hasSameType (Proxy :: Proxy FuzzSyn) (Proxy :: Proxy Fuzz)
 test_bug8884 :: Bool
 test_bug8884 = $(do info <- reify ''Poly
                     dinfo@(DTyConI (DOpenTypeFamilyD (DTypeFamilyHead _name _tvbs (DKindSig resK) _ann))
-                                   (Just [DTySynInstD _name2 (DTySynEqn lhs _rhs)]))
+                                   (Just [DTySynInstD (DTySynEqn _ lhs _rhs)]))
                       <- dsInfo info
                     let isTypeKind (DConT n) = isTypeKindName n
                         isTypeKind _         = False
                     case (isTypeKind resK, lhs) of
 #if __GLASGOW_HASKELL__ < 709
-                      (True, [DVarT _]) -> [| True |]
+                      (True, _ `DAppT` DVarT _) -> [| True |]
 #else
-                      (True, [DSigT (DVarT _) (DVarT _)]) -> [| True |]
+                      (True, _ `DAppT` DSigT (DVarT _) (DVarT _)) -> [| True |]
 #endif
                       _                                     -> do
                         runIO $ do
@@ -257,7 +261,8 @@ test_local_tyfam_expansion =
        let orig_ty = DConT fam_name
        exp_ty <- withLocalDeclarations
                    (decsToTH [ DOpenTypeFamilyD (DTypeFamilyHead fam_name [] DNoSig Nothing)
-                             , DTySynInstD fam_name (DTySynEqn [] (DConT ''Int)) ])
+                             , DTySynInstD (DTySynEqn Nothing
+                                                      (DConT fam_name) (DConT ''Int)) ])
                    (expandType orig_ty)
        orig_ty `eqTHSplice` exp_ty)
 
@@ -275,8 +280,11 @@ test_stuck_tyfam_expansion =
                                                   (DKindSig (DVarT k))
                                                   Nothing)
                                -- type instance F (x :: ()) = x
-                             , DTySynInstD fam_name
-                                 (DTySynEqn [DSigT (DVarT x) (DConT ''())] (DVarT x))
+                             , DTySynInstD
+                                 (DTySynEqn Nothing
+                                            (DConT fam_name `DAppT`
+                                               DSigT (DVarT x) (DConT ''()))
+                                            (DVarT x))
                              ])
                    (expandType orig_ty)
        orig_ty `eqTHSplice` exp_ty)
@@ -354,11 +362,6 @@ test_t103 =
 test_fvs :: [Bool]
 test_fvs =
   $(do a <- newName "a"
-       f <- newName "f"
-       g <- newName "g"
-       x <- newName "x"
-       y <- newName "y"
-       z <- newName "z"
 
        let -- (Show a => Show (Maybe a)) => String
            ty1 = DForallT
@@ -368,31 +371,7 @@ test_fvs =
                    (DConT ''String)
            b1 = fvDType ty1 `eqTH` S.singleton a -- #93
 
-           -- let f x = g x
-           --     g x = f x
-           -- in ()
-           lds2 = [ DFunD f [DClause [DVarP x] (DVarE g `DAppE` DVarE x)]
-                  , DFunD g [DClause [DVarP x] (DVarE f `DAppE` DVarE x)]
-                  ]
-           b2a = fvDLetDecs lds2 S.empty `eqTH` S.empty
-           b2b = foldMap extractBoundNamesDLetDec lds2 `eqTH` S.fromList [f, g]
-
-           -- case x of
-           --   Just y -> \z -> f x y z
-           e3 = DCaseE (DVarE x)
-                       [DMatch (DConP 'Just [DVarP y])
-                               (DLamE [z] (DVarE f `DAppE` DVarE x
-                                                   `DAppE` DVarE y
-                                                   `DAppE` DVarE z))]
-           b3 = fvDExp e3 `eqTH` S.fromList [f, x]
-
-           -- some_function (Just (x :: [a])) = f @a
-           p4  = DConP 'Just [DSigP (DVarP x) (DConT ''[] `DAppT` DVarT a)]
-           c4  = DClause [p4] (DVarE f `DAppTypeE` DVarT a)
-           b4a = fvDClause c4 `eqTH` S.singleton f
-           b4b = extractBoundNamesDPat p4 `eqTH` S.fromList [x]
-
-       [| [b1, b2a, b2b, b3, b4a, b4b] |])
+       [| [b1] |])
 
 test_kind_substitution :: [Bool]
 test_kind_substitution =
