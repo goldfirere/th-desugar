@@ -238,7 +238,7 @@ reifyInDec n _    dec@(NewtypeD _ n' _ _ _) | n `nameMatches` n' = Just (n', TyC
 #endif
 reifyInDec n _    dec@(TySynD n' _ _)       | n `nameMatches` n' = Just (n', TyConI dec)
 reifyInDec n decs dec@(ClassD _ n' _ _ _)   | n `nameMatches` n'
-  = Just (n', ClassI (stripClassDec dec) (findInstances n decs))
+  = Just (n', ClassI (quantifyClassDecMethods dec) (findInstances n decs))
 reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `nameMatches` n'
   = Just (n', mkVarITy n decs ty)
 reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `nameMatches` n'
@@ -506,8 +506,30 @@ tedious, but it gets the job done. (This is accomplished by the rejig_tvbs
 function.)
 -}
 
-stripClassDec :: Dec -> Dec
-stripClassDec (ClassD cxt name tvbs fds sub_decs)
+-- quantifyClassDecMethods is a rather strange function. It only exists due to
+-- a quirk in the way old versions of GHC would reify class declarations
+-- (Trac #15551). If you have this class declaration:
+--
+--   class C a where
+--     method :: a
+--
+-- Then GHC would reify it like so:
+--
+--   class C a where
+--     method :: forall a. C a => a
+--
+-- Notice how GHC has added the (totally extraneous) `forall a. C a =>` part!
+-- This is weird, but our primary goal in this module is to mimic GHC's
+-- reification, so we play the part by adding the `forall`/class context to
+-- each class method in quantifyClassDecMethods.
+--
+-- Since Trac #15551 was fixed in GHC 8.7, this function doesn't do any of this
+-- on 8.7 or later.
+quantifyClassDecMethods :: Dec -> Dec
+#if __GLASGOW_HASKELL__ >= 807
+quantifyClassDecMethods = id
+#else
+quantifyClassDecMethods (ClassD cxt name tvbs fds sub_decs)
   = ClassD cxt name tvbs fds sub_decs'
   where
     sub_decs' = mapMaybe go sub_decs
@@ -517,7 +539,8 @@ stripClassDec (ClassD cxt name tvbs fds sub_decs)
     go d@(DataFamilyD {})     = Just d
 #endif
     go _           = Nothing
-stripClassDec dec = dec
+quantifyClassDecMethods dec = dec
+#endif
 
 addClassCxt :: Name -> [TyVarBndr] -> Type -> Type
 addClassCxt class_name tvbs ty = quantifyType $ ForallT tvbs class_cxt ty

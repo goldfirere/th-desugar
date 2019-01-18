@@ -588,6 +588,9 @@ reifyDecs = [d|
 
   data R27 (a :: k) = R28 { r29 :: Proxy a }
 #endif
+
+  class R30 a where
+    r31 :: a
   |]
 
 reifyDecsNames :: [Name]
@@ -603,8 +606,9 @@ reifyDecsNames = map mkName
 #endif
   , "r22"
 #if __GLASGOW_HASKELL__ >= 800
-  , "r26", "R28", "r29"
+  , "R25", "r26", "R28", "r29"
 #endif
+  , "R30", "r31"
   ]
 
 simplCaseTests :: [Q Exp]
@@ -688,7 +692,7 @@ test_exprs = [ test1_sections
              , test48_quantified_constraints
 #endif
 #if __GLASGOW_HASKELL__ >= 807
-             -- , test49_implicit_params
+             , test49_implicit_params
              , test50_vka
 #endif
              ]
