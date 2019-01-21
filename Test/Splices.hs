@@ -590,7 +590,7 @@ reifyDecs = [d|
 #endif
 
   class R30 a where
-    r31 :: a
+    r31 :: a -> b -> a
   |]
 
 reifyDecsNames :: [Name]

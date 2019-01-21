@@ -32,6 +32,7 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Control.Monad.RWS
+import Data.Function (on)
 import Data.List
 import Data.Maybe
 #if __GLASGOW_HASKELL__ < 709
@@ -281,11 +282,11 @@ reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n _decs (ClassD _ ty_name tvbs _ sub_decs)
   | Just (n', ty) <- findType n sub_decs
-  = Just (n', ClassOpI n (addClassCxt ty_name tvbs ty) ty_name)
+  = Just (n', ClassOpI n (quantifyClassMethodType ty_name tvbs True ty) ty_name)
 #else
 reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
   | Just (n', ty) <- findType n sub_decs
-  = Just (n', ClassOpI n (addClassCxt ty_name tvbs ty)
+  = Just (n', ClassOpI n (quantifyClassMethodType ty_name tvbs True ty)
                        ty_name (fromMaybe defaultFixity $
                                 reifyFixityInDecs n $ sub_decs ++ decs))
 #endif
@@ -506,50 +507,114 @@ tedious, but it gets the job done. (This is accomplished by the rejig_tvbs
 function.)
 -}
 
--- quantifyClassDecMethods is a rather strange function. It only exists due to
--- a quirk in the way old versions of GHC would reify class declarations
--- (Trac #15551). If you have this class declaration:
+-- Consider the following class declaration:
 --
---   class C a where
---     method :: a
+--   [d| class C a where
+--         method :: a -> b -> a |]
 --
--- Then GHC would reify it like so:
+-- When reifying C locally, quantifyClassDecMethods serves two purposes:
 --
---   class C a where
---     method :: forall a. C a => a
+-- 1. It quantifies the class method's local type variables. To illustrate this
+--    point, this is how GHC would reify C:
 --
--- Notice how GHC has added the (totally extraneous) `forall a. C a =>` part!
--- This is weird, but our primary goal in this module is to mimic GHC's
--- reification, so we play the part by adding the `forall`/class context to
--- each class method in quantifyClassDecMethods.
+--      class C a where
+--        method :: forall b. a -> b -> a
 --
--- Since Trac #15551 was fixed in GHC 8.7, this function doesn't do any of this
--- on 8.7 or later.
+--    Notice the presence of the explicit `forall b.`. quantifyClassDecMethods
+--    performs this explicit quantification if necessary (as in the case in the
+--    local C declaration, where `b` is implicitly quantified.)
+-- 2. It emulates a quirk in the way old versions of GHC would reify class
+--    declarations (Trac #15551). On versions of GHC older than 8.8, it would
+--    reify C like so:
+--
+--      class C a where
+--        method :: forall a. C a => forall b. a -> b -> a
+--
+--    Notice how GHC has added the (totally extraneous) `forall a. C a =>`
+--    part! This is weird, but our primary goal in this module is to mimic
+--    GHC's reification, so we play the part by adding the `forall`/class
+--    context to each class method in quantifyClassDecMethods.
+--
+--    Since Trac #15551 was fixed in GHC 8.8, this function doesn't perform
+--    this step on 8.7 or later.
 quantifyClassDecMethods :: Dec -> Dec
-#if __GLASGOW_HASKELL__ >= 807
-quantifyClassDecMethods = id
-#else
-quantifyClassDecMethods (ClassD cxt name tvbs fds sub_decs)
-  = ClassD cxt name tvbs fds sub_decs'
+quantifyClassDecMethods (ClassD cxt cls_name cls_tvbs fds sub_decs)
+  = ClassD cxt cls_name cls_tvbs fds sub_decs'
   where
     sub_decs' = mapMaybe go sub_decs
-    go (SigD n ty) = Just $ SigD n $ addClassCxt name tvbs ty
+    go (SigD n ty) =
+      Just $ SigD n
+           $ quantifyClassMethodType cls_name cls_tvbs prepend_cls ty
 #if __GLASGOW_HASKELL__ > 710
     go d@(OpenTypeFamilyD {}) = Just d
     go d@(DataFamilyD {})     = Just d
 #endif
     go _           = Nothing
+
+    -- See (2) in the comments for quantifyClassDecMethods.
+    prepend_cls :: Bool
+#if __GLASGOW_HASKELL__ >= 807
+    prepend_cls = False
+#else
+    prepend_cls = True
+#endif
 quantifyClassDecMethods dec = dec
+
+-- Add explicit quantification to a class method's type if necessary. In this
+-- example:
+--
+--   [d| class C a where
+--         method :: a -> b -> a |]
+--
+-- If one invokes `quantifyClassMethodType C [a] prepend (a -> b -> a)`, then
+-- the output will be:
+--
+-- 1. `forall a. C a => forall b. a -> b -> a` (if `prepend` is True)
+-- 2.                  `forall b. a -> b -> a` (if `prepend` is False)
+--
+-- Whether you want `prepend` to be True or False depends on the situation.
+-- When reifying an entire type class, like C, one does not need to prepend a
+-- class context to each of the bundled method types (see the comments for
+-- quantifyClassDecMethods), so False is appropriate. When one is only reifying
+-- a single class method, like `method`, then one needs the class context to
+-- appear in the reified type, so `True` is appropriate.
+quantifyClassMethodType
+  :: Name        -- ^ The class name.
+  -> [TyVarBndr] -- ^ The class's type variable binders.
+  -> Bool        -- ^ If 'True', prepend a class predicate.
+  -> Type        -- ^ The method type.
+  -> Type
+quantifyClassMethodType cls_name cls_tvbs prepend meth_ty =
+  add_cls_cxt quantified_meth_ty
+  where
+    add_cls_cxt :: Type -> Type
+    add_cls_cxt
+      | prepend   = ForallT all_cls_tvbs cls_cxt
+      | otherwise = id
+
+    cls_cxt :: Cxt
+#if __GLASGOW_HASKELL__ < 709
+    cls_cxt = [ClassP cls_name (map tvbToType cls_tvbs)]
+#else
+    cls_cxt = [foldl AppT (ConT cls_name) (map tvbToType cls_tvbs)]
 #endif
 
-addClassCxt :: Name -> [TyVarBndr] -> Type -> Type
-addClassCxt class_name tvbs ty = quantifyType $ ForallT tvbs class_cxt ty
-  where
-#if __GLASGOW_HASKELL__ < 709
-    class_cxt = [ClassP class_name (map tvbToType tvbs)]
-#else
-    class_cxt = [foldl AppT (ConT class_name) (map tvbToType tvbs)]
-#endif
+    quantified_meth_ty :: Type
+    quantified_meth_ty
+      | null meth_tvbs
+      = meth_ty
+      | ForallT meth_tvbs' meth_ctxt meth_tau <- meth_ty
+      = ForallT (meth_tvbs ++ meth_tvbs') meth_ctxt meth_tau
+      | otherwise
+      = ForallT meth_tvbs [] meth_ty
+
+    meth_tvbs :: [TyVarBndr]
+    meth_tvbs = deleteFirstsBy ((==) `on` tvName)
+                  (freeVariablesWellScoped [meth_ty]) all_cls_tvbs
+
+    -- Explicitly quantify any kind variables bound by the class, if any.
+    all_cls_tvbs :: [TyVarBndr]
+    all_cls_tvbs = freeVariablesWellScoped $ map tvbToTypeWithSig cls_tvbs
 
 stripInstanceDec :: Dec -> Dec
 #if __GLASGOW_HASKELL__ >= 711
