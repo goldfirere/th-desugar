@@ -26,6 +26,7 @@ import Control.Applicative
 import Control.Monad hiding ( fail )
 import qualified Control.Monad as Monad
 import Data.Data
+import qualified Data.Foldable as F
 import Data.Generics
 import qualified Data.Set as S
 import qualified Data.Map as Map
@@ -35,6 +36,7 @@ import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.FV
+import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Reify
 
@@ -187,13 +189,13 @@ mkSelectorDecs :: DsMonad q
                -> q [DLetDec]
 mkSelectorDecs (DVarP v) name = return [DValD (DVarP v) (DVarE name)]
 mkSelectorDecs pat name
-  | S.null binders
+  | OS.null binders
   = return []
 
-  | S.size binders == 1
+  | OS.size binders == 1
   = do val_var <- newUniqueName "var"
        err_var <- newUniqueName "err"
-       bind    <- mk_bind val_var err_var (head $ S.elems binders)
+       bind    <- mk_bind val_var err_var (head $ F.toList binders)
        return [DValD (DVarP val_var) (DVarE name),
                DValD (DVarP err_var) (DVarE 'error `DAppE`
                                        (DLitE $ StringL "Irrefutable match failed")),
@@ -208,7 +210,7 @@ mkSelectorDecs pat name
 
   where
     binders = extractBoundNamesDPat pat
-    binders_list = S.toAscList binders
+    binders_list = F.toList binders
     tuple_size = length binders_list
     local_tuple = mkTupleDExp (map DVarE binders_list)
 

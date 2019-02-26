@@ -48,6 +48,8 @@ Version 1.10
   of type variable binders in `forall`s.
 * Fix a bug in which `getRecordSelectors` would omit record selectors from
   GADT constructors.
+* Fix a bug in which `toposortTyVarsOf` would sometimes not preserve
+  the left-to-right ordering of `Name`s generated with `qNewName`.
 * Locally reified class methods, data constructors, and record selectors now
   quantify kind variables properly.
 * Desugared ADT constructors now quantify kind variables properly.
