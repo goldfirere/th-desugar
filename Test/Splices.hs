@@ -428,6 +428,11 @@ dectest17 = return [ StandaloneDerivD
                                      (ConT ''ExData2 `AppT` VarT (mkName "a")))) ]
 #endif
 
+#if __GLASGOW_HASKELL__ >= 809
+dectest18 = [d| data Dec18 :: forall k -> k -> * where
+                  MkDec18 :: forall k (a :: k). Dec18 k a |]
+#endif
+
 instance_test = [d| instance (Show a, Show b) => Show (a -> b) where
                        show _ = "function" |]
 
@@ -594,6 +599,10 @@ reifyDecs = [d|
 
   class R30 a where
     r31 :: a -> b -> a
+
+#if __GLASGOW_HASKELL__ >= 809
+  type family R32 :: forall k -> k -> * where
+#endif
   |]
 
 reifyDecsNames :: [Name]
@@ -610,6 +619,9 @@ reifyDecsNames = map mkName
   , "R25", "r26", "R28", "r29"
 #endif
   , "R30", "r31"
+#if __GLASGOW_HASKELL__ >= 809
+  , "R32"
+#endif
   ]
 
 simplCaseTests :: [Q Exp]

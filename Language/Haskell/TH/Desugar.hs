@@ -23,7 +23,8 @@ rae@cs.brynmawr.edu
 
 module Language.Haskell.TH.Desugar (
   -- * Desugared data types
-  DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred,
+  DExp(..), DLetDec(..), DPat(..),
+  DType(..), ForallVisFlag(..), DKind, DCxt, DPred,
   DTyVarBndr(..), DMatch(..), DClause(..), DDec(..),
   DDerivClause(..), DDerivStrategy(..), DPatSynDir(..), DPatSynType,
   Overlap(..), PatSynArgs(..), NewOrData(..),
@@ -97,8 +98,14 @@ module Language.Haskell.TH.Desugar (
 #if __GLASGOW_HASKELL__ >= 800
   bindIP,
 #endif
-  unravel, conExistentialTvbs, mkExtraDKindBinders,
+  conExistentialTvbs, mkExtraDKindBinders,
   dTyVarBndrToDType, toposortTyVarsOf,
+
+  -- ** 'FunArgs' and 'VisFunArg'
+  FunArgs(..), VisFunArg(..), filterVisFunArgs, ravelType, unravelType,
+
+  -- ** 'DFunArgs' and 'DVisFunArg'
+  DFunArgs(..), DVisFunArg(..), filterDVisFunArgs, ravelDType, unravelDType,
 
   -- ** 'TypeArg'
   TypeArg(..), applyType, filterTANormals, unfoldType,
@@ -242,7 +249,7 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
             con_ex_tvbs <- conExistentialTvbs arg_ty con
             let con_univ_tvbs  = deleteFirstsBy ((==) `on` dtvbName) con_tvbs con_ex_tvbs
                 con_ex_tvb_set = OS.fromList $ map dtvbName con_ex_tvbs
-                forall'        = DForallT con_univ_tvbs []
+                forall'        = DForallT ForallInvis con_univ_tvbs
                 num_pats       = length fields
             return $ concat
               [ [ DSigD name (forall' $ DArrowT `DAppT` con_ret_ty `DAppT` field_ty)

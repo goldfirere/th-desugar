@@ -27,7 +27,8 @@ fvDType :: DType -> OSet Name
 fvDType = go
   where
     go :: DType -> OSet Name
-    go (DForallT tvbs ctxt ty) = fv_dtvbs tvbs (foldMap fvDType ctxt <> go ty)
+    go (DForallT _ tvbs ty)    = fv_dtvbs tvbs (go ty)
+    go (DConstrainedT ctxt ty) = foldMap fvDType ctxt <> go ty
     go (DAppT t1 t2)           = go t1 <> go t2
     go (DAppKindT t k)         = go t <> go k
     go (DSigT ty ki)           = go ty <> go ki

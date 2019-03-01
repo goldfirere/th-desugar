@@ -114,7 +114,7 @@ decToTH (DInstanceD over mtvbs _cxt _ty decs) =
                   Nothing    -> (_cxt, _ty)
                   Just _tvbs ->
 #if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
-                                ([], DForallT _tvbs _cxt _ty)
+                                ([], DForallT ForallInvis _tvbs $ DConstrainedT _cxt _ty)
 #else
                                 -- See #117
                                 error $ "Explicit foralls in instance declarations "
@@ -164,7 +164,7 @@ decToTH (DStandaloneDerivD mds mtvbs _cxt _ty) =
                   Nothing    -> (_cxt, _ty)
                   Just _tvbs ->
 #if __GLASGOW_HASKELL__ < 710 || __GLASGOW_HASKELL__ >= 802
-                                ([], DForallT _tvbs _cxt _ty)
+                                ([], DForallT ForallInvis _tvbs $ DConstrainedT _cxt _ty)
 #else
                                 -- See #117
                                 error $ "Explicit foralls in standalone deriving declarations "
@@ -320,9 +320,10 @@ conToTH (DCon tvbs cxt n fields rty)
         go DArrowT       = 0
         go (DLitT {})    = 0
         -- These won't show up on pre-8.0 GHCs
-        go (DForallT {})  = error "`forall` type used in GADT return type"
-        go DWildCardT     = 0
-        go (DAppKindT {}) = 0
+        go (DForallT {})      = error "`forall` type used in GADT return type"
+        go (DConstrainedT {}) = error "Constrained type used in GADT return type"
+        go DWildCardT         = 0
+        go (DAppKindT {})     = 0
 
     con' :: Con
     con' = conToTH $ DCon [] [] n fields rty
@@ -404,7 +405,24 @@ clauseToTH :: DClause -> Clause
 clauseToTH (DClause pats exp) = Clause (map patToTH pats) (NormalB (expToTH exp)) []
 
 typeToTH :: DType -> Type
-typeToTH (DForallT tvbs cxt ty) = ForallT (map tvbToTH tvbs) (map predToTH cxt) (typeToTH ty)
+-- We need a special case for DForallT ForallInvis followed by DConstrainedT
+-- so that we may collapse them into a single ForallT when sweetening.
+-- See Note [Desugaring and sweetening ForallT] in L.H.T.Desugar.Core.
+typeToTH (DForallT ForallInvis tvbs (DConstrainedT ctxt ty)) =
+  ForallT (map tvbToTH tvbs) (map predToTH ctxt) (typeToTH ty)
+typeToTH (DForallT fvf tvbs ty) =
+  case fvf of
+    ForallInvis -> ForallT tvbs' [] ty'
+    ForallVis ->
+#if __GLASGOW_HASKELL__ >= 809
+      ForallVisT tvbs' ty'
+#else
+      error "Visible dependent quantification supported only in GHC 8.10+"
+#endif
+  where
+    tvbs' = map tvbToTH tvbs
+    ty'   = typeToTH ty
+typeToTH (DConstrainedT cxt ty) = ForallT [] (map predToTH cxt) (typeToTH ty)
 typeToTH (DAppT t1 t2)          = AppT (typeToTH t1) (typeToTH t2)
 typeToTH (DSigT ty ki)          = SigT (typeToTH ty) (typeToTH ki)
 typeToTH (DVarT n)              = VarT n
@@ -480,6 +498,8 @@ predToTH = go []
       = error "Wildcards supported only in GHC 8.0+"
     go _ (DForallT {})
       = error "Quantified constraints supported only in GHC 8.6+"
+    go _ (DConstrainedT {})
+      = error "Quantified constraints supported only in GHC 8.6+"
     go _ DArrowT
       = error "(->) spotted at head of a constraint"
     go _ (DLitT {})
@@ -497,10 +517,27 @@ predToTH DWildCardT  = WildCardT
 predToTH DWildCardT  = error "Wildcards supported only in GHC 8.0+"
 #endif
 #if __GLASGOW_HASKELL__ >= 805
-predToTH (DForallT tvbs cxt p) =
-  ForallT (map tvbToTH tvbs) (map predToTH cxt) (predToTH p)
+-- We need a special case for DForallT ForallInvis followed by DConstrainedT
+-- so that we may collapse them into a single ForallT when sweetening.
+-- See Note [Desugaring and sweetening ForallT] in L.H.T.Desugar.Core.
+predToTH (DForallT ForallInvis tvbs (DConstrainedT ctxt p)) =
+  ForallT (map tvbToTH tvbs) (map predToTH ctxt) (predToTH p)
+predToTH (DForallT fvf tvbs p) =
+  case fvf of
+    ForallInvis -> ForallT tvbs' [] p'
+    ForallVis ->
+#if __GLASGOW_HASKELL__ >= 809
+      ForallVisT tvbs' p'
 #else
-predToTH (DForallT {}) = error "Quantified constraints supported only in GHC 8.6+"
+      error "Visible dependent quantification supported only in GHC 8.10+"
+#endif
+  where
+    tvbs' = map tvbToTH tvbs
+    p'    = predToTH p
+predToTH (DConstrainedT cxt p) = ForallT [] (map predToTH cxt) (predToTH p)
+#else
+predToTH (DForallT {})      = error "Quantified constraints supported only in GHC 8.6+"
+predToTH (DConstrainedT {}) = error "Quantified constraints supported only in GHC 8.6+"
 #endif
 #if __GLASGOW_HASKELL__ >= 807
 predToTH (DAppKindT p k) = AppKindT (predToTH p) (typeToTH k)

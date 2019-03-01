@@ -108,9 +108,14 @@ getDataD err name = do
   where
     go tvbs mk cons = do
       k <- maybe (pure (ConT typeKindName)) (runQ . resolveTypeSynonyms) mk
-      extra_tvbs <- mkExtraKindBindersGeneric unravelType KindedTV k
+      extra_tvbs <- mkExtraKindBindersGeneric unravelType filterVisFunArgs
+                                              KindedTV elim_vfa k
       let all_tvbs = tvbs ++ extra_tvbs
       return (all_tvbs, cons)
+
+    elim_vfa :: (TyVarBndr -> r) -> (Kind -> r) -> VisFunArg -> r
+    elim_vfa dep _    (VisFADep tvb) = dep tvb
+    elim_vfa _   anon (VisFAAnon k)  = anon k
 
     badDeclaration =
           fail $ "The name (" ++ (show name) ++ ") refers to something " ++

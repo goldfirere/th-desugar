@@ -1,6 +1,45 @@
 `th-desugar` release notes
 ==========================
 
+Version 1.11 [????.??.??]
+-------------------------
+* Support GHC 8.10.
+* Add support for visible dependent quantification. As part of this change,
+  the way `th-desugar` represents `forall` and constraint types has been
+  overhauled:
+  * The existing `DForallT` constructor has been split into two smaller
+    constructors:
+
+    ```diff
+     data DType
+       = ...
+    -  | DForallT [DTyVarBndr] DCxt DType
+    +  | DForallT ForallVisFlag [DTyVarBndr] DType
+    +  | DConstrainedT DCxt DType
+       | ...
+
+    +data ForallVisFlag
+    +  = ForallVis
+    +  | ForallInvis
+    ```
+
+    The previous design combined `forall`s and constraints into a single
+    constructor, while the new design puts them in distinct constructors
+    `DForallT` and `DConstrainedT`, respectively. The new `DForallT`
+    constructor also has a `ForallVisFlag` field to distinguish invisible
+    `forall`s (e.g., `forall a. a`) from visible `forall`s (e.g.,
+    `forall a -> a`).
+  * The `unravel` function has been renamed to `unravelDType` and now returns
+    `(DFunArgs, DType)`, where `DFunArgs` is a data type that represents
+    the possible arguments in a function type (see the Haddocks for `DFunArgs`
+    for more details). There is also an `unravelDType` counterpart for `Type`s
+    named `unravelType`, complete with its own `FunArgs` data type.
+
+    `{D}FunArgs` also have some supporting operations, including
+    `filter{D}VisFunArgs` (to obtain only the visible arguments) and
+    `ravel{D}Type` (to construct a function type using `{D}FunArgs` and
+    a return `{D}Type`).
+
 Version 1.10
 ------------
 * Support GHC 8.8. Drop support for GHC 7.6.
