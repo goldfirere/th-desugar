@@ -39,6 +39,7 @@ import qualified DsDec
 import qualified Dec
 import Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
+import qualified Language.Haskell.TH.Desugar.OSet as OS
 #if __GLASGOW_HASKELL__ >= 707
 import Language.Haskell.TH.Desugar.Expand  ( expandUnsoundly )
 #endif
@@ -53,7 +54,6 @@ import Control.Applicative
 import Data.Generics ( geq )
 import Data.Function ( on )
 import qualified Data.Map as M
-import qualified Data.Set as S
 #if __GLASGOW_HASKELL__ >= 707
 import Data.Proxy
 #endif
@@ -358,6 +358,22 @@ test_t103 =
   True -- No explicit kind variable binders prior to GHC 8.0
 #endif
 
+test_t112 :: [Bool]
+test_t112 =
+  $(do a <- newName "a"
+       b <- newName "b"
+       let [aVar, bVar] = map DVarT    [a, b]
+           [aTvb, bTvb] = map DPlainTV [a, b]
+       let fvsABExpected = [aTvb, bTvb]
+           fvsABActual   = toposortTyVarsOf [aVar, bVar]
+
+           fvsBAExpected = [bTvb, aTvb]
+           fvsBAActual   = toposortTyVarsOf [bVar, aVar]
+
+           eqAB = fvsABExpected `eqTH` fvsABActual
+           eqBA = fvsBAExpected `eqTH` fvsBAActual
+       [| [eqAB, eqBA] |])
+
 -- Unit tests for functions that compute free variables (e.g., fvDType)
 test_fvs :: [Bool]
 test_fvs =
@@ -369,7 +385,7 @@ test_fvs =
                    [DForallT [] [DConT ''Show `DAppT` DVarT a]
                                 (DConT ''Show `DAppT` (DConT ''Maybe `DAppT` DVarT a))]
                    (DConT ''String)
-           b1 = fvDType ty1 `eqTH` S.singleton a -- #93
+           b1 = fvDType ty1 `eqTH` OS.singleton a -- #93
 
        [| [b1] |])
 
@@ -404,10 +420,10 @@ test_kind_substitution =
            freeVars3 = fvDType substTy3
            freeVars4 = fvDType substTy4
 
-           b1 = freeVars1 `eqTH` S.singleton b
-           b2 = freeVars2 `eqTH` S.singleton b
-           b3 = freeVars3 `eqTH` S.empty
-           b4 = freeVars4 `eqTH` S.singleton k
+           b1 = freeVars1 `eqTH` OS.singleton b
+           b2 = freeVars2 `eqTH` OS.singleton b
+           b3 = freeVars3 `eqTH` OS.empty
+           b4 = freeVars4 `eqTH` OS.singleton k
        [| [b1, b2, b3, b4] |])
 
 test_lookup_value_type_names :: [Bool]
@@ -542,6 +558,9 @@ main = hspec $ do
     it "quantifies kind variables in desugared ADT constructors" $ test_t103
 
     it "reifies data type return kinds accurately" $ test_getDataD_kind_sig
+
+    zipWithM (\b n -> it ("toposorts free variables deterministically " ++ show n) b)
+      test_t112 [1..]
 
     zipWithM (\b n -> it ("computes free variables correctly " ++ show n) b)
       test_fvs [1..]

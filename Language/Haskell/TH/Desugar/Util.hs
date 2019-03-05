@@ -41,10 +41,11 @@ import Prelude hiding (mapM, foldl, concatMap, any)
 
 import Language.Haskell.TH hiding ( cxt )
 import Language.Haskell.TH.Datatype (tvName)
+import qualified Language.Haskell.TH.Desugar.OSet as OS
+import Language.Haskell.TH.Desugar.OSet (OSet)
 import Language.Haskell.TH.Syntax
 
 import Control.Monad ( replicateM )
-import qualified Data.Set as S
 import Data.Foldable
 import Data.Generics hiding ( Fixity )
 import Data.Traversable
@@ -337,37 +338,37 @@ allNamesIn :: Data a => a -> [Name]
 allNamesIn = everything (++) $ mkQ [] (:[])
 
 -- | Extract the names bound in a @Stmt@
-extractBoundNamesStmt :: Stmt -> S.Set Name
+extractBoundNamesStmt :: Stmt -> OSet Name
 extractBoundNamesStmt (BindS pat _) = extractBoundNamesPat pat
 extractBoundNamesStmt (LetS decs)   = foldMap extractBoundNamesDec decs
-extractBoundNamesStmt (NoBindS _)   = S.empty
+extractBoundNamesStmt (NoBindS _)   = OS.empty
 extractBoundNamesStmt (ParS stmtss) = foldMap (foldMap extractBoundNamesStmt) stmtss
 #if __GLASGOW_HASKELL__ >= 807
 extractBoundNamesStmt (RecS stmtss) = foldMap extractBoundNamesStmt stmtss
 #endif
 
 -- | Extract the names bound in a @Dec@ that could appear in a @let@ expression.
-extractBoundNamesDec :: Dec -> S.Set Name
-extractBoundNamesDec (FunD name _)  = S.singleton name
+extractBoundNamesDec :: Dec -> OSet Name
+extractBoundNamesDec (FunD name _)  = OS.singleton name
 extractBoundNamesDec (ValD pat _ _) = extractBoundNamesPat pat
-extractBoundNamesDec _              = S.empty
+extractBoundNamesDec _              = OS.empty
 
 -- | Extract the names bound in a @Pat@
-extractBoundNamesPat :: Pat -> S.Set Name
-extractBoundNamesPat (LitP _)              = S.empty
-extractBoundNamesPat (VarP name)           = S.singleton name
+extractBoundNamesPat :: Pat -> OSet Name
+extractBoundNamesPat (LitP _)              = OS.empty
+extractBoundNamesPat (VarP name)           = OS.singleton name
 extractBoundNamesPat (TupP pats)           = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (UnboxedTupP pats)    = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (ConP _ pats)         = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (InfixP p1 _ p2)      = extractBoundNamesPat p1 `S.union`
+extractBoundNamesPat (InfixP p1 _ p2)      = extractBoundNamesPat p1 OS.|<>
                                              extractBoundNamesPat p2
-extractBoundNamesPat (UInfixP p1 _ p2)     = extractBoundNamesPat p1 `S.union`
+extractBoundNamesPat (UInfixP p1 _ p2)     = extractBoundNamesPat p1 OS.|<>
                                              extractBoundNamesPat p2
 extractBoundNamesPat (ParensP pat)         = extractBoundNamesPat pat
 extractBoundNamesPat (TildeP pat)          = extractBoundNamesPat pat
 extractBoundNamesPat (BangP pat)           = extractBoundNamesPat pat
-extractBoundNamesPat (AsP name pat)        = S.singleton name `S.union` extractBoundNamesPat pat
-extractBoundNamesPat WildP                 = S.empty
+extractBoundNamesPat (AsP name pat)        = OS.singleton name OS.|<> extractBoundNamesPat pat
+extractBoundNamesPat WildP                 = OS.empty
 extractBoundNamesPat (RecP _ field_pats)   = let (_, pats) = unzip field_pats in
                                              foldMap extractBoundNamesPat pats
 extractBoundNamesPat (ListP pats)          = foldMap extractBoundNamesPat pats

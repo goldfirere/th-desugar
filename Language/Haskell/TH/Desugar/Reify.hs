@@ -32,13 +32,13 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Control.Monad.RWS
+import qualified Data.Foldable as F
 import Data.Function (on)
 import Data.List
 import Data.Maybe
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
 #endif
-import qualified Data.Set as S
 #if __GLASGOW_HASKELL__ >= 800
 import qualified Control.Monad.Fail as Fail
 #else
@@ -229,7 +229,7 @@ type Named a = (Name, a)
 reifyInDec :: Name -> [Dec] -> Dec -> Maybe (Named Info)
 reifyInDec n decs (FunD n' _) | n `nameMatches` n' = Just (n', mkVarI n decs)
 reifyInDec n decs (ValD pat _ _)
-  | Just n' <- find (nameMatches n) (S.elems (extractBoundNamesPat pat)) = Just (n', mkVarI n decs)
+  | Just n' <- find (nameMatches n) (F.toList (extractBoundNamesPat pat)) = Just (n', mkVarI n decs)
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n _    dec@(DataD    _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
 reifyInDec n _    dec@(NewtypeD _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)

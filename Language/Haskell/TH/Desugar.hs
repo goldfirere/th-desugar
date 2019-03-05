@@ -112,16 +112,18 @@ module Language.Haskell.TH.Desugar (
 
 import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.Core
-import Language.Haskell.TH.Desugar.FV
-import Language.Haskell.TH.Desugar.Util
-import Language.Haskell.TH.Desugar.Sweeten
-import Language.Haskell.TH.Syntax
-import Language.Haskell.TH.Desugar.Reify
 import Language.Haskell.TH.Desugar.Expand
+import Language.Haskell.TH.Desugar.FV
 import Language.Haskell.TH.Desugar.Match
+import qualified Language.Haskell.TH.Desugar.OSet as OS
+import Language.Haskell.TH.Desugar.Reify
 import Language.Haskell.TH.Desugar.Subst
+import Language.Haskell.TH.Desugar.Sweeten
+import Language.Haskell.TH.Desugar.Util
+import Language.Haskell.TH.Syntax
 
 import Control.Monad
+import qualified Data.Foldable as F
 import Data.Function
 import Data.List
 import qualified Data.Map as M
@@ -171,7 +173,7 @@ flattenDValD dec@(DValD (DVarP _) _) = return [dec]
 flattenDValD (DValD pat exp) = do
   x <- newUniqueName "x" -- must use newUniqueName here because we might be top-level
   let top_val_d = DValD (DVarP x) exp
-      bound_names = S.elems $ extractBoundNamesDPat pat
+      bound_names = F.toList $ extractBoundNamesDPat pat
   other_val_ds <- mapM (mk_val_d x) bound_names
   return $ top_val_d : other_val_ds
   where
@@ -239,7 +241,7 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
             varName <- qNewName "field"
             con_ex_tvbs <- conExistentialTvbs arg_ty con
             let con_univ_tvbs  = deleteFirstsBy ((==) `on` dtvbName) con_tvbs con_ex_tvbs
-                con_ex_tvb_set = S.fromList $ map dtvbName con_ex_tvbs
+                con_ex_tvb_set = OS.fromList $ map dtvbName con_ex_tvbs
                 forall'        = DForallT con_univ_tvbs []
                 num_pats       = length fields
             return $ concat
@@ -247,7 +249,7 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
                 , DFunD name [DClause [DConP con_name (mk_field_pats n num_pats varName)]
                                       (DVarE varName)] ]
               | ((name, _strict, field_ty), n) <- zip fields [0..]
-              , S.null (fvDType field_ty `S.intersection` con_ex_tvb_set)
+              , OS.null (fvDType field_ty `OS.intersection` con_ex_tvb_set)
                   -- exclude "naughty" selectors
               ]
 

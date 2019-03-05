@@ -25,12 +25,12 @@ import Control.Monad hiding (forM_, mapM)
 import Control.Monad.Zip
 import Control.Monad.Writer hiding (forM_, mapM)
 import Data.Data (Data, Typeable)
-import Data.Foldable hiding (concat, notElem)
-import Data.Graph
+import Data.Foldable as F hiding (concat, notElem)
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import qualified Data.Set as S
+import Data.Set (Set)
 import Data.Traversable
 #if __GLASGOW_HASKELL__ > 710
 import Data.Maybe (isJust)
@@ -53,6 +53,8 @@ import GHC.Generics (Generic)
 
 import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.FV
+import qualified Language.Haskell.TH.Desugar.OSet as OS
+import Language.Haskell.TH.Desugar.OSet (OSet)
 import Language.Haskell.TH.Desugar.Util
 import Language.Haskell.TH.Desugar.Reify
 
@@ -463,14 +465,14 @@ dsParComp (q : rest) = do
   return (ConP (tupleDataName 2) [mk_tuple_pat qv, rest_pat], zipped)
 
 -- helper function for dsParComp
-mk_tuple_stmt :: S.Set Name -> Stmt
+mk_tuple_stmt :: OSet Name -> Stmt
 mk_tuple_stmt name_set =
-  NoBindS (mkTupleExp (S.foldr ((:) . VarE) [] name_set))
+  NoBindS (mkTupleExp (F.foldr ((:) . VarE) [] name_set))
 
 -- helper function for dsParComp
-mk_tuple_pat :: S.Set Name -> Pat
+mk_tuple_pat :: OSet Name -> Pat
 mk_tuple_pat name_set =
-  mkTuplePat (S.foldr ((:) . VarP) [] name_set)
+  mkTuplePat (F.foldr ((:) . VarP) [] name_set)
 
 -- | Desugar a pattern, along with processing a (desugared) expression that
 -- is the entire scope of the variables bound in the pattern.
@@ -1481,8 +1483,8 @@ dataFamInstTvbs = toposortTyVarsOf . map probablyWrongUnDTypeArg
 -- kind variables, which was not possible before @TypeInType@.
 toposortTyVarsOf :: [DType] -> [DTyVarBndr]
 toposortTyVarsOf tys =
-  let fvs :: [Name]
-      fvs = S.toList $ foldMap fvDType tys
+  let freeVars :: [Name]
+      freeVars = F.toList $ foldMap fvDType tys
 
       varKindSigs :: Map Name DKind
       varKindSigs = foldMap go_ty tys
@@ -1510,25 +1512,59 @@ toposortTyVarsOf tys =
           go_tvb (DPlainTV n)    m = M.delete n m
           go_tvb (DKindedTV n k) m = M.delete n m `mappend` go_ty k
 
-      (g, gLookup, _)
-        = graphFromEdges [ (fv, fv, kindVars)
-                         | fv <- fvs
-                         , let kindVars =
-                                 case M.lookup fv varKindSigs of
-                                   Nothing -> []
-                                   Just ks -> S.toList (fvDType ks)
-                         ]
-      tg = reverse $ topSort g
+      -- | Do a topological sort on a list of tyvars,
+      --   so that binders occur before occurrences
+      -- E.g. given  [ a::k, k::*, b::k ]
+      -- it'll return a well-scoped list [ k::*, a::k, b::k ]
+      --
+      -- This is a deterministic sorting operation
+      -- (that is, doesn't depend on Uniques).
+      --
+      -- It is also meant to be stable: that is, variables should not
+      -- be reordered unnecessarily.
+      scopedSort :: [Name] -> [Name]
+      scopedSort = go [] []
 
-      lookupVertex x =
-        case gLookup x of
-          (n, _, _) -> n
+      go :: [Name]     -- already sorted, in reverse order
+         -> [Set Name] -- each set contains all the variables which must be placed
+                       -- before the tv corresponding to the set; they are accumulations
+                       -- of the fvs in the sorted tvs' kinds
 
-      ascribeWithKind n
-        | Just k <- M.lookup n varKindSigs
-        = DKindedTV n k
+                       -- This list is in 1-to-1 correspondence with the sorted tyvars
+                       -- INVARIANT:
+                       --   all (\tl -> all (`isSubsetOf` head tl) (tail tl)) (tails fv_list)
+                       -- That is, each set in the list is a superset of all later sets.
+         -> [Name]     -- yet to be sorted
+         -> [Name]
+      go acc _fv_list [] = reverse acc
+      go acc  fv_list (tv:tvs)
+        = go acc' fv_list' tvs
+        where
+          (acc', fv_list') = insert tv acc fv_list
+
+      insert :: Name       -- var to insert
+             -> [Name]     -- sorted list, in reverse order
+             -> [Set Name] -- list of fvs, as above
+             -> ([Name], [Set Name])   -- augmented lists
+      insert tv []     []         = ([tv], [kindFVSet tv])
+      insert tv (a:as) (fvs:fvss)
+        | tv `S.member` fvs
+        , (as', fvss') <- insert tv as fvss
+        = (a:as', fvs `S.union` fv_tv : fvss')
+
         | otherwise
-        = DPlainTV n
+        = (tv:a:as, fvs `S.union` fv_tv : fvs : fvss)
+        where
+          fv_tv = kindFVSet tv
+
+         -- lists not in correspondence
+      insert _ _ _ = error "scopedSort"
+
+      kindFVSet n =
+        maybe S.empty (S.fromAscList . OS.toAscList . fvDType)
+                      (M.lookup n varKindSigs)
+      ascribeWithKind n =
+        maybe (DPlainTV n) (DKindedTV n) (M.lookup n varKindSigs)
 
       -- An annoying wrinkle: GHCs before 8.0 don't support explicitly
       -- quantifying kinds, so something like @forall k (a :: k)@ would be
@@ -1545,7 +1581,7 @@ toposortTyVarsOf tys =
 
   in map ascribeWithKind $
      filter (not . isKindBinderOnOldGHCs) $
-     map lookupVertex tg
+     scopedSort freeVars
 
 dtvbName :: DTyVarBndr -> Name
 dtvbName (DPlainTV n)    = n
