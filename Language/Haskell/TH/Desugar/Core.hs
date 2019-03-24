@@ -22,6 +22,7 @@ import Language.Haskell.TH.Datatype ( resolveTypeSynonyms )
 import Control.Applicative
 #endif
 import Control.Monad hiding (forM_, mapM)
+import qualified Control.Monad.Fail as Fail
 import Control.Monad.Zip
 import Control.Monad.Writer hiding (forM_, mapM)
 import Data.Data (Data, Typeable)
@@ -440,7 +441,13 @@ dsBindS bind_arg_exp success_pat success_exp ctxt = do
                ]
   where
     mk_fail_name :: q Name
-#if __GLASGOW_HASKELL__ >= 800
+#if __GLASGOW_HASKELL__ >= 807
+    -- GHC 8.8 deprecates the MonadFailDesugaring extension since its effects
+    -- are always enabled. Furthermore, MonadFailDesugaring is no longer
+    -- enabled by default, so simply use MonadFail.fail. (That happens to
+    -- be the same as Prelude.fail in 8.8+.)
+    mk_fail_name = return 'MonadFail.fail
+#elif __GLASGOW_HASKELL__ >= 800
     mk_fail_name = do
       mfd <- qIsExtEnabled MonadFailDesugaring
       return $ if mfd then 'MonadFail.fail else 'Prelude.fail
@@ -1328,7 +1335,7 @@ reorderFieldsPat :: DsMonad q => Name -> [VarStrictType] -> [FieldPat] -> PatM q
 reorderFieldsPat con_name field_decs field_pats =
   reorderFields' dsPat con_name field_decs field_pats (repeat DWildP)
 
-reorderFields' :: (Applicative m, Monad m)
+reorderFields' :: (Applicative m, Fail.MonadFail m)
                => (a -> m da)
                -> Name -- ^ The name of the constructor (used for error reporting)
                -> [VarStrictType] -> [(Name, a)]

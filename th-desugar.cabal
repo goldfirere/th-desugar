@@ -46,12 +46,14 @@ library
       ghc-prim,
       template-haskell >= 2.8 && < 2.16,
       containers >= 0.5,
+      fail == 4.9.*,
       mtl >= 2.1,
       semigroups >= 0.16,
       syb >= 0.4,
       th-abstraction >= 0.2.11,
       th-lift >= 0.6.1,
-      th-orphans >= 0.9.1
+      th-orphans >= 0.13.7,
+      transformers-compat >= 0.6.3
   default-extensions: TemplateHaskell
   exposed-modules:    Language.Haskell.TH.Desugar
                       Language.Haskell.TH.Desugar.Expand

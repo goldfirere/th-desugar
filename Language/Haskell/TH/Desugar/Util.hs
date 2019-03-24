@@ -46,6 +46,7 @@ import Language.Haskell.TH.Desugar.OSet (OSet)
 import Language.Haskell.TH.Syntax
 
 import Control.Monad ( replicateM )
+import qualified Control.Monad.Fail as Fail
 import Data.Foldable
 import Data.Generics hiding ( Fixity )
 import Data.Traversable
@@ -115,8 +116,8 @@ stripPlainTV_maybe (PlainTV n) = Just n
 stripPlainTV_maybe _           = Nothing
 
 -- | Report that a certain TH construct is impossible
-impossible :: Monad q => String -> q a
-impossible err = fail (err ++ "\n    This should not happen in Haskell.\n    Please email rae@cs.brynmawr.edu with your code if you see this.")
+impossible :: Fail.MonadFail q => String -> q a
+impossible err = Fail.fail (err ++ "\n    This should not happen in Haskell.\n    Please email rae@cs.brynmawr.edu with your code if you see this.")
 
 -- | Convert a 'TyVarBndr' into a 'Type', dropping the kind signature
 -- (if it has one).
@@ -440,9 +441,9 @@ mapMaybeM f (x:xs) = do
     Nothing -> ys
     Just z  -> z : ys
 
-expectJustM :: Monad m => String -> Maybe a -> m a
+expectJustM :: Fail.MonadFail m => String -> Maybe a -> m a
 expectJustM _   (Just x) = return x
-expectJustM err Nothing  = fail err
+expectJustM err Nothing  = Fail.fail err
 
 firstMatch :: (a -> Maybe b) -> [a] -> Maybe b
 firstMatch f xs = listToMaybe $ mapMaybe f xs

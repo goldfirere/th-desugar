@@ -28,21 +28,18 @@ module Language.Haskell.TH.Desugar.Reify (
   DsMonad(..), DsM, withLocalDeclarations
   ) where
 
+import qualified Control.Monad.Fail as Fail
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 import Control.Monad.RWS
+import Control.Monad.Trans.Instances ()
 import qualified Data.Foldable as F
 import Data.Function (on)
 import Data.List
 import Data.Maybe
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
-#endif
-#if __GLASGOW_HASKELL__ >= 800
-import qualified Control.Monad.Fail as Fail
-#else
-import qualified Control.Monad as Fail
 #endif
 
 import Language.Haskell.TH.Datatype
@@ -73,15 +70,11 @@ reifyWithLocals name = do
 -- | Reify a declaration, warning the user about splices if the reify fails.
 -- The warning says that reification can fail if you try to reify a type in
 -- the same splice as it is declared.
-reifyWithWarning :: Quasi q => Name -> q Info
+reifyWithWarning :: (Quasi q, Fail.MonadFail q) => Name -> q Info
 reifyWithWarning name = qRecover (reifyFail name) (qReify name)
 
 -- | Print out a warning about separating splices and fail.
-#if __GLASGOW_HASKELL__ >= 800
 reifyFail :: Fail.MonadFail m => Name -> m a
-#else
-reifyFail :: Monad m => Name -> m a
-#endif
 reifyFail name =
   Fail.fail $ "Looking up " ++ (show name) ++ " in the list of available " ++
               "declarations failed.\nThis lookup fails if the declaration " ++
@@ -165,7 +158,7 @@ dataConNameToCon con_name = do
 
 -- | A 'DsMonad' stores some list of declarations that should be considered
 -- in scope. 'DsM' is the prototypical inhabitant of 'DsMonad'.
-class Quasi m => DsMonad m where
+class (Quasi m, Fail.MonadFail m) => DsMonad m where
   -- | Produce a list of local declarations.
   localDeclarations :: m [Dec]
 
@@ -177,16 +170,13 @@ instance DsMonad IO where
 -- | A convenient implementation of the 'DsMonad' class. Use by calling
 -- 'withLocalDeclarations'.
 newtype DsM q a = DsM (ReaderT [Dec] q a)
-  deriving ( Functor, Applicative, Monad, MonadTrans, Quasi
-#if __GLASGOW_HASKELL__ >= 800
-           , Fail.MonadFail
-#endif
+  deriving ( Functor, Applicative, Monad, MonadTrans, Quasi, Fail.MonadFail
 #if __GLASGOW_HASKELL__ >= 803
            , MonadIO
 #endif
            )
 
-instance Quasi q => DsMonad (DsM q) where
+instance (Quasi q, Fail.MonadFail q) => DsMonad (DsM q) where
   localDeclarations = DsM ask
 
 instance DsMonad m => DsMonad (ReaderT r m) where
