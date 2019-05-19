@@ -709,10 +709,10 @@ dsDec (ClassD cxt n tvbs fds decs) =
                      <*> pure fds <*> dsDecs decs)
 #if __GLASGOW_HASKELL__ >= 711
 dsDec (InstanceD over cxt ty decs) =
-  (:[]) <$> (DInstanceD <$> pure over <*> dsCxt cxt <*> dsType ty <*> dsDecs decs)
+  (:[]) <$> (DInstanceD over Nothing <$> dsCxt cxt <*> dsType ty <*> dsDecs decs)
 #else
 dsDec (InstanceD cxt ty decs) =
-  (:[]) <$> (DInstanceD <$> pure Nothing <*> dsCxt cxt <*> dsType ty <*> dsDecs decs)
+  (:[]) <$> (DInstanceD Nothing Nothing <$> dsCxt cxt <*> dsType ty <*> dsDecs decs)
 #endif
 dsDec d@(SigD {}) = dsTopLevelLetDec d
 dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
@@ -781,10 +781,11 @@ dsDec (PatSynD n args dir pat) = do
   return [DPatSynD n args dir' pat']
 dsDec (PatSynSigD n ty) = (:[]) <$> (DPatSynSigD n <$> dsType ty)
 dsDec (StandaloneDerivD mds cxt ty) =
-  (:[]) <$> (DStandaloneDerivD <$> mapM dsDerivStrategy mds <*> dsCxt cxt <*> dsType ty)
+  (:[]) <$> (DStandaloneDerivD <$> mapM dsDerivStrategy mds
+                               <*> pure Nothing <*> dsCxt cxt <*> dsType ty)
 #else
 dsDec (StandaloneDerivD cxt ty) =
-  (:[]) <$> (DStandaloneDerivD Nothing <$> dsCxt cxt <*> dsType ty)
+  (:[]) <$> (DStandaloneDerivD Nothing Nothing <$> dsCxt cxt <*> dsType ty)
 #endif
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #endif

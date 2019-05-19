@@ -26,6 +26,12 @@ Version 1.10
     now that each `DTySynEqn` contains the same `Name`.
   * There is now a field of type `Maybe [DTyVarBndr]` in the `DRuleP`
     constructor to represent bound type variables in `RULES` (if present).
+* Add a field of type `Maybe [DTyVarBndr]` to `DInstanceD` and
+  `DStandaloneDerivD` for optionally quantifying type variables explicitly.
+  If supplied with a `Just`, this sweetens the instance type to use a `ForallT`
+  to represent the explicit quantification. This trick is not supported for
+  `InstanceD` on GHC 8.0 and for `StandaloneDerivD` on GHC 7.10 or 8.0, so be
+  aware of this limitation if you supply `Just` for this field.
 * Add support for desugaring implicit params. This does not involve any changes
   to the `th-desugar` AST, as:
   * `(?x :: a) => ...` is desugared to `IP "x" a => ...`.
