@@ -116,6 +116,7 @@ decToTH (DInstanceD over mtvbs _cxt _ty decs) =
 #if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
                                 ([], DForallT _tvbs _cxt _ty)
 #else
+                                -- See #117
                                 error $ "Explicit foralls in instance declarations "
                                      ++ "are broken on GHC 8.0."
 #endif
@@ -173,6 +174,7 @@ decToTH (DStandaloneDerivD mds mtvbs _cxt _ty) =
 #if __GLASGOW_HASKELL__ < 710 || __GLASGOW_HASKELL__ >= 802
                                 ([], DForallT _tvbs _cxt _ty)
 #else
+                                -- See #117
                                 error $ "Explicit foralls in standalone deriving declarations "
                                      ++ "are broken on GHC 7.10 and 8.0."
 #endif
