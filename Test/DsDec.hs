@@ -12,6 +12,9 @@ rae@cs.brynmawr.edu
 #if __GLASGOW_HASKELL__ >= 707
 {-# LANGUAGE RoleAnnotations #-}
 #endif
+#if __GLASGOW_HASKELL__ >= 710
+{-# LANGUAGE DeriveAnyClass #-}
+#endif
 #if __GLASGOW_HASKELL__ >= 801
 {-# LANGUAGE DerivingStrategies #-}
 #endif
@@ -72,6 +75,13 @@ $(dsDecSplice S.dectest14)
 
 #if __GLASGOW_HASKELL__ >= 710
 $(dsDecSplice S.dectest15)
+#endif
+
+#if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
+$(return $ decsToTH [S.ds_dectest16])
+#endif
+#if __GLASGOW_HASKELL__ >= 802
+$(return $ decsToTH [S.ds_dectest17])
 #endif
 
 $(do decs <- S.rec_sel_test

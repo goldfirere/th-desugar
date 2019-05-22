@@ -423,6 +423,35 @@ dectest15 = [d| infixl 5 :**:, :&&:, :^^:, `ActuallyPrefix`
                   (:^^:) :: Int -> Int -> Int -> InfixGADT Int
                   (:!!:) :: Char -> Char -> InfixGADT Char |]
 
+class ExCls a
+data ExData1 a
+data ExData2 a
+
+ds_dectest16 = DInstanceD Nothing (Just [DPlainTV (mkName "a")]) []
+                (DConT ''ExCls `DAppT`
+                  (DConT ''ExData1 `DAppT` DVarT (mkName "a"))) []
+dectest16 :: Q [Dec]
+dectest16 = return [ InstanceD
+#if __GLASGOW_HASKELL__ >= 800
+                       Nothing
+#endif
+                       [] (ForallT [PlainTV (mkName "a")] []
+                                   (ConT ''ExCls `AppT`
+                                     (ConT ''ExData1 `AppT` VarT (mkName "a")))) [] ]
+ds_dectest17 = DStandaloneDerivD Nothing (Just [DPlainTV (mkName "a")]) []
+                (DConT ''ExCls `DAppT`
+                  (DConT ''ExData2 `DAppT` DVarT (mkName "a")))
+#if __GLASGOW_HASKELL__ >= 710
+dectest17 :: Q [Dec]
+dectest17 = return [ StandaloneDerivD
+#if __GLASGOW_HASKELL__ >= 802
+                       Nothing
+#endif
+                       [] (ForallT [PlainTV (mkName "a")] []
+                                   (ConT ''ExCls `AppT`
+                                     (ConT ''ExData2 `AppT` VarT (mkName "a")))) ]
+#endif
+
 instance_test = [d| instance (Show a, Show b) => Show (a -> b) where
                        show _ = "function" |]
 

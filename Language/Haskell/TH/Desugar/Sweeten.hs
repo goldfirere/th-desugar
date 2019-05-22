@@ -107,12 +107,18 @@ decToTH (DDataD Newtype cxt n tvbs _mk [con] derivings) =
 decToTH (DTySynD n tvbs ty) = [TySynD n (map tvbToTH tvbs) (typeToTH ty)]
 decToTH (DClassD cxt n tvbs fds decs) =
   [ClassD (cxtToTH cxt) n (map tvbToTH tvbs) fds (decsToTH decs)]
-#if __GLASGOW_HASKELL__ >= 711
-decToTH (DInstanceD over cxt ty decs) =
-  [InstanceD over (cxtToTH cxt) (typeToTH ty) (decsToTH decs)]
+decToTH (DInstanceD over mtvbs _cxt _ty decs) =
+  [instanceDToTH over cxt' ty' decs]
+  where
+  (cxt', ty') = case mtvbs of
+                  Nothing    -> (_cxt, _ty)
+                  Just _tvbs ->
+#if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
+                                ([], DForallT _tvbs _cxt _ty)
 #else
-decToTH (DInstanceD _ cxt ty decs) =
-  [InstanceD (cxtToTH cxt) (typeToTH ty) (decsToTH decs)]
+                                -- See #117
+                                error $ "Explicit foralls in instance declarations "
+                                     ++ "are broken on GHC 8.0."
 #endif
 decToTH (DForeignD f) = [ForeignD (foreignToTH f)]
 #if __GLASGOW_HASKELL__ > 710
@@ -159,18 +165,23 @@ decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
 #endif
 decToTH (DRoleAnnotD n roles) = [RoleAnnotD n roles]
 #endif
+decToTH (DStandaloneDerivD mds mtvbs _cxt _ty) =
+  [standaloneDerivDToTH mds cxt' ty']
+  where
+  (cxt', ty') = case mtvbs of
+                  Nothing    -> (_cxt, _ty)
+                  Just _tvbs ->
+#if __GLASGOW_HASKELL__ < 710 || __GLASGOW_HASKELL__ >= 802
+                                ([], DForallT _tvbs _cxt _ty)
+#else
+                                -- See #117
+                                error $ "Explicit foralls in standalone deriving declarations "
+                                     ++ "are broken on GHC 7.10 and 8.0."
+#endif
 #if __GLASGOW_HASKELL__ < 709
-decToTH (DStandaloneDerivD {}) =
-  error "Standalone deriving supported only in GHC 7.10+"
 decToTH (DDefaultSigD {})      =
   error "Default method signatures supported only in GHC 7.10+"
 #else
-decToTH (DStandaloneDerivD _mds cxt ty) =
-  [StandaloneDerivD
-#if __GLASGOW_HASKELL__ >= 801
-    (fmap derivStrategyToTH _mds)
-#endif
-    (cxtToTH cxt) (typeToTH ty)]
 decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
 #endif
 #if __GLASGOW_HASKELL__ >= 801
@@ -323,6 +334,26 @@ conToTH (DCon tvbs cxt n fields rty)
 
     con' :: Con
     con' = conToTH $ DCon [] [] n fields rty
+#endif
+
+instanceDToTH :: Maybe Overlap -> DCxt -> DType -> [DDec] -> Dec
+instanceDToTH _over cxt ty decs =
+  InstanceD
+#if __GLASGOW_HASKELL__ >= 800
+            _over
+#endif
+            (cxtToTH cxt) (typeToTH ty) (decsToTH decs)
+
+standaloneDerivDToTH :: Maybe DDerivStrategy -> DCxt -> DType -> Dec
+#if __GLASGOW_HASKELL__ >= 710
+standaloneDerivDToTH _mds cxt ty =
+  StandaloneDerivD
+#if __GLASGOW_HASKELL__ >= 802
+                   (fmap derivStrategyToTH _mds)
+#endif
+                   (cxtToTH cxt) (typeToTH ty)
+#else
+standaloneDerivDToTH _ _ _ = error "Standalone deriving supported only in GHC 7.10+"
 #endif
 
 foreignToTH :: DForeign -> Foreign

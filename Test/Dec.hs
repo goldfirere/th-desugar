@@ -12,6 +12,9 @@ rae@cs.brynmawr.edu
 #if __GLASGOW_HASKELL__ >= 707
 {-# LANGUAGE RoleAnnotations #-}
 #endif
+#if __GLASGOW_HASKELL__ >= 710
+{-# LANGUAGE DeriveAnyClass #-}
+#endif
 
 {-# OPTIONS_GHC -fno-warn-orphans -fno-warn-name-shadowing #-}
 
@@ -43,6 +46,13 @@ $(S.dectest14)
 
 #if __GLASGOW_HASKELL__ >= 710
 $(S.dectest15)
+#endif
+
+#if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
+$(S.dectest16)
+#endif
+#if __GLASGOW_HASKELL__ >= 802
+$(S.dectest17)
 #endif
 
 $(fmap unqualify S.instance_test)

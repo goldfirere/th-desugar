@@ -91,7 +91,7 @@ data DDec = DLetDec DLetDec
           | DDataD NewOrData DCxt Name [DTyVarBndr] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynD Name [DTyVarBndr] DType
           | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
-          | DInstanceD (Maybe Overlap) DCxt DType [DDec]
+          | DInstanceD (Maybe Overlap) (Maybe [DTyVarBndr]) DCxt DType [DDec]
           | DForeignD DForeign
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
@@ -100,7 +100,7 @@ data DDec = DLetDec DLetDec
                        [DCon] [DDerivClause]
           | DTySynInstD DTySynEqn
           | DRoleAnnotD Name [Role]
-          | DStandaloneDerivD (Maybe DDerivStrategy) DCxt DType
+          | DStandaloneDerivD (Maybe DDerivStrategy) (Maybe [DTyVarBndr]) DCxt DType
           | DDefaultSigD Name DType
           | DPatSynD Name PatSynArgs DPatSynDir DPat
           | DPatSynSigD Name DPatSynType
