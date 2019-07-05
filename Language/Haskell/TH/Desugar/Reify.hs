@@ -236,18 +236,16 @@ reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `nameMatches` n'
   = Just (n', mkVarITy n decs ty)
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n decs dec@(OpenTypeFamilyD (TypeFamilyHead n' _ _ _)) | n `nameMatches` n'
-  = Just (n', FamilyI (handleBug8884 dec) (findInstances n decs))
+  = Just (n', FamilyI dec (findInstances n decs))
 reifyInDec n decs dec@(DataFamilyD n' _ _) | n `nameMatches` n'
-  = Just (n', FamilyI (handleBug8884 dec) (findInstances n decs))
+  = Just (n', FamilyI dec (findInstances n decs))
 reifyInDec n _    dec@(ClosedTypeFamilyD (TypeFamilyHead n' _ _ _) _) | n `nameMatches` n'
   = Just (n', FamilyI dec [])
 #else
 reifyInDec n decs dec@(FamilyD _ n' _ _) | n `nameMatches` n'
-  = Just (n', FamilyI (handleBug8884 dec) (findInstances n decs))
-#if __GLASGOW_HASKELL__ >= 707
+  = Just (n', FamilyI dec (findInstances n decs))
 reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `nameMatches` n'
   = Just (n', FamilyI dec [])
-#endif
 #endif
 #if __GLASGOW_HASKELL__ >= 801
 reifyInDec n decs (PatSynD n' _ _ _) | n `nameMatches` n'
@@ -436,10 +434,8 @@ findInstances n = map stripInstanceDec . concatMap match_instance
       where
         mtvbs = rejig_tvbs [lhs, rhs]
         d = TySynInstD (TySynEqn mtvbs lhs rhs)
-#elif __GLASGOW_HASKELL__ >= 707
-    match_instance d@(TySynInstD n' _)         | n `nameMatches` n' = [d]
 #else
-    match_instance d@(TySynInstD n' _ _)       | n `nameMatches` n' = [d]
+    match_instance d@(TySynInstD n' _)         | n `nameMatches` n' = [d]
 #endif
 
 #if __GLASGOW_HASKELL__ >= 711
@@ -661,24 +657,6 @@ findRecSelector n = firstMatch match_con
 
     match_rec_sel (n', _, ty) | n `nameMatches` n' = Just (n', ty)
     match_rec_sel _                                = Nothing
-
-handleBug8884 :: Dec -> Dec
-#if __GLASGOW_HASKELL__ >= 707
-handleBug8884 = id
-#else
-handleBug8884 (FamilyD flav name tvbs m_kind)
-  = FamilyD flav name tvbs (Just stupid_kind)
-  where
-    kind_from_maybe = fromMaybe StarT
-    tvb_kind (PlainTV _)    = Nothing
-    tvb_kind (KindedTV _ k) = Just k
-
-    result_kind = kind_from_maybe m_kind
-    args_kinds  = map (kind_from_maybe . tvb_kind) tvbs
-
-    stupid_kind = mkArrows args_kinds result_kind
-handleBug8884 dec = dec
-#endif
 
 ---------------------------------
 -- Reifying fixities

@@ -3,7 +3,7 @@
 
 Version 1.10
 ------------
-* Support GHC 8.8.
+* Support GHC 8.8. Drop support for GHC 7.6.
 * Add support for visible kind application, type variable `foralls` in `RULES`,
   and explicit `forall`s in type family instances. Correspondingly,
   * There is now a `DAppKindT` constructor in `DType`.
@@ -71,6 +71,11 @@ Version 1.10
 
   A handful of utility functions for manipulating `TypeArg`s and `DTypeArg`s
   are also exported.
+* `th-desugar` functions that compute free variables (e.g., `fvDType`) now
+  return an `OSet`, a variant of `Set` that remembers the order in which
+  elements were inserted. A consequence of this change is that it fixes a bug
+  that causes free variables to be computed in different orders depending on
+  which unique numbers GHC happened to generate internally.
 
 Version 1.9
 -----------

@@ -140,13 +140,6 @@ decToTH (DDataInstD nd cxt mtvbs lhs mk cons derivings) =
               (Newtype, _)     -> error "Newtype that doesn't have only one constructor"
               (Data,    _)     -> DDataCons cons
   in dataInstDecToTH ndc cxt mtvbs lhs mk derivings
-#if __GLASGOW_HASKELL__ < 707
-decToTH (DTySynInstD eqn) = [tySynEqnToTHDec eqn]
-decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
-  (FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)) :
-  (map tySynEqnToTHDec eqns)
-decToTH (DRoleAnnotD {}) = []
-#else
 #if __GLASGOW_HASKELL__ >= 807
 decToTH (DTySynInstD eqn) = [TySynInstD (snd $ tySynEqnToTH eqn)]
 #else
@@ -164,7 +157,6 @@ decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
   [ClosedTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) (map (snd . tySynEqnToTH) eqns)]
 #endif
 decToTH (DRoleAnnotD n roles) = [RoleAnnotD n roles]
-#endif
 decToTH (DStandaloneDerivD mds mtvbs _cxt _ty) =
   [standaloneDerivDToTH mds cxt' ty']
   where
@@ -374,11 +366,7 @@ pragmaToTH (DRuleP str mtvbs rbs lhs rhs phases) =
 pragmaToTH (DRuleP str _ rbs lhs rhs phases) =
   Just $ RuleP str (map ruleBndrToTH rbs) (expToTH lhs) (expToTH rhs) phases
 #endif
-#if __GLASGOW_HASKELL__ < 707
-pragmaToTH (DAnnP {}) = Nothing
-#else
 pragmaToTH (DAnnP target exp) = Just $ AnnP target (expToTH exp)
-#endif
 #if __GLASGOW_HASKELL__ < 709
 pragmaToTH (DLineP {}) = Nothing
 #else
@@ -403,21 +391,12 @@ tySynEqnToTH (DTySynEqn tvbs lhs rhs) =
   case unfoldType lhs' of
     (ConT n, _lhs_args) -> (n, TySynEqn (fmap (fmap tvbToTH) tvbs) lhs' (typeToTH rhs))
     (_, _) -> error $ "Illegal type instance LHS: " ++ pprint lhs'
-#elif __GLASGOW_HASKELL__ >= 707
+#else
 tySynEqnToTH :: DTySynEqn -> (Name, TySynEqn)
 tySynEqnToTH (DTySynEqn _ lhs rhs) =
   let lhs' = typeToTH lhs in
   case unfoldType lhs' of
     (ConT n, lhs_args) -> (n, TySynEqn (filterTANormals lhs_args) (typeToTH rhs))
-    (_, _) -> error $ "Illegal type instance LHS: " ++ pprint lhs'
-#else
--- | GHC 7.6.3 doesn't have TySynEqn, so we sweeten to a Dec in GHC 7.6.3;
--- GHC 7.8+ does not use this function
-tySynEqnToTHDec :: DTySynEqn -> Dec
-tySynEqnToTHDec (DTySynEqn _ lhs rhs) =
-  let lhs' = typeToTH lhs in
-  case unfoldType lhs' of
-    (ConT n, lhs_args) -> TySynInstD n (filterTANormals lhs_args) (typeToTH rhs)
     (_, _) -> error $ "Illegal type instance LHS: " ++ pprint lhs'
 #endif
 
@@ -550,10 +529,6 @@ tyconToTH n
 #endif
                                   else TupleT deg
   | Just deg <- unboxedTupleNameDegree_maybe n = UnboxedTupleT deg
-#if __GLASGOW_HASKELL__ == 706
-    -- Work around Trac #7667
-  | isTypeKindName n            = StarT
-#endif
 #if __GLASGOW_HASKELL__ >= 801
   | Just deg <- unboxedSumNameDegree_maybe n   = UnboxedSumT deg
 #endif

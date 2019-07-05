@@ -8,10 +8,7 @@ rae@cs.brynmawr.edu
              MultiParamTypeClasses, FunctionalDependencies,
              FlexibleInstances, DataKinds, CPP, RankNTypes,
              StandaloneDeriving, DefaultSignatures,
-             ConstraintKinds #-}
-#if __GLASGOW_HASKELL__ >= 707
-{-# LANGUAGE RoleAnnotations #-}
-#endif
+             ConstraintKinds, RoleAnnotations #-}
 #if __GLASGOW_HASKELL__ >= 710
 {-# LANGUAGE DeriveAnyClass #-}
 #endif
@@ -54,11 +51,7 @@ $(dsDecSplice (fmap unqualify S.imp_inst_test2))
 $(dsDecSplice (fmap unqualify S.imp_inst_test3))
 $(dsDecSplice (fmap unqualify S.imp_inst_test4))
 
-#if __GLASGOW_HASKELL__ < 707
-$(return $ decsToTH [S.ds_dectest10])
-#else
 $(dsDecSplice S.dectest10)
-#endif
 
 #if __GLASGOW_HASKELL__ >= 709
 $(dsDecSplice S.dectest11)

@@ -8,10 +8,7 @@ rae@cs.brynmawr.edu
              MultiParamTypeClasses, FunctionalDependencies,
              FlexibleInstances, DataKinds, CPP, RankNTypes,
              StandaloneDeriving, DefaultSignatures,
-             ConstraintKinds #-}
-#if __GLASGOW_HASKELL__ >= 707
-{-# LANGUAGE RoleAnnotations #-}
-#endif
+             ConstraintKinds, RoleAnnotations #-}
 #if __GLASGOW_HASKELL__ >= 710
 {-# LANGUAGE DeriveAnyClass #-}
 #endif
