@@ -49,6 +49,7 @@ library
       containers >= 0.5,
       fail == 4.9.*,
       mtl >= 2.1,
+      ordered-containers >= 0.2.2,
       semigroups >= 0.16,
       syb >= 0.4,
       th-abstraction >= 0.2.11,
@@ -68,9 +69,6 @@ library
                       Language.Haskell.TH.Desugar.Core
                       Language.Haskell.TH.Desugar.FV
                       Language.Haskell.TH.Desugar.Match
-                      Language.Haskell.TH.Desugar.OMap.Internal
-                      Language.Haskell.TH.Desugar.OSet.Internal
-                      Language.Haskell.TH.Desugar.OMapSetUtil
                       Language.Haskell.TH.Desugar.Reify
                       Language.Haskell.TH.Desugar.Util
   default-language:   Haskell2010

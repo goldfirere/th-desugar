@@ -361,14 +361,15 @@ extractBoundNamesPat (VarP name)           = OS.singleton name
 extractBoundNamesPat (TupP pats)           = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (UnboxedTupP pats)    = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (ConP _ pats)         = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (InfixP p1 _ p2)      = extractBoundNamesPat p1 OS.|<>
+extractBoundNamesPat (InfixP p1 _ p2)      = extractBoundNamesPat p1 `OS.union`
                                              extractBoundNamesPat p2
-extractBoundNamesPat (UInfixP p1 _ p2)     = extractBoundNamesPat p1 OS.|<>
+extractBoundNamesPat (UInfixP p1 _ p2)     = extractBoundNamesPat p1 `OS.union`
                                              extractBoundNamesPat p2
 extractBoundNamesPat (ParensP pat)         = extractBoundNamesPat pat
 extractBoundNamesPat (TildeP pat)          = extractBoundNamesPat pat
 extractBoundNamesPat (BangP pat)           = extractBoundNamesPat pat
-extractBoundNamesPat (AsP name pat)        = OS.singleton name OS.|<> extractBoundNamesPat pat
+extractBoundNamesPat (AsP name pat)        = OS.singleton name `OS.union`
+                                             extractBoundNamesPat pat
 extractBoundNamesPat WildP                 = OS.empty
 extractBoundNamesPat (RecP _ field_pats)   = let (_, pats) = unzip field_pats in
                                              foldMap extractBoundNamesPat pats
