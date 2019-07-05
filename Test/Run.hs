@@ -40,9 +40,7 @@ import qualified Dec
 import Dec ( RecordSel )
 import Language.Haskell.TH.Desugar
 import qualified Language.Haskell.TH.Desugar.OSet as OS
-#if __GLASGOW_HASKELL__ >= 707
 import Language.Haskell.TH.Desugar.Expand  ( expandUnsoundly )
-#endif
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 
@@ -54,9 +52,7 @@ import Control.Applicative
 import Data.Generics ( geq )
 import Data.Function ( on )
 import qualified Data.Map as M
-#if __GLASGOW_HASKELL__ >= 707
 import Data.Proxy
-#endif
 
 -- |
 -- Convert a HUnit test suite to a spec.  This can be used to run existing
@@ -87,10 +83,8 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "case"     ~: $test8_case      @=? $(dsSplice test8_case)
              , "do"       ~: $test9_do        @=? $(dsSplice test9_do)
              , "comp"     ~: $test10_comp     @=? $(dsSplice test10_comp)
-#if __GLASGOW_HASKELL__ >= 707
              , "parcomp"  ~: $test11_parcomp  @=? $(dsSplice test11_parcomp)
              , "parcomp2" ~: $test12_parcomp2 @=? $(dsSplice test12_parcomp2)
-#endif
              , "sig"      ~: $test13_sig      @=? $(dsSplice test13_sig)
              , "record"   ~: $test14_record   @=? $(dsSplice test14_record)
              , "litp"     ~: $test15_litp     @=? $(dsSplice test15_litp)
@@ -152,7 +146,6 @@ test_e3a = $test_expand3
 test_e3b = $(test_expand3 >>= dsExp >>= expand >>= return . expToTH)
 test_e4a = $test_expand4
 test_e4b = $(test_expand4 >>= dsExp >>= expand >>= return . expToTH)
-#if __GLASGOW_HASKELL__ >= 707
 test_e5a = $test_expand5
 test_e5b = $(test_expand5 >>= dsExp >>= expand >>= return . expToTH)
 test_e6a = $test_expand6
@@ -166,7 +159,6 @@ test_e8a = $(test_expand8 >>= dsExp >>= expand >>= return . expToTH)
   -- closed type families.
 #endif
 test_e8b = $(test_expand8 >>= dsExp >>= expandUnsoundly >>= return . expToTH)
-#endif
 #if __GLASGOW_HASKELL__ >= 709
 test_e9a = $test_expand9  -- requires GHC #9262
 test_e9b = $(test_expand9 >>= dsExp >>= expand >>= return . expToTH)
@@ -180,7 +172,6 @@ test_expand = and [ hasSameType test35a test35b
                   , hasSameType test36a test36b
                   , hasSameType test_e3a test_e3b
                   , hasSameType test_e4a test_e4b
-#if __GLASGOW_HASKELL__ >= 707
                   , hasSameType test_e5a test_e5b
                   , hasSameType test_e6a test_e6b
                   , hasSameType test_e7a test_e7b
@@ -189,7 +180,6 @@ test_expand = and [ hasSameType test35a test35b
                   , hasSameType test_e8a test_e8a
 #endif
                   , hasSameType test_e8b test_e8b
-#endif
 #if __GLASGOW_HASKELL__ >= 709
                   , hasSameType test_e9a test_e9b
 #endif
@@ -526,10 +516,6 @@ main = hspec $ do
     it "passes instance test" $ $(do ty <- [t| Int -> Bool |]
                                      [inst1, inst2] <- reifyInstances ''Show [ty]
                                      inst1 `eqTHSplice` inst2)
-
-#if __GLASGOW_HASKELL__ < 707
-    it "passes roles test" $ (decsToTH [ds_role_test]) `eqTH` role_test
-#endif
 
     it "makes type names" $ test_mkName
 

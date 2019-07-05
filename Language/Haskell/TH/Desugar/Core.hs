@@ -608,9 +608,7 @@ dsInfo (TyConI dec) = do
 dsInfo (FamilyI dec instances) = do
   [ddec]     <- dsDec dec
   dinstances <- dsDecs instances
-  (ddec', num_args) <- fixBug8884ForFamilies ddec
-  let dinstances' = map (fixBug8884ForInstances num_args) dinstances
-  return $ DTyConI ddec' (Just dinstances')
+  return $ DTyConI ddec (Just dinstances)
 dsInfo (PrimTyConI name arity unlifted) =
   return $ DPrimTyConI name arity unlifted
 #if __GLASGOW_HASKELL__ > 710
@@ -631,56 +629,6 @@ dsInfo (VarI name _ (Just _) _) =
 dsInfo (TyVarI name ty) = DTyVarI name <$> dsType ty
 #if __GLASGOW_HASKELL__ >= 801
 dsInfo (PatSynI name ty) = DPatSynI name <$> dsType ty
-#endif
-
-fixBug8884ForFamilies :: DsMonad q => DDec -> q (DDec, Int)
-#if __GLASGOW_HASKELL__ < 708
-fixBug8884ForFamilies (DOpenTypeFamilyD (DTypeFamilyHead name tvbs frs ann)) = do
-  let num_args = length tvbs
-  frs' <- remove_arrows num_args frs
-  return (DOpenTypeFamilyD (DTypeFamilyHead name tvbs frs' ann),num_args)
-fixBug8884ForFamilies (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs ann) eqns) = do
-  let num_args = length tvbs
-      eqns' = map (fixBug8884ForEqn num_args) eqns
-  frs' <- remove_arrows num_args frs
-  return (DClosedTypeFamilyD (DTypeFamilyHead name tvbs frs' ann) eqns', num_args)
-fixBug8884ForFamilies dec@(DDataFamilyD _ _ _)
-  = return (dec, 0)   -- the num_args is ignored for data families
-fixBug8884ForFamilies dec =
-  impossible $ "Reifying yielded a FamilyI with a non-family Dec: " ++ show dec
-
-remove_arrows :: DsMonad q => Int -> DFamilyResultSig -> q DFamilyResultSig
-remove_arrows n (DKindSig k) = DKindSig <$> remove_arrows_kind n k
-remove_arrows n (DTyVarSig (DKindedTV nm k)) =
-  DTyVarSig <$> (DKindedTV nm <$> remove_arrows_kind n k)
-remove_arrows _ frs = return frs
-
-remove_arrows_kind :: DsMonad q => Int -> DKind -> q DKind
-remove_arrows_kind 0 k = return k
-remove_arrows_kind n (DAppT (DAppT DArrowT _) k) = remove_arrows_kind (n-1) k
-remove_arrows_kind _ _ =
-  impossible "Internal error: Fix for bug 8884 ran out of arrows."
-
-#else
-fixBug8884ForFamilies dec = return (dec, 0)   -- return value ignored
-#endif
-
-fixBug8884ForInstances :: Int -> DDec -> DDec
-#if __GLASGOW_HASKELL__ < 708
-fixBug8884ForInstances num_args (DTySynInstD eqn) =
-  DTySynInstD (fixBug8884ForEqn num_args eqn)
-#endif
-fixBug8884ForInstances _ dec = dec
-
-fixBug8884ForEqn :: Int -> DTySynEqn -> DTySynEqn
-#if __GLASGOW_HASKELL__ < 708
-fixBug8884ForEqn num_args (DTySynEqn mtvbs lhs rhs) =
-  let (lhs_head, lhs_args) = unfoldDType lhs
-      lhs_args'            = drop (length lhs_args - num_args) lhs_args
-      lhs'                 = applyDType lhs_head lhs_args' in
-  DTySynEqn mtvbs lhs' rhs
-#else
-fixBug8884ForEqn _ = id
 #endif
 
 -- | Desugar arbitrary @Dec@s
@@ -751,15 +699,9 @@ dsDec (NewtypeInstD cxt n tys con derivings) =
 #endif
 #if __GLASGOW_HASKELL__ >= 807
 dsDec (TySynInstD eqn) = (:[]) <$> (DTySynInstD <$> dsTySynEqn unusedArgument eqn)
-#elif __GLASGOW_HASKELL__ >= 707
-dsDec (TySynInstD n eqn) = (:[]) <$> (DTySynInstD <$> dsTySynEqn n eqn)
 #else
-dsDec (TySynInstD n lhss rhs) = do
-  lhss' <- mapM dsType lhss
-  let lhs' = applyDType (DConT n) $ map DTANormal lhss'
-  (:[]) <$> (DTySynInstD <$> (DTySynEqn Nothing lhs' <$> dsType rhs))
+dsDec (TySynInstD n eqn) = (:[]) <$> (DTySynInstD <$> dsTySynEqn n eqn)
 #endif
-#if __GLASGOW_HASKELL__ >= 707
 #if __GLASGOW_HASKELL__ > 710
 dsDec (ClosedTypeFamilyD tfHead eqns) =
   (:[]) <$> (DClosedTypeFamilyD <$> dsTypeFamilyHead tfHead
@@ -770,7 +712,6 @@ dsDec (ClosedTypeFamilyD n tvbs m_k eqns) = do
                                 <*> mapM (dsTySynEqn n) eqns)
 #endif
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
-#endif
 #if __GLASGOW_HASKELL__ >= 709
 #if __GLASGOW_HASKELL__ >= 801
 dsDec (PatSynD n args dir pat) = do
@@ -1096,9 +1037,7 @@ dsPragma (RuleP str rbs lhs rhs phases)  = DRuleP str Nothing
                                                       <*> dsExp rhs
                                                       <*> pure phases
 #endif
-#if __GLASGOW_HASKELL__ >= 707
 dsPragma (AnnP target exp)               = DAnnP target <$> dsExp exp
-#endif
 #if __GLASGOW_HASKELL__ >= 709
 dsPragma (LineP n str)                   = return $ DLineP n str
 #endif
@@ -1119,7 +1058,7 @@ dsRuleBndr (TypedRuleVar n ty) = DTypedRuleVar n <$> dsType ty
 dsTySynEqn :: DsMonad q => Name -> TySynEqn -> q DTySynEqn
 dsTySynEqn _ (TySynEqn mtvbs lhs rhs) =
   DTySynEqn <$> mapM (mapM dsTvb) mtvbs <*> dsType lhs <*> dsType rhs
-#elif __GLASGOW_HASKELL__ >= 707
+#else
 -- | Desugar a @TySynEqn@. (Available only with GHC 7.8+)
 dsTySynEqn :: DsMonad q => Name -> TySynEqn -> q DTySynEqn
 dsTySynEqn n (TySynEqn lhss rhs) = do

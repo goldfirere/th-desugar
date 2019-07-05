@@ -11,11 +11,6 @@ This code is directly based on the analogous operation as written in GHC.
 
 {-# LANGUAGE CPP, TemplateHaskell #-}
 
-#if __GLASGOW_HASKELL__ <= 708
-{-# LANGUAGE StandaloneDeriving #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}   -- we need Ord Lit. argh.
-#endif
-
 module Language.Haskell.TH.Desugar.Match (scExp, scLetDec) where
 
 import Prelude hiding ( fail, exp )

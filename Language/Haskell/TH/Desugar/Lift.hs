@@ -27,9 +27,6 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DTyVarBndr
                  , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DDerivClause, ''DCon
                  , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
                  , ''DPatSynDir , ''NewOrData, ''DDerivStrategy
-#if __GLASGOW_HASKELL__ < 707
-                 , ''AnnTarget, ''Role
-#endif
                  , ''DTypeFamilyHead,  ''DFamilyResultSig
 #if __GLASGOW_HASKELL__ <= 710
                  , ''InjectivityAnn, ''Bang, ''SourceUnpackedness

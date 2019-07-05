@@ -54,10 +54,6 @@ import Data.Generics
 import GHC.OverloadedLabels ( IsLabel(..) )
 #endif
 
-#if __GLASGOW_HASKELL__ < 707
-data Proxy a = Proxy
-#endif
-
 dsSplice :: Q Exp -> Q Exp
 dsSplice expq = expq >>= dsExp >>= (return . expToTH)
 
@@ -70,9 +66,6 @@ testDecSplice n = do
       regName = mkName $ "Dec.Dec" ++ show n
   infoDs  <- reify dsName
   infoReg <- reify regName
-#if __GLASGOW_HASKELL__ < 707
-  eqTHSplice infoDs infoReg
-#else
   rolesDs  <- reifyRoles dsName
   rolesReg <- reifyRoles regName
 #if __GLASGOW_HASKELL__ < 711
@@ -81,7 +74,6 @@ testDecSplice n = do
   fixityDs  <- reifyFixity dsName
   fixityReg <- reifyFixity regName
   eqTHSplice (infoDs, rolesDs, fixityDs) (infoReg, rolesReg, fixityReg)
-#endif
 #endif
 
 unqualify :: Data a => a -> a
@@ -129,10 +121,8 @@ test9_do = [| show $ do { foo <- Just "foo"
                         ; x <- elemIndex 'l' fool
                         ; return (x + 10) } |]
 test10_comp = [| [ (x, x+1) | x <- [1..10], x `mod` 2 == 0 ] |]
-#if __GLASGOW_HASKELL__ >= 707
 test11_parcomp = [| [ (x,y) | x <- [1..10], x `mod` 2 == 0 | y <- [2,5..20] ] |]
 test12_parcomp2 = [| [ (x,y,z) | x <- [1..10], z <- [3..100], x + z `mod` 2 == 0 | y <- [2,5..20] ] |]
-#endif
 test13_sig = [| show (read "[10, 11, 12]" :: [Int]) |]
 
 data Record = MkRecord1 { field1 :: Bool, field2 :: Int }
@@ -294,7 +284,6 @@ test_expand4 = [| let f :: TFExpand (Maybe Bool) -> ()
                       f [True, False] = () in
                   f |]
 
-#if __GLASGOW_HASKELL__ >= 707
 type family ClosedTF a where
   ClosedTF Int = Bool
   ClosedTF x   = Char
@@ -316,7 +305,6 @@ test_expand8 = [| let f :: PolyTF IO -> ()
                       f True = () in
                   f |]
 
-#endif
 
 #if __GLASGOW_HASKELL__ >= 709
 test_expand9 = [| let f :: TFExpand (Maybe (IO a)) -> IO ()
@@ -338,9 +326,7 @@ test39_eq = [| let f :: (a ~ b) => a -> b
                (f ()) |]
 #endif
 
-#if __GLASGOW_HASKELL__ < 707
-dec_test_nums = [1..9] :: [Int]
-#elif __GLASGOW_HASKELL__ < 709
+#if __GLASGOW_HASKELL__ < 709
 dec_test_nums = [1..10] :: [Int]
 #else
 dec_test_nums = [1..11] :: [Int]
@@ -353,9 +339,7 @@ dectest2 = [d| data Dec2 a where
                  MkDec2 :: forall a b. (Show b, Eq a) => a -> b -> Bool -> Dec2 a |]
 dectest3 = [d| data Dec3 a where
                  MkDec3 :: forall a b. { foo :: a, bar :: b } -> Dec3 a
-#if __GLASGOW_HASKELL__ >= 707
                type role Dec3 nominal
-#endif
                |]
 dectest4 = [d| newtype Dec4 a where
                  MkDec4 :: (a, Int) -> Dec4 a |]
@@ -366,29 +350,9 @@ dectest6 = [d| class (Monad m1, Monad m2) => Dec6 (m1 :: * -> *) m2 | m1 -> m2  
 dectest7 = [d| type family Dec7 a (b :: *) (c :: Bool) :: * -> * |]
 dectest8 = [d| type family Dec8 a |]
 dectest9 = [d| data family Dec9 a (b :: * -> *) :: * -> * |]
-
-#if __GLASGOW_HASKELL__ < 707
-ds_dectest10 = DClosedTypeFamilyD
-                 (DTypeFamilyHead
-                    dec10Name
-                    [DPlainTV (mkName "a")]
-                    (DKindSig (DAppT (DAppT DArrowT (DConT typeKindName)) (DConT typeKindName)))
-                    Nothing)
-                 [ DTySynEqn Nothing (DConT dec10Name `DAppT` DConT ''Int)  (DConT ''Maybe)
-                 , DTySynEqn Nothing (DConT dec10Name `DAppT` DConT ''Bool) (DConT ''[]) ]
-  where
-    dec10Name = mkName "Dec10"
-dectest10 = [d| type family Dec10 a :: * -> *
-                type instance Dec10 Int = Maybe
-                type instance Dec10 Bool = [] |]
-
-ds_role_test = DRoleAnnotD (mkName "Dec3") [NominalR]
-role_test = []
-#else
 dectest10 = [d| type family Dec10 a :: * -> * where
                   Dec10 Int = Maybe
                   Dec10 Bool = [] |]
-#endif
 
 data Blarggie a = MkBlarggie Int a
 #if __GLASGOW_HASKELL__ >= 709
@@ -549,7 +513,6 @@ reifyDecs = [d|
   newtype R18 = R19 Bool
 
   type R20 = Bool
-#if __GLASGOW_HASKELL__ >= 707
   type family R21 (a :: k) (b :: k) :: k where
 #if __GLASGOW_HASKELL__ >= 801
 #if __GLASGOW_HASKELL__ >= 807
@@ -560,7 +523,6 @@ reifyDecs = [d|
     -- Due to GHC Trac #12646, R21 will get reified without kind signatures on
     -- a and b on older GHCs, so we must reflect that here.
     R21 a b = b
-#endif
 #endif
   class XXX a where
     r22 :: a -> a
@@ -630,9 +592,7 @@ reifyDecsNames = map mkName
 #endif
   , "R4", "R5", "R6", "R7", "r8", "r9", "R10", "r11"
   , "R12", "R13", "R14", "r15", "r16", "r17", "R18", "R19", "R20"
-#if __GLASGOW_HASKELL__ >= 707
   , "R21"
-#endif
   , "r22"
 #if __GLASGOW_HASKELL__ >= 800
   , "R25", "r26", "R28", "r29"
@@ -673,10 +633,8 @@ test_exprs = [ test1_sections
              , test8_case
              , test9_do
              , test10_comp
-#if __GLASGOW_HASKELL__ >= 707
              , test11_parcomp
              , test12_parcomp2
-#endif
              , test13_sig
              , test14_record
              , test15_litp

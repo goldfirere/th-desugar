@@ -262,18 +262,6 @@ data DRuleBndr = DRuleVar Name
 data DTySynEqn = DTySynEqn (Maybe [DTyVarBndr]) DType DType
                deriving (Show, Typeable, Data, Generic)
 
-#if __GLASGOW_HASKELL__ < 707
--- | Same as @Role@ from TH; defined here for GHC 7.6.3 compatibility.
-data Role = NominalR | RepresentationalR | PhantomR | InferR
-          deriving (Show, Typeable, Data, Generic)
-
--- | Same as @AnnTarget@ from TH; defined here for GHC 7.6.3 compatibility.
-data AnnTarget = ModuleAnnotation
-               | TypeAnnotation Name
-               | ValueAnnotation Name
-               deriving (Show, Typeable, Data, Generic)
-#endif
-
 -- | Corresponds to TH's @Info@ type.
 data DInfo = DTyConI DDec (Maybe [DInstanceDec])
            | DVarI Name DType (Maybe Name)
