@@ -1508,7 +1508,7 @@ toposortTyVarsOf tys =
       insert _ _ _ = error "scopedSort"
 
       kindFVSet n =
-        maybe S.empty (S.fromAscList . OS.toAscList . fvDType)
+        maybe S.empty (OS.toSet . fvDType)
                       (M.lookup n varKindSigs)
       ascribeWithKind n =
         maybe (DPlainTV n) (DKindedTV n) (M.lookup n varKindSigs)
