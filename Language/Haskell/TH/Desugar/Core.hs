@@ -26,6 +26,7 @@ import qualified Control.Monad.Fail as Fail
 import Control.Monad.Zip
 import Control.Monad.Writer hiding (forM_, mapM)
 import Data.Data (Data, Typeable)
+import Data.Either (lefts)
 import Data.Foldable as F hiding (concat, notElem)
 import qualified Data.Map as M
 import Data.Map (Map)
@@ -82,11 +83,8 @@ dsExp (LamCaseE matches) = do
   x <- newUniqueName "x"
   matches' <- dsMatches x matches
   return $ DLamE [x] (DCaseE (DVarE x) matches')
-dsExp (TupE exps) = do
-  exps' <- mapM dsExp exps
-  return $ foldl DAppE (DConE $ tupleDataName (length exps)) exps'
-dsExp (UnboxedTupE exps) =
-  foldl DAppE (DConE $ unboxedTupleDataName (length exps)) <$> mapM dsExp exps
+dsExp (TupE exps) = dsTup tupleDataName exps
+dsExp (UnboxedTupE exps) = dsTup unboxedTupleDataName exps
 dsExp (CondE e1 e2 e3) =
   dsExp (CaseE e1 [ Match (ConP 'True [])  (NormalB e2) []
                   , Match (ConP 'False []) (NormalB e3) [] ])
@@ -244,6 +242,49 @@ dsExp (LabelE str) = return $ DVarE 'fromLabel `DAppTypeE` DLitT (StrTyLit str)
 dsExp (ImplicitParamVarE n) = return $ DVarE 'ip `DAppTypeE` DLitT (StrTyLit n)
 dsExp (MDoE {}) = fail "th-desugar currently does not support RecursiveDo"
 #endif
+
+#if __GLASGOW_HASKELL__ >= 809
+dsTup :: DsMonad q => (Int -> Name) -> [Maybe Exp] -> q DExp
+dsTup = ds_tup
+#else
+dsTup :: DsMonad q => (Int -> Name) -> [Exp]       -> q DExp
+dsTup tuple_data_name = ds_tup tuple_data_name . map Just
+#endif
+
+-- | Desugar a tuple (or tuple section) expression.
+ds_tup :: forall q. DsMonad q
+       => (Int -> Name) -- ^ Compute the 'Name' of a tuple (boxed or unboxed)
+                        --   data constructor from its arity.
+       -> [Maybe Exp]   -- ^ The tuple's subexpressions. 'Nothing' entries
+                        --   denote empty fields in a tuple section.
+       -> q DExp
+ds_tup tuple_data_name mb_exps = do
+  section_exps <- mapM ds_section_exp mb_exps
+  let section_vars = lefts section_exps
+      tup_body     = mk_tup_body section_exps
+  if null section_vars
+     then return tup_body -- If this isn't a tuple section,
+                          -- don't create a lambda.
+     else dsLam (map VarP section_vars) tup_body
+  where
+    -- If dealing with an empty field in a tuple section (Nothing), create a
+    -- unique name and return Left. These names will be used to construct the
+    -- lambda expression that it desugars to.
+    -- (For example, `(,5)` desugars to `\ts -> (,) ts 5`.)
+    --
+    -- If dealing with a tuple subexpression (Just), desugar it and return
+    -- Right.
+    ds_section_exp :: Maybe Exp -> q (Either Name DExp)
+    ds_section_exp = maybe (Left <$> qNewName "ts") (fmap Right . dsExp)
+
+    mk_tup_body :: [Either Name DExp] -> DExp
+    mk_tup_body section_exps =
+      foldl' apply_tup_body (DConE $ tuple_data_name (length section_exps))
+             section_exps
+
+    apply_tup_body :: DExp -> Either Name DExp -> DExp
+    apply_tup_body f (Left n)  = f `DAppE` DVarE n
+    apply_tup_body f (Right e) = f `DAppE` e
 
 -- | Desugar a lambda expression, where the body has already been desugared
 dsLam :: DsMonad q => [Pat] -> DExp -> q DExp

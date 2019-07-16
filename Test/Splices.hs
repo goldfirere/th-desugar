@@ -9,7 +9,8 @@ rae@cs.brynmawr.edu
              ScopedTypeVariables, RankNTypes, TypeFamilies, ImpredicativeTypes,
              DataKinds, PolyKinds, GADTs, MultiParamTypeClasses,
              FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
-             DefaultSignatures, ConstraintKinds, GADTs, ViewPatterns #-}
+             DefaultSignatures, ConstraintKinds, GADTs, ViewPatterns,
+             TupleSections #-}
 
 #if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE TypeApplications #-}
@@ -272,6 +273,17 @@ test49_implicit_params = [| let f :: (?x :: Int, ?y :: Int) => (Int, Int)
 test50_vka = [| let hrefl :: (:~~:) @Bool @Bool 'True 'True
                     hrefl = HRefl
                 in hrefl |]
+#endif
+
+#if __GLASGOW_HASKELL__ >= 809
+test51_tuple_sections =
+  [| let f1 :: String -> Char -> (String, Int, Char)
+         f1 = (,5,)
+
+         f2 :: String -> Char -> (# String, Int, Char #)
+         f2 = (#,5,#)
+     in case (#,#) (f1 "a" 'a') (f2 "b" 'b') of
+          (#,#) ((,,) _ a _) ((#,,#) _ b _) -> a + b |]
 #endif
 
 type family TFExpand x
@@ -681,5 +693,8 @@ test_exprs = [ test1_sections
 #if __GLASGOW_HASKELL__ >= 807
              , test49_implicit_params
              , test50_vka
+#endif
+#if __GLASGOW_HASKELL__ >= 809
+             , test51_tuple_sections
 #endif
              ]

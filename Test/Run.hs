@@ -8,7 +8,7 @@ rae@cs.brynmawr.edu
              RankNTypes, TypeFamilies,
              DataKinds, ConstraintKinds, PolyKinds, MultiParamTypeClasses,
              FlexibleInstances, ExistentialQuantification,
-             ScopedTypeVariables, GADTs, ViewPatterns #-}
+             ScopedTypeVariables, GADTs, ViewPatterns, TupleSections #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind
@@ -135,6 +135,9 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #if __GLASGOW_HASKELL__ >= 807
              , "implicit_params" ~: $test49_implicit_params @=? $(dsSplice test49_implicit_params)
              , "vka"             ~: $test50_vka             @=? $(dsSplice test50_vka)
+#endif
+#if __GLASGOW_HASKELL__ >= 809
+             , "tuple_sections"  ~: $test51_tuple_sections  @=? $(dsSplice test51_tuple_sections)
 #endif
              ]
 
