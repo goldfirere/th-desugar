@@ -49,7 +49,6 @@ import Control.Monad
 import Control.Applicative
 #endif
 
-import Data.Generics ( geq )
 import Data.Function ( on )
 import qualified Data.Map as M
 import Data.Proxy
@@ -445,6 +444,14 @@ local_reifications = $(do decs <- reifyDecs
                           let m_infos' = assumeStarT m_infos
                           ListE <$> mapM (Syn.lift . show) (unqualify m_infos'))
 
+type T123G = Either () ()
+type T123F = Either T123G T123G
+type T123E = Either T123F T123F
+type T123D = Either T123E T123E
+type T123C = Either T123D T123D
+type T123B = Either T123C T123C
+type T123A = Either T123B T123B
+
 $reifyDecs
 
 $(return [])  -- somehow, this is necessary to get the staging correct for the
@@ -504,7 +511,13 @@ test_matchTy =
 
      -- GHC 7.6 uses containers-0.5.0.0 which doesn't have a good Data instance
      -- for Map. So we have to convert to lists before comparing.
-    eq = geq `on` fmap M.toList
+    eq = (==) `on` fmap M.toList
+
+-- Test that type synonym expansion is efficient
+test_t123 :: ()
+test_t123 =
+  $(do _ <- expand (DConT ''T123A)
+       [| () |])
 
 main :: IO ()
 main = hspec $ do

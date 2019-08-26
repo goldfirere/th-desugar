@@ -76,6 +76,8 @@ Version 1.10
   elements were inserted. A consequence of this change is that it fixes a bug
   that causes free variables to be computed in different orders depending on
   which unique numbers GHC happened to generate internally.
+* Substition and type synonym expansion are now more efficient by avoiding
+  the use of `syb` in inner loops.
 
 Version 1.9
 -----------

@@ -25,7 +25,7 @@ data DExp = DVarE Name
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
           | DStaticE DExp
-          deriving (Show, Typeable, Data, Generic)
+          deriving (Eq, Show, Typeable, Data, Generic)
 
 
 -- | Corresponds to TH's @Pat@ type.
@@ -36,7 +36,7 @@ data DPat = DLitP Lit
           | DBangP DPat
           | DSigP DPat DType
           | DWildP
-          deriving (Show, Typeable, Data, Generic)
+          deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Type@ type, used to represent
 -- types and kinds.
@@ -49,7 +49,7 @@ data DType = DForallT [DTyVarBndr] DCxt DType
            | DArrowT
            | DLitT TyLit
            | DWildCardT
-           deriving (Show, Typeable, Data, Generic)
+           deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Kinds are types. Corresponds to TH's @Kind@
 type DKind = DType
@@ -63,15 +63,15 @@ type DCxt = [DPred]
 -- | Corresponds to TH's @TyVarBndr@
 data DTyVarBndr = DPlainTV Name
                 | DKindedTV Name DKind
-                deriving (Show, Typeable, Data, Generic)
+                deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Match@ type.
 data DMatch = DMatch DPat DExp
-  deriving (Show, Typeable, Data, Generic)
+  deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Clause@ type.
 data DClause = DClause [DPat] DExp
-  deriving (Show, Typeable, Data, Generic)
+  deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Declarations as used in a @let@ statement.
 data DLetDec = DFunD Name [DClause]
@@ -79,7 +79,7 @@ data DLetDec = DFunD Name [DClause]
              | DSigD Name DType
              | DInfixD Fixity Name
              | DPragmaD DPragma
-             deriving (Show, Typeable, Data, Generic)
+             deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Is it a @newtype@ or a @data@ type?
 data NewOrData = Newtype
@@ -104,7 +104,7 @@ data DDec = DLetDec DLetDec
           | DDefaultSigD Name DType
           | DPatSynD Name PatSynArgs DPatSynDir DPat
           | DPatSynSigD Name DPatSynType
-          deriving (Show, Typeable, Data, Generic)
+          deriving (Eq, Show, Typeable, Data, Generic)
 
 #if __GLASGOW_HASKELL__ < 711
 data Overlap = Overlappable | Overlapping | Overlaps | Incoherent
@@ -115,7 +115,7 @@ data Overlap = Overlappable | Overlapping | Overlaps | Incoherent
 data DPatSynDir = DUnidir              -- ^ @pattern P x {<-} p@
                 | DImplBidir           -- ^ @pattern P x {=} p@
                 | DExplBidir [DClause] -- ^ @pattern P x {<-} p where P x = e@
-                deriving (Show, Typeable, Data, Generic)
+                deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's 'PatSynType' type
 type DPatSynType = DType
@@ -126,19 +126,19 @@ data PatSynArgs
   = PrefixPatSyn [Name]        -- ^ @pattern P {x y z} = p@
   | InfixPatSyn Name Name      -- ^ @pattern {x P y} = p@
   | RecordPatSyn [Name]        -- ^ @pattern P { {x,y,z} } = p@
-  deriving (Show, Typeable, Data, Generic)
+  deriving (Eq, Show, Typeable, Data, Generic)
 #endif
 
 -- | Corresponds to TH's 'TypeFamilyHead' type
 data DTypeFamilyHead = DTypeFamilyHead Name [DTyVarBndr] DFamilyResultSig
                                        (Maybe InjectivityAnn)
-                     deriving (Show, Typeable, Data, Generic)
+                     deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's 'FamilyResultSig' type
 data DFamilyResultSig = DNoSig
                       | DKindSig DKind
                       | DTyVarSig DTyVarBndr
-                      deriving (Show, Typeable, Data, Generic)
+                      deriving (Eq, Show, Typeable, Data, Generic)
 
 #if __GLASGOW_HASKELL__ <= 710
 data InjectivityAnn = InjectivityAnn Name [Name]
@@ -162,13 +162,13 @@ data InjectivityAnn = InjectivityAnn Name [Name]
 -- * A 'DCon' always has an explicit return type.
 data DCon = DCon [DTyVarBndr] DCxt Name DConFields
                  DType  -- ^ The GADT result type
-          deriving (Show, Typeable, Data, Generic)
+          deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | A list of fields either for a standard data constructor or a record
 -- data constructor.
 data DConFields = DNormalC DDeclaredInfix [DBangType]
                 | DRecC [DVarBangType]
-                deriving (Show, Typeable, Data, Generic)
+                deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | 'True' if a constructor is declared infix. For normal ADTs, this means
 -- that is was written in infix style. For example, both of the constructors
@@ -241,7 +241,7 @@ data Bang = Bang SourceUnpackedness SourceStrictness
 -- | Corresponds to TH's @Foreign@ type.
 data DForeign = DImportF Callconv Safety String Name DType
               | DExportF Callconv String Name DType
-              deriving (Show, Typeable, Data, Generic)
+              deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Pragma@ type.
 data DPragma = DInlineP Name Inline RuleMatch Phases
@@ -251,16 +251,16 @@ data DPragma = DInlineP Name Inline RuleMatch Phases
              | DAnnP AnnTarget DExp
              | DLineP Int String
              | DCompleteP [Name] (Maybe Name)
-             deriving (Show, Typeable, Data, Generic)
+             deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @RuleBndr@ type.
 data DRuleBndr = DRuleVar Name
                | DTypedRuleVar Name DType
-               deriving (Show, Typeable, Data, Generic)
+               deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @TySynEqn@ type (to store type family equations).
 data DTySynEqn = DTySynEqn (Maybe [DTyVarBndr]) DType DType
-               deriving (Show, Typeable, Data, Generic)
+               deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Info@ type.
 data DInfo = DTyConI DDec (Maybe [DInstanceDec])
@@ -273,17 +273,17 @@ data DInfo = DTyConI DDec (Maybe [DInstanceDec])
                -- ^ The @Int@ is the arity; the @Bool@ is whether this tycon
                -- is unlifted.
            | DPatSynI Name DPatSynType
-           deriving (Show, Typeable, Data, Generic)
+           deriving (Eq, Show, Typeable, Data, Generic)
 
 type DInstanceDec = DDec -- ^ Guaranteed to be an instance declaration
 
 -- | Corresponds to TH's @DerivClause@ type.
 data DDerivClause = DDerivClause (Maybe DDerivStrategy) DCxt
-                  deriving (Show, Typeable, Data, Generic)
+                  deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @DerivStrategy@ type.
 data DDerivStrategy = DStockStrategy     -- ^ A \"standard\" derived instance
                     | DAnyclassStrategy  -- ^ @-XDeriveAnyClass@
                     | DNewtypeStrategy   -- ^ @-XGeneralizedNewtypeDeriving@
                     | DViaStrategy DType -- ^ @-XDerivingVia@
-                    deriving (Show, Typeable, Data, Generic)
+                    deriving (Eq, Show, Typeable, Data, Generic)

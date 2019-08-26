@@ -23,11 +23,9 @@ module Language.Haskell.TH.Desugar.Subst (
   IgnoreKinds(..), matchTy
   ) where
 
+import Data.List
 import qualified Data.Map as M
 import qualified Data.Set as S
-
-import Data.Generics
-import Data.List
 
 import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Syntax
@@ -85,7 +83,7 @@ substTvb vars (DKindedTV n k) = do
 unionSubsts :: DSubst -> DSubst -> Maybe DSubst
 unionSubsts a b =
   let shared_key_set = M.keysSet a `S.intersection` M.keysSet b
-      matches_up     = S.foldr (\name -> ((a M.! name) `geq` (b M.! name) &&))
+      matches_up     = S.foldr (\name -> ((a M.! name) == (b M.! name) &&))
                                True shared_key_set
   in
   if matches_up then return (a `M.union` b) else Nothing

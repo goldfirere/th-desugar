@@ -289,7 +289,7 @@ unfoldType = go []
 data TypeArg
   = TANormal Type
   | TyArg Kind
-  deriving (Show, Typeable, Data)
+  deriving (Eq, Show, Typeable, Data)
 
 -- | Apply one 'Type' to a list of arguments.
 applyType :: Type -> [TypeArg] -> Type
