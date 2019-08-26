@@ -177,20 +177,38 @@ expand_con ign n args = do
     give_up :: q DType
     give_up = return $ applyDType (DConT n) args
 
-    no_tyvars_tyfams :: Data a => a -> q Bool
-    no_tyvars_tyfams = everything (liftM2 (&&)) (mkQ (return True) no_tyvar_tyfam)
+    no_tyvars_tyfams :: DType -> q Bool
+    no_tyvars_tyfams = go_ty
+      where
+        go_ty :: DType -> q Bool
+        -- Interesting cases
+        go_ty (DVarT _) = return False
+        go_ty (DConT con_name) = do
+          m_info <- dsReify con_name
+          return $ case m_info of
+            Nothing -> False   -- we don't know anything. False is safe.
+            Just (DTyConI (DOpenTypeFamilyD {}) _)   -> False
+            Just (DTyConI (DDataFamilyD {}) _)       -> False
+            Just (DTyConI (DClosedTypeFamilyD {}) _) -> False
+            _                                        -> True
 
-    no_tyvar_tyfam :: DType -> q Bool
-    no_tyvar_tyfam (DVarT _) = return False
-    no_tyvar_tyfam (DConT con_name) = do
-      m_info <- dsReify con_name
-      return $ case m_info of
-        Nothing -> False   -- we don't know anything. False is safe.
-        Just (DTyConI (DOpenTypeFamilyD {}) _)   -> False
-        Just (DTyConI (DDataFamilyD {}) _)       -> False
-        Just (DTyConI (DClosedTypeFamilyD {}) _) -> False
-        _                                        -> True
-    no_tyvar_tyfam t = gmapQl (liftM2 (&&)) (return True) no_tyvars_tyfams t
+        -- Recursive cases
+        go_ty (DForallT tvbs ctxt ty) =
+          liftM3 (\x y z -> x && y && z)
+                 (allM go_tvb tvbs) (allM go_ty ctxt) (go_ty ty)
+        go_ty (DAppT t1 t2)   = liftM2 (&&) (go_ty t1) (go_ty t2)
+        go_ty (DAppKindT t k) = liftM2 (&&) (go_ty t)  (go_ty k)
+        go_ty (DSigT t k)     = liftM2 (&&) (go_ty t)  (go_ty k)
+
+        -- Default to True
+        go_ty DLitT{}         = return True
+        go_ty DArrowT         = return True
+        go_ty DWildCardT      = return True
+
+        -- These cases are uninteresting
+        go_tvb :: DTyVarBndr -> q Bool
+        go_tvb DPlainTV{}      = return True
+        go_tvb (DKindedTV _ k) = go_ty k
 
     allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
     allM f = foldM (\b x -> (b &&) `liftM` f x) True

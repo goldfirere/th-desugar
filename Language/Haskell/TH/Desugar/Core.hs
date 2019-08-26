@@ -1395,7 +1395,7 @@ applyDType = foldl apply
 data DTypeArg
   = DTANormal DType
   | DTyArg DKind
-  deriving (Show, Typeable, Data, Generic)
+  deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Desugar a 'TypeArg'.
 dsTypeArg :: DsMonad q => TypeArg -> q DTypeArg
