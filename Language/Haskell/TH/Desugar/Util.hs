@@ -53,7 +53,6 @@ import Data.Traversable
 import Data.Maybe
 
 #if __GLASGOW_HASKELL__ < 710
-import Control.Applicative
 import Data.Monoid
 #endif
 

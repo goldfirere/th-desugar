@@ -138,6 +138,10 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Prelude hiding ( exp )
 
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative
+#endif
+
 -- | This class relates a TH type with its th-desugar type and allows
 -- conversions back and forth. The functional dependency goes only one
 -- way because `Type` and `Kind` are type synonyms, but they desugar

@@ -1727,9 +1727,4 @@ For sweetening:
 * For all other cases, just straightforwardly sweeten
   `DForallT DForallInvis tvbs ty` to `ForallT tvbs [] ty` and
   `DConstrainedT ctxt ty` to `ForallT [] ctxt ty`.
-
-One gotcha of this specification is the th-desugar roundtripping will turn the
-type `() => a` into `forall. () => a`. In practice, Template Haskell won't
-let you do anything bad with this due to the sorts of issues documented in
-GHC #16396.
 -}
