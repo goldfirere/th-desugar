@@ -525,12 +525,7 @@ predToTH (DForallT ForallInvis tvbs (DConstrainedT ctxt p)) =
 predToTH (DForallT fvf tvbs p) =
   case fvf of
     ForallInvis -> ForallT tvbs' [] p'
-    ForallVis ->
-#if __GLASGOW_HASKELL__ >= 809
-      ForallVisT tvbs' p'
-#else
-      error "Visible dependent quantification supported only in GHC 8.10+"
-#endif
+    ForallVis   -> error "Visible dependent quantifier spotted at head of a constraint"
   where
     tvbs' = map tvbToTH tvbs
     p'    = predToTH p

@@ -5,7 +5,8 @@ rae@cs.brynmawr.edu
 -}
 
 {-# LANGUAGE CPP, MultiParamTypeClasses, FunctionalDependencies,
-             TypeSynonymInstances, FlexibleInstances, LambdaCase #-}
+             TypeSynonymInstances, FlexibleInstances, LambdaCase,
+             ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -339,8 +340,16 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
 -- are fresh type variable names.
 --
 -- This expands kind synonyms if necessary.
-mkExtraDKindBinders :: DsMonad q => DKind -> q [DTyVarBndr]
-mkExtraDKindBinders = expandType >=> mkExtraDKindBinders'
+mkExtraDKindBinders :: forall q. DsMonad q => DKind -> q [DTyVarBndr]
+mkExtraDKindBinders k = do
+  k' <- expandType k
+  let (fun_args, _) = unravelDType k'
+      vis_fun_args  = filterDVisFunArgs fun_args
+  mapM mk_tvb vis_fun_args
+  where
+    mk_tvb :: DVisFunArg -> q DTyVarBndr
+    mk_tvb (DVisFADep tvb) = return tvb
+    mk_tvb (DVisFAAnon ki) = DKindedTV <$> qNewName "a" <*> return ki
 
 -- | Returns all of a constructor's existentially quantified type variable
 -- binders.

@@ -30,8 +30,7 @@ module Language.Haskell.TH.Desugar.Util (
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
   topEverywhereM, isInfixDataCon,
   isTypeKindName, typeKindName,
-  mkExtraKindBindersGeneric, unSigType, unfoldType,
-  ForallVisFlag(..), FunArgs(..), VisFunArg(..),
+  unSigType, unfoldType, ForallVisFlag(..), FunArgs(..), VisFunArg(..),
   filterVisFunArgs, ravelType, unravelType,
   TypeArg(..), applyType, filterTANormals, unSigTypeArg, probablyWrongUnTypeArg
 #if __GLASGOW_HASKELL__ >= 800
@@ -207,25 +206,6 @@ splitTuple_maybe t = go [] t
           | length args == degree
           = Just args
         go _ _ = Nothing
-
--- | Like 'mkExtraDKindBinders', but parameterized to allow working over both
--- 'Kind'/'FunArgs'/'VisFunArg'/'TyVarBndr' and
--- 'DKind'/'DFunArgs'/'DVisFunArg'/'DTyVarBndr'.
-mkExtraKindBindersGeneric
-  :: forall q kind funArgs visFunArg tyVarBndr. Quasi q
-  => (kind -> (funArgs, kind))
-  -> (funArgs -> [visFunArg])
-  -> (Name -> kind -> tyVarBndr)
-  -> (forall r. (tyVarBndr -> r) -> (kind -> r) -> visFunArg -> r)
-  -> kind -> q [tyVarBndr]
-mkExtraKindBindersGeneric unravel filter_vis_fun_args
-                          mk_kinded_tv elim_vfa k = do
-  let (fun_args, _) = unravel k
-      vis_fun_args  = filter_vis_fun_args fun_args
-  mapM mk_tvb vis_fun_args
-  where
-    mk_tvb :: visFunArg -> q tyVarBndr
-    mk_tvb = elim_vfa return (\ki -> mk_kinded_tv <$> qNewName "a" <*> return ki)
 
 -- | Is a @forall@ invisible (e.g., @forall a b. {...}@, with a dot) or visible
 -- (e.g., @forall a b -> {...}@, with an arrow)?

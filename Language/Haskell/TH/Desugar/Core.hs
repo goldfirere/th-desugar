@@ -16,7 +16,6 @@ import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
 import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (lift)
-import Language.Haskell.TH.Datatype ( resolveTypeSynonyms )
 
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
@@ -817,22 +816,6 @@ dsDataInstDec nd cxt n mtvbs tys mk cons derivings = do
                            <*> concatMapM (dsCon h98_tvbs h98_fam_inst_type) cons
                            <*> mapM dsDerivClause derivings)
 
--- Like mkExtraDKindBinders, but accepts a Maybe Kind
--- argument instead of DKind.
-mkExtraKindBinders :: DsMonad q => Maybe Kind -> q [DTyVarBndr]
-mkExtraKindBinders =
-  maybe (pure (DConT typeKindName)) (runQ . resolveTypeSynonyms >=> dsType)
-    >=> mkExtraDKindBinders'
-
--- | Like mkExtraDKindBinders, but assumes kind synonyms have been expanded.
-mkExtraDKindBinders' :: Quasi q => DKind -> q [DTyVarBndr]
-mkExtraDKindBinders' =
-  mkExtraKindBindersGeneric unravelDType filterDVisFunArgs DKindedTV elim_dvfa
-  where
-    elim_dvfa :: (DTyVarBndr -> r) -> (DKind -> r) -> DVisFunArg -> r
-    elim_dvfa dep _    (DVisFADep tvb) = dep tvb
-    elim_dvfa _   anon (DVisFAAnon k)  = anon k
-
 #if __GLASGOW_HASKELL__ > 710
 -- | Desugar a @FamilyResultSig@
 dsFamilyResultSig :: DsMonad q => FamilyResultSig -> q DFamilyResultSig
@@ -1303,7 +1286,8 @@ dsPred (ImplicitParamT n t) = do
   return [DConT ''IP `DAppT` DLitT (StrTyLit n) `DAppT` t']
 #endif
 #if __GLASGOW_HASKELL__ >= 809
-dsPred (ForallVisT tvbs p) = dsForallPred tvbs [] p
+dsPred t@(ForallVisT {}) =
+  impossible $ "Visible dependent quantifier seen as head of constraint: " ++ show t
 #endif
 
 -- | Desugar a quantified constraint.
@@ -1314,7 +1298,7 @@ dsForallPred tvbs cxt p = do
     [p'] -> (:[]) <$> (mkDForallConstrainedT ForallInvis
                          <$> mapM dsTvb tvbs <*> dsCxt cxt <*> pure p')
     _    -> fail "Cannot desugar constraint tuples in the body of a quantified constraint"
-              -- See Trac #15334.
+              -- See GHC #15334.
 #endif
 
 -- | Like 'reify', but safer and desugared. Uses local declarations where
@@ -1745,7 +1729,7 @@ For sweetening:
   `DConstrainedT ctxt ty` to `ForallT [] ctxt ty`.
 
 One gotcha of this specification is the th-desugar roundtripping will turn the
-type `() => a` into `forall a. () => a`. In practice, Template Haskell won't
+type `() => a` into `forall. () => a`. In practice, Template Haskell won't
 let you do anything bad with this due to the sorts of issues documented in
 GHC #16396.
 -}

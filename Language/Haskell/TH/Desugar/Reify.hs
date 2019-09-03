@@ -7,7 +7,7 @@ Allows for reification from a list of declarations, without looking a name
 up in the environment.
 -}
 
-{-# LANGUAGE CPP, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE CPP, GeneralizedNewtypeDeriving, ScopedTypeVariables #-}
 
 module Language.Haskell.TH.Desugar.Reify (
   -- * Reification
@@ -107,19 +107,39 @@ getDataD err name = do
     _ -> badDeclaration
   where
     go tvbs mk cons = do
-      k <- maybe (pure (ConT typeKindName)) (runQ . resolveTypeSynonyms) mk
-      extra_tvbs <- mkExtraKindBindersGeneric unravelType filterVisFunArgs
-                                              KindedTV elim_vfa k
+      let k = fromMaybe (ConT typeKindName) mk
+      extra_tvbs <- mkExtraKindBinders k
       let all_tvbs = tvbs ++ extra_tvbs
       return (all_tvbs, cons)
-
-    elim_vfa :: (TyVarBndr -> r) -> (Kind -> r) -> VisFunArg -> r
-    elim_vfa dep _    (VisFADep tvb) = dep tvb
-    elim_vfa _   anon (VisFAAnon k)  = anon k
 
     badDeclaration =
           fail $ "The name (" ++ (show name) ++ ") refers to something " ++
                  "other than a datatype. " ++ err
+
+-- | Create new kind variable binder names corresponding to the return kind of
+-- a data type. This is useful when you have a data type like:
+--
+-- @
+-- data Foo :: forall k. k -> Type -> Type where ...
+-- @
+--
+-- But you want to be able to refer to the type @Foo a b@.
+-- 'mkExtraKindBinders' will take the kind @forall k. k -> Type -> Type@,
+-- discover that is has two visible argument kinds, and return as a result
+-- two new kind variable binders @[a :: k, b :: Type]@, where @a@ and @b@
+-- are fresh type variable names.
+--
+-- This expands kind synonyms if necessary.
+mkExtraKindBinders :: forall q. Quasi q => Kind -> q [TyVarBndr]
+mkExtraKindBinders k = do
+  k' <- runQ $ resolveTypeSynonyms k
+  let (fun_args, _) = unravelType k'
+      vis_fun_args  = filterVisFunArgs fun_args
+  mapM mk_tvb vis_fun_args
+  where
+    mk_tvb :: VisFunArg -> q TyVarBndr
+    mk_tvb (VisFADep tvb) = return tvb
+    mk_tvb (VisFAAnon ki) = KindedTV <$> qNewName "a" <*> return ki
 
 -- | From the name of a data constructor, retrive the datatype definition it
 -- is a part of.
