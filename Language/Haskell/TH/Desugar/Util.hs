@@ -30,7 +30,8 @@ module Language.Haskell.TH.Desugar.Util (
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
   topEverywhereM, isInfixDataCon,
   isTypeKindName, typeKindName,
-  mkExtraKindBindersGeneric, unravelType, unSigType, unfoldType,
+  unSigType, unfoldType, ForallVisFlag(..), FunArgs(..), VisFunArg(..),
+  filterVisFunArgs, ravelType, unravelType,
   TypeArg(..), applyType, filterTANormals, unSigTypeArg, probablyWrongUnTypeArg
 #if __GLASGOW_HASKELL__ >= 800
   , bindIP
@@ -45,7 +46,6 @@ import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.OSet (OSet)
 import Language.Haskell.TH.Syntax
 
-import Control.Monad ( replicateM )
 import qualified Control.Monad.Fail as Fail
 import Data.Foldable
 import Data.Generics hiding ( Fixity )
@@ -206,28 +206,87 @@ splitTuple_maybe t = go [] t
           = Just args
         go _ _ = Nothing
 
--- | Like 'mkExtraDKindBinders', but parameterized to allow working over both
--- 'Kind'/'TyVarBndr' and 'DKind'/'DTyVarBndr'.
-mkExtraKindBindersGeneric
-  :: Quasi q
-  => (kind -> ([tyVarBndr], [pred], [kind], kind))
-  -> (Name -> kind -> tyVarBndr)
-  -> kind -> q [tyVarBndr]
-mkExtraKindBindersGeneric unravel mkKindedTV k = do
-  let (_, _, args, _) = unravel k
-  names <- replicateM (length args) (qNewName "a")
-  return (zipWith mkKindedTV names args)
+-- | Is a @forall@ invisible (e.g., @forall a b. {...}@, with a dot) or visible
+-- (e.g., @forall a b -> {...}@, with an arrow)?
+data ForallVisFlag
+  = ForallVis   -- ^ A visible @forall@ (with an arrow)
+  | ForallInvis -- ^ An invisible @forall@ (with a dot)
+  deriving (Eq, Show, Typeable, Data)
 
--- | Decompose a function 'Type' into its type variables, its context, its
--- argument types, and its result type.
-unravelType :: Type -> ([TyVarBndr], [Pred], [Type], Type)
+-- | The list of arguments in a function 'Type'.
+data FunArgs
+  = FANil
+    -- ^ No more arguments.
+  | FAForalls ForallVisFlag [TyVarBndr] FunArgs
+    -- ^ A series of @forall@ed type variables followed by a dot (if
+    --   'ForallInvis') or an arrow (if 'ForallVis'). For example,
+    --   the type variables @a1 ... an@ in @forall a1 ... an. r@.
+  | FACxt Cxt FunArgs
+    -- ^ A series of constraint arguments followed by @=>@. For example,
+    --   the @(c1, ..., cn)@ in @(c1, ..., cn) => r@.
+  | FAAnon Type FunArgs
+    -- ^ An anonymous argument followed by an arrow. For example, the @a@
+    --   in @a -> r@.
+  deriving (Eq, Show, Typeable, Data)
+
+-- | A /visible/ function argument type (i.e., one that must be supplied
+-- explicitly in the source code). This is in contrast to /invisible/
+-- arguments (e.g., the @c@ in @c => r@), which are instantiated without
+-- the need for explicit user input.
+data VisFunArg
+  = VisFADep TyVarBndr
+    -- ^ A visible @forall@ (e.g., @forall a -> a@).
+  | VisFAAnon Type
+    -- ^ An anonymous argument followed by an arrow (e.g., @a -> r@).
+  deriving (Eq, Show, Typeable, Data)
+
+-- | Filter the visible function arguments from a list of 'FunArgs'.
+filterVisFunArgs :: FunArgs -> [VisFunArg]
+filterVisFunArgs FANil = []
+filterVisFunArgs (FAForalls fvf tvbs args) =
+  case fvf of
+    ForallVis   -> map VisFADep tvbs ++ args'
+    ForallInvis -> args'
+  where
+    args' = filterVisFunArgs args
+filterVisFunArgs (FACxt _ args) =
+  filterVisFunArgs args
+filterVisFunArgs (FAAnon t args) =
+  VisFAAnon t:filterVisFunArgs args
+
+-- | Reconstruct an arrow 'Type' from its argument and result types.
+ravelType :: FunArgs -> Type -> Type
+ravelType FANil res = res
+-- We need a special case for FAForalls ForallInvis followed by FACxt so that we may
+-- collapse them into a single ForallT when raveling.
+-- See Note [Desugaring and sweetening ForallT] in L.H.T.Desugar.Core.
+ravelType (FAForalls ForallInvis tvbs (FACxt p args)) res =
+  ForallT tvbs p (ravelType args res)
+ravelType (FAForalls ForallInvis  tvbs  args)  res = ForallT tvbs [] (ravelType args res)
+ravelType (FAForalls ForallVis   _tvbs _args) _res =
+#if __GLASGOW_HASKELL__ >= 809
+      ForallVisT _tvbs (ravelType _args _res)
+#else
+      error "Visible dependent quantification supported only on GHC 8.10+"
+#endif
+ravelType (FACxt cxt args) res = ForallT [] cxt (ravelType args res)
+ravelType (FAAnon t args)  res = AppT (AppT ArrowT t) (ravelType args res)
+
+-- | Decompose a function 'Type' into its arguments (the 'FunArgs') and its
+-- result type (the 'Type).
+unravelType :: Type -> (FunArgs, Type)
 unravelType (ForallT tvbs cxt ty) =
-  let (tvbs', cxt', tys, res) = unravelType ty in
-  (tvbs ++ tvbs', cxt ++ cxt', tys, res)
+  let (args, res) = unravelType ty in
+  (FAForalls ForallInvis tvbs (FACxt cxt args), res)
 unravelType (AppT (AppT ArrowT t1) t2) =
-  let (tvbs, cxt, tys, res) = unravelType t2 in
-  (tvbs, cxt, t1 : tys, res)
-unravelType t = ([], [], [], t)
+  let (args, res) = unravelType t2 in
+  (FAAnon t1 args, res)
+#if __GLASGOW_HASKELL__ >= 809
+unravelType (ForallVisT tvbs ty) =
+  let (args, res) = unravelType ty in
+  (FAForalls ForallVis tvbs args, res)
+#endif
+unravelType t = (FANil, t)
 
 -- | Remove all of the explicit kind signatures from a 'Type'.
 unSigType :: Type -> Type

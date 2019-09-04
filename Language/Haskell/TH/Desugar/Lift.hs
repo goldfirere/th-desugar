@@ -23,7 +23,7 @@ import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Lift
 
-$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DTyVarBndr
+$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''ForallVisFlag, ''DTyVarBndr
                  , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DDerivClause, ''DCon
                  , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
                  , ''DPatSynDir , ''NewOrData, ''DDerivStrategy
@@ -36,5 +36,7 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DTyVarBndr
                  , ''PatSynArgs
 #endif
 
-                 , ''TypeArg, ''DTypeArg
+                 , ''TypeArg,   ''DTypeArg
+                 , ''FunArgs,   ''DFunArgs
+                 , ''VisFunArg, ''DVisFunArg
                  ])

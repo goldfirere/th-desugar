@@ -16,7 +16,6 @@ import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
 import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Syntax hiding (lift)
-import Language.Haskell.TH.Datatype ( resolveTypeSynonyms )
 
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
@@ -817,17 +816,6 @@ dsDataInstDec nd cxt n mtvbs tys mk cons derivings = do
                            <*> concatMapM (dsCon h98_tvbs h98_fam_inst_type) cons
                            <*> mapM dsDerivClause derivings)
 
--- Like mkExtraDKindBinders, but accepts a Maybe Kind
--- argument instead of DKind.
-mkExtraKindBinders :: DsMonad q => Maybe Kind -> q [DTyVarBndr]
-mkExtraKindBinders =
-  maybe (pure (DConT typeKindName)) (runQ . resolveTypeSynonyms >=> dsType)
-    >=> mkExtraDKindBinders'
-
--- | Like mkExtraDKindBinders, but assumes kind synonyms have been expanded.
-mkExtraDKindBinders' :: Quasi q => DKind -> q [DTyVarBndr]
-mkExtraDKindBinders' = mkExtraKindBindersGeneric unravel DKindedTV
-
 #if __GLASGOW_HASKELL__ > 710
 -- | Desugar a @FamilyResultSig@
 dsFamilyResultSig :: DsMonad q => FamilyResultSig -> q DFamilyResultSig
@@ -1143,7 +1131,8 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
 
 -- | Desugar a type
 dsType :: DsMonad q => Type -> q DType
-dsType (ForallT tvbs preds ty) = DForallT <$> mapM dsTvb tvbs <*> dsCxt preds <*> dsType ty
+dsType (ForallT tvbs preds ty) =
+  mkDForallConstrainedT ForallInvis <$> mapM dsTvb tvbs <*> dsCxt preds <*> dsType ty
 dsType (AppT t1 t2) = DAppT <$> dsType t1 <*> dsType t2
 dsType (SigT ty ki) = DSigT <$> dsType ty <*> dsType ki
 dsType (VarT name) = return $ DVarT name
@@ -1180,6 +1169,9 @@ dsType (AppKindT t k) = DAppKindT <$> dsType t <*> dsType k
 dsType (ImplicitParamT n t) = do
   t' <- dsType t
   return $ DConT ''IP `DAppT` DLitT (StrTyLit n) `DAppT` t'
+#endif
+#if __GLASGOW_HASKELL__ >= 809
+dsType (ForallVisT tvbs ty) = DForallT ForallVis <$> mapM dsTvb tvbs <*> dsType ty
 #endif
 
 -- | Desugar a @TyVarBndr@
@@ -1245,12 +1237,7 @@ dsPred (EqualP t1 t2) = do
 dsPred t
   | Just ts <- splitTuple_maybe t
   = concatMapM dsPred ts
-dsPred (ForallT tvbs cxt p) = do
-  ps' <- dsPred p
-  case ps' of
-    [p'] -> (:[]) <$> (DForallT <$> mapM dsTvb tvbs <*> dsCxt cxt <*> pure p')
-    _    -> fail "Cannot desugar constraint tuples in the body of a quantified constraint"
-              -- See Trac #15334.
+dsPred (ForallT tvbs cxt p) = dsForallPred tvbs cxt p
 dsPred (AppT t1 t2) = do
   [p1] <- dsPred t1   -- tuples can't be applied!
   (:[]) <$> DAppT p1 <$> dsType t2
@@ -1298,12 +1285,34 @@ dsPred (ImplicitParamT n t) = do
   t' <- dsType t
   return [DConT ''IP `DAppT` DLitT (StrTyLit n) `DAppT` t']
 #endif
+#if __GLASGOW_HASKELL__ >= 809
+dsPred t@(ForallVisT {}) =
+  impossible $ "Visible dependent quantifier seen as head of constraint: " ++ show t
+#endif
+
+-- | Desugar a quantified constraint.
+dsForallPred :: DsMonad q => [TyVarBndr] -> Cxt -> Pred -> q DCxt
+dsForallPred tvbs cxt p = do
+  ps' <- dsPred p
+  case ps' of
+    [p'] -> (:[]) <$> (mkDForallConstrainedT ForallInvis
+                         <$> mapM dsTvb tvbs <*> dsCxt cxt <*> pure p')
+    _    -> fail "Cannot desugar constraint tuples in the body of a quantified constraint"
+              -- See GHC #15334.
 #endif
 
 -- | Like 'reify', but safer and desugared. Uses local declarations where
 -- available.
 dsReify :: DsMonad q => Name -> q (Maybe DInfo)
 dsReify = traverse dsInfo <=< reifyWithLocals_maybe
+
+-- Given a list of `forall`ed type variable binders and a context, construct
+-- a DType using DForallT and DConstrainedT as appropriate. The phrase
+-- "as appropriate" is used because DConstrainedT will not be used if the
+-- context is empty, per Note [Desugaring and sweetening ForallT].
+mkDForallConstrainedT :: ForallVisFlag -> [DTyVarBndr] -> DCxt -> DType -> DType
+mkDForallConstrainedT fvf tvbs ctxt ty =
+  DForallT fvf tvbs $ if null ctxt then ty else DConstrainedT ctxt ty
 
 -- create a list of expressions in the same order as the fields in the first argument
 -- but with the values as given in the second argument
@@ -1478,8 +1487,8 @@ toposortTyVarsOf tys =
       varKindSigs = foldMap go_ty tys
         where
           go_ty :: DType -> Map Name DKind
-          go_ty (DForallT tvbs ctxt t) =
-            go_tvbs tvbs (foldMap go_ty ctxt `mappend` go_ty t)
+          go_ty (DForallT _ tvbs t) = go_tvbs tvbs (go_ty t)
+          go_ty (DConstrainedT ctxt t) = foldMap go_ty ctxt `mappend` go_ty t
           go_ty (DAppT t1 t2) = go_ty t1 `mappend` go_ty t2
           go_ty (DAppKindT t k) = go_ty t `mappend` go_ty k
           go_ty (DSigT t k) =
@@ -1575,16 +1584,67 @@ dtvbName :: DTyVarBndr -> Name
 dtvbName (DPlainTV n)    = n
 dtvbName (DKindedTV n _) = n
 
--- | Decompose a function type into its type variables, its context, its
--- argument types, and its result type.
-unravel :: DType -> ([DTyVarBndr], [DPred], [DType], DType)
-unravel (DForallT tvbs cxt ty) =
-  let (tvbs', cxt', tys, res) = unravel ty in
-  (tvbs ++ tvbs', cxt ++ cxt', tys, res)
-unravel (DAppT (DAppT DArrowT t1) t2) =
-  let (tvbs, cxt, tys, res) = unravel t2 in
-  (tvbs, cxt, t1 : tys, res)
-unravel t = ([], [], [], t)
+-- | Reconstruct an arrow 'DType' from its argument and result types.
+ravelDType :: DFunArgs -> DType -> DType
+ravelDType DFANil                     res = res
+ravelDType (DFAForalls fvf tvbs args) res = DForallT fvf tvbs (ravelDType args res)
+ravelDType (DFACxt cxt args)          res = DConstrainedT cxt (ravelDType args res)
+ravelDType (DFAAnon t args)           res = DAppT (DAppT DArrowT t) (ravelDType args res)
+
+-- | Decompose a function 'DType' into its arguments (the 'DFunArgs') and its
+-- result type (the 'DType).
+unravelDType :: DType -> (DFunArgs, DType)
+unravelDType (DForallT fvf tvbs ty) =
+  let (args, res) = unravelDType ty in
+  (DFAForalls fvf tvbs args, res)
+unravelDType (DConstrainedT cxt ty) =
+  let (args, res) = unravelDType ty in
+  (DFACxt cxt args, res)
+unravelDType (DAppT (DAppT DArrowT t1) t2) =
+  let (args, res) = unravelDType t2 in
+  (DFAAnon t1 args, res)
+unravelDType t = (DFANil, t)
+
+-- | The list of arguments in a function 'DType'.
+data DFunArgs
+  = DFANil
+    -- ^ No more arguments.
+  | DFAForalls ForallVisFlag [DTyVarBndr] DFunArgs
+    -- ^ A series of @forall@ed type variables followed by a dot (if
+    --   'ForallInvis') or an arrow (if 'ForallVis'). For example,
+    --   the type variables @a1 ... an@ in @forall a1 ... an. r@.
+  | DFACxt DCxt DFunArgs
+    -- ^ A series of constraint arguments followed by @=>@. For example,
+    --   the @(c1, ..., cn)@ in @(c1, ..., cn) => r@.
+  | DFAAnon DType DFunArgs
+    -- ^ An anonymous argument followed by an arrow. For example, the @a@
+    --   in @a -> r@.
+  deriving (Eq, Show, Typeable, Data, Generic)
+
+-- | A /visible/ function argument type (i.e., one that must be supplied
+-- explicitly in the source code). This is in contrast to /invisible/
+-- arguments (e.g., the @c@ in @c => r@), which are instantiated without
+-- the need for explicit user input.
+data DVisFunArg
+  = DVisFADep DTyVarBndr
+    -- ^ A visible @forall@ (e.g., @forall a -> a@).
+  | DVisFAAnon DType
+    -- ^ An anonymous argument followed by an arrow (e.g., @a -> r@).
+  deriving (Eq, Show, Typeable, Data, Generic)
+
+-- | Filter the visible function arguments from a list of 'DFunArgs'.
+filterDVisFunArgs :: DFunArgs -> [DVisFunArg]
+filterDVisFunArgs DFANil = []
+filterDVisFunArgs (DFAForalls fvf tvbs args) =
+  case fvf of
+    ForallVis   -> map DVisFADep tvbs ++ args'
+    ForallInvis -> args'
+  where
+    args' = filterDVisFunArgs args
+filterDVisFunArgs (DFACxt _ args) =
+  filterDVisFunArgs args
+filterDVisFunArgs (DFAAnon t args) =
+  DVisFAAnon t:filterDVisFunArgs args
 
 -- | Decompose an applied type into its individual components. For example, this:
 --
@@ -1620,3 +1680,51 @@ extractTvbKind (DKindedTV _ k) = Just k
 -- version of 'undefined'.)
 unusedArgument :: a
 unusedArgument = error "Unused"
+
+{-
+Note [Desugaring and sweetening ForallT]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The ForallT constructor from template-haskell is tremendously awkward. Because
+ForallT contains both a list of type variable binders and constraint arguments,
+ForallT expressions can be ambiguous when one of these lists is empty. For
+example, consider this expression with no constraints:
+
+  ForallT [PlainTV a] [] (VarT a)
+
+What should this desugar to in th-desugar, which must maintain a clear
+separation between type variable binders and constraints? There are two
+possibilities:
+
+1. DForallT DForallInvis [DPlainTV a] (DVarT a)
+   (i.e., forall a. a)
+2. DForallT DForallInvis [DPlainTV a] (DConstrainedT [] (DVarT a))
+   (i.e., forall a. () => a)
+
+Template Haskell generally drops these empty lists when splicing Template
+Haskell expressions, so we would like to do the same in th-desugar to mimic
+TH's behavior as closely as possible. However, there are some situations where
+dropping empty lists of `forall`ed type variable binders can change the
+semantics of a program. For instance, contrast `foo :: forall. a -> a` (which
+is an error) with `foo :: a -> a` (which is fine). Therefore, we try to
+preserve empty `forall`s to the best of our ability.
+
+Here is an informal specification of how th-desugar should handle different sorts
+of ambiguity. First, a specification for desugaring.
+Let `tvbs` and `ctxt` be non-empty:
+
+* `ForallT tvbs [] ty` should desugar to `DForallT DForallInvis tvbs ty`.
+* `ForallT [] ctxt ty` should desguar to `DForallT DForallInvis [] (DConstrainedT ctxt ty)`.
+* `ForallT [] [] ty`   should desugar to `DForallT DForallInvis [] ty`.
+* For all other cases, just straightforwardly desugar
+  `ForallT tvbs ctxt ty` to `DForallT DForallInvis tvbs (DConstraintedT ctxt ty)`.
+
+For sweetening:
+
+* `DForallT DForallInvis tvbs (DConstrainedT ctxt ty)` should sweeten to `ForallT tvbs ctxt ty`.
+* `DForallT DForallInvis []   (DConstrainedT ctxt ty)` should sweeten to `ForallT [] ctxt ty`.
+* `DForallT DForallInvis tvbs (DConstrainedT [] ty)`   should sweeten to `ForallT tvbs [] ty`.
+* `DForallT DForallInvis []   (DConstrainedT [] ty)`   should sweeten to `ForallT [] [] ty`.
+* For all other cases, just straightforwardly sweeten
+  `DForallT DForallInvis tvbs ty` to `ForallT tvbs [] ty` and
+  `DConstrainedT ctxt ty` to `ForallT [] ctxt ty`.
+-}

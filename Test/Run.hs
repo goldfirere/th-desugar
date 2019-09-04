@@ -294,17 +294,17 @@ test_t92 :: Bool
 test_t92 =
   $(do a <- newName "a"
        f <- newName "f"
-       let t = DForallT [DPlainTV f] [] (DVarT f `DAppT` DVarT a)
+       let t = DForallT ForallInvis [DPlainTV f] (DVarT f `DAppT` DVarT a)
        toposortTyVarsOf [t] `eqTHSplice` [DPlainTV a])
 
 test_t97 :: Bool
 test_t97 =
   $(do a <- newName "a"
        k <- newName "k"
-       let orig_ty = DForallT
+       let orig_ty = DForallT ForallInvis
                        [DKindedTV a (DConT ''Constant `DAppT` DConT ''Int `DAppT` DVarT k)]
-                       [] (DVarT a)
-           expected_ty = DForallT [DKindedTV a (DVarT k)] [] (DVarT a)
+                       (DVarT a)
+           expected_ty = DForallT ForallInvis [DKindedTV a (DVarT k)] (DVarT a)
        expanded_ty <- expandType orig_ty
        expected_ty `eqTHSplice` expanded_ty)
 
@@ -372,10 +372,9 @@ test_fvs =
   $(do a <- newName "a"
 
        let -- (Show a => Show (Maybe a)) => String
-           ty1 = DForallT
-                   []
-                   [DForallT [] [DConT ''Show `DAppT` DVarT a]
-                                (DConT ''Show `DAppT` (DConT ''Maybe `DAppT` DVarT a))]
+           ty1 = DConstrainedT
+                   [DConstrainedT [DConT ''Show `DAppT` DVarT a]
+                                  (DConT ''Show `DAppT` (DConT ''Maybe `DAppT` DVarT a))]
                    (DConT ''String)
            b1 = fvDType ty1 `eqTH` OS.singleton a -- #93
 
@@ -392,15 +391,16 @@ test_kind_substitution =
                  -- (Nothing :: Maybe a)
            ty1 = DSigT (DConT 'Nothing) (DConT ''Maybe `DAppT` DVarT a)
                  -- forall (c :: a). c
-           ty2 = DForallT [DKindedTV c (DVarT a)] [] (DVarT c)
+           ty2 = DForallT ForallInvis [DKindedTV c (DVarT a)] (DVarT c)
                  -- forall a (c :: a). c
-           ty3 = DForallT [DPlainTV a, DKindedTV c (DVarT a)] [] (DVarT c)
+           ty3 = DForallT ForallInvis [DPlainTV a, DKindedTV c (DVarT a)] (DVarT c)
                  -- forall (a :: k) k (b :: k). Proxy b -> Proxy a
-           ty4 = DForallT [ DKindedTV a (DVarT k)
+           ty4 = DForallT ForallInvis
+                          [ DKindedTV a (DVarT k)
                           , DPlainTV k
                           , DKindedTV b (DVarT k)
-                          ] [] (DArrowT `DAppT` (DConT ''Proxy `DAppT` DVarT b)
-                                        `DAppT` (DConT ''Proxy `DAppT` DVarT a))
+                          ] (DArrowT `DAppT` (DConT ''Proxy `DAppT` DVarT b)
+                                     `DAppT` (DConT ''Proxy `DAppT` DVarT a))
 
        substTy1 <- substTy subst ty1
        substTy2 <- substTy subst ty2

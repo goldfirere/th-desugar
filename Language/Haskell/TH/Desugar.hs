@@ -5,7 +5,8 @@ rae@cs.brynmawr.edu
 -}
 
 {-# LANGUAGE CPP, MultiParamTypeClasses, FunctionalDependencies,
-             TypeSynonymInstances, FlexibleInstances, LambdaCase #-}
+             TypeSynonymInstances, FlexibleInstances, LambdaCase,
+             ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -23,7 +24,8 @@ rae@cs.brynmawr.edu
 
 module Language.Haskell.TH.Desugar (
   -- * Desugared data types
-  DExp(..), DLetDec(..), DPat(..), DType(..), DKind, DCxt, DPred,
+  DExp(..), DLetDec(..), DPat(..),
+  DType(..), ForallVisFlag(..), DKind, DCxt, DPred,
   DTyVarBndr(..), DMatch(..), DClause(..), DDec(..),
   DDerivClause(..), DDerivStrategy(..), DPatSynDir(..), DPatSynType,
   Overlap(..), PatSynArgs(..), NewOrData(..),
@@ -97,8 +99,14 @@ module Language.Haskell.TH.Desugar (
 #if __GLASGOW_HASKELL__ >= 800
   bindIP,
 #endif
-  unravel, conExistentialTvbs, mkExtraDKindBinders,
+  conExistentialTvbs, mkExtraDKindBinders,
   dTyVarBndrToDType, toposortTyVarsOf,
+
+  -- ** 'FunArgs' and 'VisFunArg'
+  FunArgs(..), VisFunArg(..), filterVisFunArgs, ravelType, unravelType,
+
+  -- ** 'DFunArgs' and 'DVisFunArg'
+  DFunArgs(..), DVisFunArg(..), filterDVisFunArgs, ravelDType, unravelDType,
 
   -- ** 'TypeArg'
   TypeArg(..), applyType, filterTANormals, unfoldType,
@@ -129,6 +137,10 @@ import Data.List
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Prelude hiding ( exp )
+
+#if __GLASGOW_HASKELL__ < 710
+import Control.Applicative
+#endif
 
 -- | This class relates a TH type with its th-desugar type and allows
 -- conversions back and forth. The functional dependency goes only one
@@ -242,7 +254,7 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
             con_ex_tvbs <- conExistentialTvbs arg_ty con
             let con_univ_tvbs  = deleteFirstsBy ((==) `on` dtvbName) con_tvbs con_ex_tvbs
                 con_ex_tvb_set = OS.fromList $ map dtvbName con_ex_tvbs
-                forall'        = DForallT con_univ_tvbs []
+                forall'        = DForallT ForallInvis con_univ_tvbs
                 num_pats       = length fields
             return $ concat
               [ [ DSigD name (forall' $ DArrowT `DAppT` con_ret_ty `DAppT` field_ty)
@@ -332,8 +344,16 @@ getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sel
 -- are fresh type variable names.
 --
 -- This expands kind synonyms if necessary.
-mkExtraDKindBinders :: DsMonad q => DKind -> q [DTyVarBndr]
-mkExtraDKindBinders = expandType >=> mkExtraDKindBinders'
+mkExtraDKindBinders :: forall q. DsMonad q => DKind -> q [DTyVarBndr]
+mkExtraDKindBinders k = do
+  k' <- expandType k
+  let (fun_args, _) = unravelDType k'
+      vis_fun_args  = filterDVisFunArgs fun_args
+  mapM mk_tvb vis_fun_args
+  where
+    mk_tvb :: DVisFunArg -> q DTyVarBndr
+    mk_tvb (DVisFADep tvb) = return tvb
+    mk_tvb (DVisFAAnon ki) = DKindedTV <$> qNewName "a" <*> return ki
 
 -- | Returns all of a constructor's existentially quantified type variable
 -- binders.

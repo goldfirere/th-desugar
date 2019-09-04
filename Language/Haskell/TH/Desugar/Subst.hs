@@ -40,11 +40,12 @@ type DSubst = M.Map Name DType
 
 -- | Capture-avoiding substitution on types
 substTy :: Quasi q => DSubst -> DType -> q DType
-substTy vars (DForallT tvbs cxt ty) =
+substTy vars (DForallT fvf tvbs ty) =
   substTyVarBndrs vars tvbs $ \vars' tvbs' -> do
-    cxt' <- mapM (substTy vars') cxt
     ty' <- substTy vars' ty
-    return $ DForallT tvbs' cxt' ty'
+    return $ DForallT fvf tvbs' ty'
+substTy vars (DConstrainedT cxt ty) =
+  DConstrainedT <$> mapM (substTy vars) cxt <*> substTy vars ty
 substTy vars (DAppT t1 t2) =
   DAppT <$> substTy vars t1 <*> substTy vars t2
 substTy vars (DAppKindT t k) =

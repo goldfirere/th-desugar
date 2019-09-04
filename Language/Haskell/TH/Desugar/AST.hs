@@ -13,6 +13,7 @@ module Language.Haskell.TH.Desugar.AST where
 import Data.Data hiding (Fixity)
 import GHC.Generics hiding (Fixity)
 import Language.Haskell.TH
+import Language.Haskell.TH.Desugar.Util (ForallVisFlag)
 
 -- | Corresponds to TH's @Exp@ type. Note that @DLamE@ takes names, not patterns.
 data DExp = DVarE Name
@@ -40,7 +41,8 @@ data DPat = DLitP Lit
 
 -- | Corresponds to TH's @Type@ type, used to represent
 -- types and kinds.
-data DType = DForallT [DTyVarBndr] DCxt DType
+data DType = DForallT ForallVisFlag [DTyVarBndr] DType
+           | DConstrainedT DCxt DType
            | DAppT DType DType
            | DAppKindT DType DKind
            | DSigT DType DKind

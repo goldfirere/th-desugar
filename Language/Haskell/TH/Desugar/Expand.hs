@@ -59,12 +59,16 @@ expand_type :: forall q. DsMonad q => IgnoreKinds -> DType -> q DType
 expand_type ign = go []
   where
     go :: [DTypeArg] -> DType -> q DType
-    go [] (DForallT tvbs cxt ty) =
-      DForallT <$> mapM (expand_tvb ign) tvbs
-               <*> mapM (expand_type ign) cxt
-               <*> expand_type ign ty
+    go [] (DForallT fvf tvbs ty) =
+      DForallT fvf <$> mapM (expand_tvb ign) tvbs
+                   <*> expand_type ign ty
     go _ (DForallT {}) =
       impossible "A forall type is applied to another type."
+    go [] (DConstrainedT cxt ty) =
+      DConstrainedT <$> mapM (expand_type ign) cxt
+                    <*> expand_type ign ty
+    go _ (DConstrainedT {}) =
+      impossible "A constrained type is applied to another type."
     go args (DAppT t1 t2) = do
       t2' <- expand_type ign t2
       go (DTANormal t2' : args) t1
@@ -193,17 +197,16 @@ expand_con ign n args = do
             _                                        -> True
 
         -- Recursive cases
-        go_ty (DForallT tvbs ctxt ty) =
-          liftM3 (\x y z -> x && y && z)
-                 (allM go_tvb tvbs) (allM go_ty ctxt) (go_ty ty)
-        go_ty (DAppT t1 t2)   = liftM2 (&&) (go_ty t1) (go_ty t2)
-        go_ty (DAppKindT t k) = liftM2 (&&) (go_ty t)  (go_ty k)
-        go_ty (DSigT t k)     = liftM2 (&&) (go_ty t)  (go_ty k)
+        go_ty (DForallT _ tvbs ty)    = liftM2 (&&) (allM go_tvb tvbs) (go_ty ty)
+        go_ty (DConstrainedT ctxt ty) = liftM2 (&&) (allM go_ty ctxt) (go_ty ty)
+        go_ty (DAppT t1 t2)           = liftM2 (&&) (go_ty t1) (go_ty t2)
+        go_ty (DAppKindT t k)         = liftM2 (&&) (go_ty t)  (go_ty k)
+        go_ty (DSigT t k)             = liftM2 (&&) (go_ty t)  (go_ty k)
 
         -- Default to True
-        go_ty DLitT{}         = return True
-        go_ty DArrowT         = return True
-        go_ty DWildCardT      = return True
+        go_ty DLitT{}    = return True
+        go_ty DArrowT    = return True
+        go_ty DWildCardT = return True
 
         -- These cases are uninteresting
         go_tvb :: DTyVarBndr -> q Bool
