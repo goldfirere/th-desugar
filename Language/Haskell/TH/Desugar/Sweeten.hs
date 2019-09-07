@@ -104,6 +104,8 @@ decToTH (DDataD Newtype cxt n tvbs _mk [con] derivings) =
   [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con)
             (map derivingToTH derivings)]
 #endif
+decToTH (DDataD Newtype _cxt _n _tvbs _mk _cons _derivings) =
+  error "Newtype declaration without exactly 1 constructor."
 decToTH (DTySynD n tvbs ty) = [TySynD n (map tvbToTH tvbs) (typeToTH ty)]
 decToTH (DClassD cxt n tvbs fds decs) =
   [ClassD (cxtToTH cxt) n (map tvbToTH tvbs) fds (decsToTH decs)]
@@ -180,13 +182,14 @@ decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
 decToTH (DPatSynD n args dir pat) = [PatSynD n args (patSynDirToTH dir) (patToTH pat)]
 decToTH (DPatSynSigD n ty)        = [PatSynSigD n (typeToTH ty)]
 #else
-decToTH dec
-  | DPatSynD{}    <- dec = patSynErr
-  | DPatSynSigD{} <- dec = patSynErr
-  where
-    patSynErr = error "Pattern synonyms supported only in GHC 8.2+"
+decToTH DPatSynD{}    = patSynErr
+decToTH DPatSynSigD{} = patSynErr
 #endif
-decToTH _ = error "Newtype declaration without exactly 1 constructor."
+
+#if __GLASGOW_HASKELL__ < 801
+patSynErr :: a
+patSynErr = error "Pattern synonyms supported only in GHC 8.2+"
+#endif
 
 -- | Indicates whether something is a newtype or data type, bundling its
 -- constructor(s) along with it.
