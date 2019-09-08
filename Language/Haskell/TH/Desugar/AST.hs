@@ -106,6 +106,9 @@ data DDec = DLetDec DLetDec
           | DDefaultSigD Name DType
           | DPatSynD Name PatSynArgs DPatSynDir DPat
           | DPatSynSigD Name DPatSynType
+          | DKiSigD Name DKind
+              -- DKiSigD is part of DDec, not DLetDec, because standalone kind
+              -- signatures can only appear on the top level.
           deriving (Eq, Show, Typeable, Data, Generic)
 
 #if __GLASGOW_HASKELL__ < 711

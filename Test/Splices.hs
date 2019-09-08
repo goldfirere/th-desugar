@@ -36,6 +36,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE ImplicitParams #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 809
+{-# LANGUAGE StandaloneKindSignatures #-}
+#endif
+
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
@@ -307,6 +311,9 @@ test_expand6 = [| let f :: ClosedTF Double -> ()
                       f 'x' = () in
                   f |]
 
+#if __GLASGOW_HASKELL__ >= 809
+type PolyTF :: forall k. k -> *
+#endif
 type family PolyTF (x :: k) :: * where
   PolyTF (x :: *) = Bool
 
@@ -601,6 +608,7 @@ reifyDecs = [d|
     r31 :: a -> b -> a
 
 #if __GLASGOW_HASKELL__ >= 809
+  type R32 :: forall k -> k -> *
   type family R32 :: forall k -> k -> * where
 #endif
   |]

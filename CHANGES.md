@@ -39,6 +39,10 @@ Version 1.11 [????.??.??]
     `filter{D}VisFunArgs` (to obtain only the visible arguments) and
     `ravel{D}Type` (to construct a function type using `{D}FunArgs` and
     a return `{D}Type`).
+* Support standalone kind signatures by adding a `DKiSigD` constructor to
+  `DDec`.
+* Add `dsReifyType`, `reifyTypeWithLocals_maybe`, and `reifyTypeWithLocals`,
+  which allow looking up the types or kinds of locally declared entities.
 
 Version 1.10
 ------------

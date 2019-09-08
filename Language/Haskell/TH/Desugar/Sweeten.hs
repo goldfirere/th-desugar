@@ -185,6 +185,12 @@ decToTH (DPatSynSigD n ty)        = [PatSynSigD n (typeToTH ty)]
 decToTH DPatSynD{}    = patSynErr
 decToTH DPatSynSigD{} = patSynErr
 #endif
+#if __GLASGOW_HASKELL__ >= 809
+decToTH (DKiSigD n ki) = [KiSigD n (typeToTH ki)]
+#else
+decToTH (DKiSigD {})   =
+  error "Standalone kind signatures supported only in GHC 8.10+"
+#endif
 
 #if __GLASGOW_HASKELL__ < 801
 patSynErr :: a

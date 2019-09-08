@@ -81,7 +81,11 @@ test-suite spec
   default-extensions: TemplateHaskell
   hs-source-dirs:     Test
   main-is:            Run.hs
-  other-modules:      Splices, Dec, DsDec
+  other-modules:      Dec
+                      DsDec
+                      ReifyTypeCUSKs
+                      ReifyTypeSigs
+                      Splices
 
   build-depends:
       base >= 4 && < 5,

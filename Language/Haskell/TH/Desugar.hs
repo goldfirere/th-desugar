@@ -69,8 +69,9 @@ module Language.Haskell.TH.Desugar (
 
   -- | The following definitions allow you to register a list of
   -- @Dec@s to be used in reification queries.
-  withLocalDeclarations, dsReify,
+  withLocalDeclarations, dsReify, dsReifyType,
   reifyWithLocals_maybe, reifyWithLocals, reifyFixityWithLocals,
+  reifyTypeWithLocals_maybe, reifyTypeWithLocals,
   lookupValueNameWithLocals, lookupTypeNameWithLocals,
   mkDataNameWithLocals, mkTypeNameWithLocals,
   reifyNameSpace,
