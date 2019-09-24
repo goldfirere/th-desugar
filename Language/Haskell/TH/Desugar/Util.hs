@@ -24,7 +24,7 @@ module Language.Haskell.TH.Desugar.Util (
   thirdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat,
   tvbToType, tvbToTypeWithSig, tvbToTANormalWithSig,
-  nameMatches, thdOf3, firstMatch,
+  nameMatches, thdOf3, liftFst, liftSnd, firstMatch,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
@@ -32,7 +32,7 @@ module Language.Haskell.TH.Desugar.Util (
   isTypeKindName, typeKindName,
   unSigType, unfoldType, ForallVisFlag(..), FunArgs(..), VisFunArg(..),
   filterVisFunArgs, ravelType, unravelType,
-  TypeArg(..), applyType, filterTANormals, unSigTypeArg, probablyWrongUnTypeArg
+  TypeArg(..), applyType, filterTANormals, probablyWrongUnTypeArg
 #if __GLASGOW_HASKELL__ >= 800
   , bindIP
 #endif
@@ -373,11 +373,6 @@ filterTANormals = mapMaybe getTANormal
     getTANormal (TANormal t) = Just t
     getTANormal (TyArg {})   = Nothing
 
--- | Remove all of the explicit kind signatures from a 'TypeArg'.
-unSigTypeArg :: TypeArg -> TypeArg
-unSigTypeArg (TANormal t) = TANormal (unSigType t)
-unSigTypeArg (TyArg k)    = TyArg (unSigType k)
-
 -- | Extract the underlying 'Type' or 'Kind' from a 'TypeArg'. This forgets
 -- information about whether a type is a normal argument or not, so use with
 -- caution.
@@ -465,6 +460,12 @@ splitAtList (_ : _) [] = ([], [])
 
 thdOf3 :: (a,b,c) -> c
 thdOf3 (_,_,c) = c
+
+liftFst :: (a -> b) -> (a, c) -> (b, c)
+liftFst f (a,c) = (f a, c)
+
+liftSnd :: (a -> b) -> (c, a) -> (c, b)
+liftSnd f (c,a) = (c, f a)
 
 thirdOf3 :: (a -> b) -> (c, d, a) -> (c, d, b)
 thirdOf3 f (c, d, a) = (c, d, f a)

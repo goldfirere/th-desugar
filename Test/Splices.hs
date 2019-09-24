@@ -611,6 +611,9 @@ reifyDecs = [d|
   type R32 :: forall k -> k -> *
   type family R32 :: forall k -> k -> * where
 #endif
+
+  data R33 a where
+    R34 :: { r35 :: Int } -> R33 Int
   |]
 
 reifyDecsNames :: [Name]
@@ -630,6 +633,7 @@ reifyDecsNames = map mkName
 #if __GLASGOW_HASKELL__ >= 809
   , "R32"
 #endif
+  , "R33", "R34", "r35"
   ]
 
 simplCaseTests :: [Q Exp]

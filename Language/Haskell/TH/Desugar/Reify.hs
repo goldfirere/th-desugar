@@ -354,50 +354,82 @@ reifyInDec n decs (NewtypeInstD _ ty_name tys con _)
 reifyInDec _ _ _ = Nothing
 
 maybeReifyCon :: Name -> [Dec] -> Name -> [TypeArg] -> [Con] -> Maybe (Named Info)
-#if __GLASGOW_HASKELL__ > 710
 maybeReifyCon n _decs ty_name ty_args cons
   | Just (n', con) <- findCon n cons
-  = Just (n', DataConI n (maybeForallT tvbs [] $ con_to_type con) ty_name)
-#else
-maybeReifyCon n decs ty_name ty_args cons
-  | Just (n', con) <- findCon n cons
-  = Just (n', DataConI n (maybeForallT tvbs [] $ con_to_type con)
-                         ty_name fixity)
+    -- See Note [Use unSigType in maybeReifyCon]
+  , let full_con_ty = unSigType $ con_to_type h98_tvbs h98_res_ty con
+  = Just ( n', DataConI n full_con_ty ty_name
+#if __GLASGOW_HASKELL__ < 800
+                        fixity
 #endif
+         )
 
-  | Just (n', ty) <- findRecSelector n cons
+  | Just (n', rec_sel_info) <- findRecSelector n cons
+  , let (tvbs, sel_ty, con_res_ty) = extract_rec_sel_info rec_sel_info
+        -- See Note [Use unSigType in maybeReifyCon]
+        full_sel_ty = unSigType $ maybeForallT tvbs [] $ mkArrows [con_res_ty] sel_ty
       -- we don't try to ferret out naughty record selectors.
-#if __GLASGOW_HASKELL__ > 710
-  = Just (n', VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing)
-#else
-  = Just (n', VarI n (maybeForallT tvbs [] $ mkArrows [result_ty] ty) Nothing fixity)
+  = Just ( n', VarI n full_sel_ty Nothing
+#if __GLASGOW_HASKELL__ < 800
+                    fixity
 #endif
+         )
   where
-    result_ty = applyType (ConT ty_name) (map unSigTypeArg ty_args)
-      -- Make sure to call unSigTypeArg here. Otherwise, if you have this:
-      --
-      --   data D (a :: k) = MkD { unD :: Proxy a }
-      --
-      -- Then the type of unD will be reified as:
-      --
-      --   unD :: forall k (a :: k). D (a :: k) -> Proxy a
-      --
-      -- This is contrast to GHC's own reification, which will produce `D a`
-      -- (without the explicit kind signature) as the type of the first argument.
+    extract_rec_sel_info :: RecSelInfo -> ([TyVarBndr], Type, Type)
+      -- Returns ( Selector type variable binders
+      --         , Record field type
+      --         , constructor result type )
+    extract_rec_sel_info rec_sel_info =
+      case rec_sel_info of
+        RecSelH98 sel_ty -> (h98_tvbs, sel_ty, h98_res_ty)
+        RecSelGADT sel_ty con_res_ty ->
+          ( freeVariablesWellScoped [con_res_ty, sel_ty]
+          , sel_ty, con_res_ty)
 
-    con_to_type (NormalC _ stys) = mkArrows (map snd    stys)  result_ty
-    con_to_type (RecC _ vstys)   = mkArrows (map thdOf3 vstys) result_ty
-    con_to_type (InfixC t1 _ t2) = mkArrows (map snd [t1, t2]) result_ty
-    con_to_type (ForallC bndrs cxt c) = ForallT bndrs cxt (con_to_type c)
-#if __GLASGOW_HASKELL__ > 710
-    con_to_type (GadtC _ stys rty)     = mkArrows (map snd    stys)  rty
-    con_to_type (RecGadtC _ vstys rty) = mkArrows (map thdOf3 vstys) rty
+    h98_tvbs   = freeVariablesWellScoped $ map probablyWrongUnTypeArg ty_args
+    h98_res_ty = applyType (ConT ty_name) ty_args
+
+#if __GLASGOW_HASKELL__ < 800
+    fixity = fromMaybe defaultFixity $ reifyFixityInDecs n _decs
 #endif
-#if __GLASGOW_HASKELL__ < 711
-    fixity = fromMaybe defaultFixity $ reifyFixityInDecs n decs
-#endif
-    tvbs = freeVariablesWellScoped $ map probablyWrongUnTypeArg ty_args
 maybeReifyCon _ _ _ _ _ = Nothing
+
+{-
+Note [Use unSigType in maybeReifyCon]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Make sure to call unSigType on the type of a reified data constructor or
+record selector. Otherwise, if you have this:
+
+  data D (a :: k) = MkD { unD :: Proxy a }
+
+Then the type of unD will be reified as:
+
+  unD :: forall k (a :: k). D (a :: k) -> Proxy a
+
+This is contrast to GHC's own reification, which will produce `D a`
+(without the explicit kind signature) as the type of the first argument.
+-}
+
+-- Reverse-engineer the type of a data constructor.
+con_to_type :: [TyVarBndr] -- The type variables bound by a data type head.
+                           -- Only used for Haskell98-style constructors.
+            -> Type        -- The constructor result type.
+                           -- Only used for Haskell98-style constructors.
+            -> Con -> Type
+con_to_type h98_tvbs h98_result_ty con =
+  case go con of
+    (is_gadt, ty) | is_gadt   -> ty
+                  | otherwise -> maybeForallT h98_tvbs [] ty
+  where
+    go :: Con -> (Bool, Type) -- The Bool is True when dealing with a GADT
+    go (NormalC _ stys)       = (False, mkArrows (map snd    stys)  h98_result_ty)
+    go (RecC _ vstys)         = (False, mkArrows (map thdOf3 vstys) h98_result_ty)
+    go (InfixC t1 _ t2)       = (False, mkArrows (map snd [t1, t2]) h98_result_ty)
+    go (ForallC bndrs cxt c)  = liftSnd (ForallT bndrs cxt) (go c)
+#if __GLASGOW_HASKELL__ > 710
+    go (GadtC _ stys rty)     = (True, mkArrows (map snd    stys)  rty)
+    go (RecGadtC _ vstys rty) = (True, mkArrows (map thdOf3 vstys) rty)
+#endif
 
 mkVarI :: Name -> [Dec] -> Info
 mkVarI n decs = mkVarITy n decs (maybe (no_type n) snd $ findType n decs)
@@ -679,18 +711,27 @@ findCon n = firstMatch match_con
                           Nothing -> Nothing
 #endif
 
-findRecSelector :: Name -> [Con] -> Maybe (Named Type)
+data RecSelInfo
+  = RecSelH98  Type -- The record field's type
+  | RecSelGADT Type -- The record field's type
+               Type -- The GADT return type
+
+findRecSelector :: Name -> [Con] -> Maybe (Named RecSelInfo)
 findRecSelector n = firstMatch match_con
   where
-    match_con (RecC _ vstys)       = firstMatch match_rec_sel vstys
+    match_con :: Con -> Maybe (Named RecSelInfo)
+    match_con (RecC _ vstys)            = fmap (liftSnd RecSelH98) $
+                                          firstMatch match_rec_sel vstys
 #if __GLASGOW_HASKELL__ >= 800
-    match_con (RecGadtC _ vstys _) = firstMatch match_rec_sel vstys
+    match_con (RecGadtC _ vstys ret_ty) = fmap (liftSnd (`RecSelGADT` ret_ty)) $
+                                          firstMatch match_rec_sel vstys
 #endif
-    match_con (ForallC _ _ c)      = match_con c
-    match_con _                    = Nothing
+    match_con (ForallC _ _ c)           = match_con c
+    match_con _                         = Nothing
 
-    match_rec_sel (n', _, ty) | n `nameMatches` n' = Just (n', ty)
-    match_rec_sel _                                = Nothing
+    match_rec_sel (n', _, sel_ty)
+      | n `nameMatches` n' = Just (n', sel_ty)
+    match_rec_sel _        = Nothing
 
 ---------------------------------
 -- Reifying fixities
