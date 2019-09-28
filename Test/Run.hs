@@ -26,6 +26,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE QuantifiedConstraints #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 809
+{-# LANGUAGE StandaloneKindSignatures #-}
+#endif
+
 module Main where
 
 import Prelude hiding ( exp )
@@ -38,6 +42,8 @@ import Splices
 import qualified DsDec
 import qualified Dec
 import Dec ( RecordSel )
+import ReifyTypeCUSKs
+import ReifyTypeSigs
 import Language.Haskell.TH.Desugar
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.Expand  ( expandUnsoundly )
@@ -584,5 +590,14 @@ main = hspec $ do
 
     zipWithM (\b n -> it ("matches types " ++ show n) b)
       test_matchTy [1..]
+
+    zipWithM (\b n -> it ("reifies kinds of declarations with CUSKs " ++ show n) b)
+      test_reify_type_cusks [1..]
+
+    zipWithM (\b n -> it ("reifies kinds of declarations without CUSKs " ++ show n) b)
+      test_reify_type_no_cusks [1..]
+
+    zipWithM (\b n -> it ("reifies the kinds of declarations with signatures " ++ show n) b)
+      test_reify_kind_sigs [1..]
 
     fromHUnitTest tests

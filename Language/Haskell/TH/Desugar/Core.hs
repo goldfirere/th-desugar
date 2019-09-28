@@ -773,6 +773,9 @@ dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
 #if __GLASGOW_HASKELL__ >= 807
 dsDec (ImplicitParamBindD {}) = impossible "Non-`let`-bound implicit param binding"
 #endif
+#if __GLASGOW_HASKELL__ >= 809
+dsDec (KiSigD n ki) = (:[]) <$> (DKiSigD n <$> dsType ki)
+#endif
 
 -- | Desugar a 'DataD' or 'NewtypeD'.
 dsDataDec :: DsMonad q
@@ -1305,6 +1308,11 @@ dsForallPred tvbs cxt p = do
 -- available.
 dsReify :: DsMonad q => Name -> q (Maybe DInfo)
 dsReify = traverse dsInfo <=< reifyWithLocals_maybe
+
+-- | Like 'reifyType', but safer and desugared. Uses local declarations where
+-- available.
+dsReifyType :: DsMonad q => Name -> q (Maybe DType)
+dsReifyType = traverse dsType <=< reifyTypeWithLocals_maybe
 
 -- Given a list of `forall`ed type variable binders and a context, construct
 -- a DType using DForallT and DConstrainedT as appropriate. The phrase
