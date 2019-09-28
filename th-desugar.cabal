@@ -97,4 +97,4 @@ test-suite spec
       hspec >= 1.3,
       th-desugar,
       th-lift >= 0.6.1,
-      th-orphans >= 0.9.1
+      th-orphans >= 0.13.9

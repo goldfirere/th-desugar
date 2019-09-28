@@ -119,10 +119,6 @@ install:
   - |
     echo "packages: ." >> cabal.project
   - |
-    echo "source-repository-package"                             >> cabal.project
-    echo "  type:     git"                                       >> cabal.project
-    echo "  location: https://github.com/RyanGlScott/th-orphans" >> cabal.project
-    echo "  tag:      60135a6149ceff425bdcff418ff2f4a07e7bc44d"  >> cabal.project
   - "for pkg in $($HCPKG list --simple-output); do echo $pkg | sed 's/-[^-]*$//' | (grep -vE -- '^(th-desugar)$' || true) | sed 's/^/constraints: /' | sed 's/$/ installed/' >> cabal.project.local; done"
   - cat cabal.project || true
   - cat cabal.project.local || true
@@ -148,10 +144,6 @@ script:
   - |
     echo "packages: ${PKGDIR_th_desugar}" >> cabal.project
   - |
-    echo "source-repository-package"                             >> cabal.project
-    echo "  type:     git"                                       >> cabal.project
-    echo "  location: https://github.com/RyanGlScott/th-orphans" >> cabal.project
-    echo "  tag:      60135a6149ceff425bdcff418ff2f4a07e7bc44d"  >> cabal.project
   - "for pkg in $($HCPKG list --simple-output); do echo $pkg | sed 's/-[^-]*$//' | (grep -vE -- '^(th-desugar)$' || true) | sed 's/^/constraints: /' | sed 's/$/ installed/' >> cabal.project.local; done"
   - cat cabal.project || true
   - cat cabal.project.local || true
