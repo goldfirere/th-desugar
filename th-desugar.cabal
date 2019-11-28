@@ -19,6 +19,7 @@ tested-with:    GHC == 7.8.4
               , GHC == 8.4.4
               , GHC == 8.6.5
               , GHC == 8.8.1
+              , GHC == 8.10.1
 description:
     This package provides the Language.Haskell.TH.Desugar module, which desugars
     Template Haskell's rich encoding of Haskell syntax into a simpler encoding.
@@ -44,7 +45,7 @@ library
   build-depends:
       base >= 4.7 && < 5,
       ghc-prim,
-      template-haskell >= 2.9 && < 2.16,
+      template-haskell >= 2.9 && < 2.17,
       containers >= 0.5,
       fail == 4.9.*,
       mtl >= 2.1,
