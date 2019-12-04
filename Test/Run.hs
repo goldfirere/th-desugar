@@ -57,6 +57,7 @@ import Control.Applicative
 
 import qualified Data.Map as M
 import Data.Proxy
+import Debug.Trace
 
 -- |
 -- Convert a HUnit test suite to a spec.  This can be used to run existing
@@ -330,6 +331,27 @@ test_getDataD_kind_sig =
   True -- DataD didn't have the ability to store kind signatures prior to GHC 8.0
 #endif
 
+test_t100 :: Bool
+test_t100 =
+#if __GLASGOW_HASKELL__ >= 800
+  $(do decs <- [d| data T b where
+                     MkT :: forall a. { unT :: a } -> T a |]
+       info <- withLocalDeclarations decs (dsReify (mkName "unT"))
+       let -- forall a. T a -> a
+           exp_ty = DForallT ForallInvis [DPlainTV (mkName "a")] $
+                    DArrowT `DAppT` (DConT (mkName "T") `DAppT` DVarT (mkName "a"))
+                            `DAppT` DVarT (mkName "a")
+       case info of
+         Just (DVarI _ actual_ty _) -> exp_ty `eqTHSplice` actual_ty
+         _                          -> [| False |])
+#else
+  True -- RecGadtC didn't exist prior to GHC 8.0, do the quote above will
+       -- normalize to `data T b = MkT { unT :: b }`. This defeats the point of
+       -- this test, and to make things worse, this will cause `dsReify` to
+       -- return a different type for unT (forall b. T b -> b). Let's just not
+       -- bother testing this on pre-8.0 GHCs.
+#endif
+
 test_t102 :: Bool
 test_t102 =
   $(do decs <- [d| data Foo x where MkFoo :: forall a. { unFoo :: a } -> Foo a |]
@@ -556,6 +578,8 @@ main = hspec $ do
 
     it "expands type synonyms in type variable binders" $ test_t97
 
+    it "reifies GADT record selectors correctly" $ test_t100
+
     it "collects GADT record selectors correctly" $ test_t102
 
     it "quantifies kind variables in desugared ADT constructors" $ test_t103
@@ -575,7 +599,7 @@ main = hspec $ do
                mapM (\ t -> withLocalDeclarations [] (dsType t >>= expandType >>= return . typeToTH)) >>=
               Syn.lift . map pprint)
 
-    zipWith3M (\a b n -> it ("reifies local definition " ++ show n) $ a == b)
+    zipWith3M (\a b n -> do { traceM (unlines [show n, show a, show b]); it ("reifies local definition " ++ show n) $ a == b })
       local_reifications normal_reifications [1..]
 
     zipWithM (\b n -> it ("works on simplCase test " ++ show n) b) simplCase [1..]
