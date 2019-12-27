@@ -9,6 +9,7 @@ module ReifyTypeSigs where
 
 #if __GLASGOW_HASKELL__ >= 809
 import Data.Kind
+import Data.Proxy
 #endif
 #if __GLASGOW_HASKELL__ < 710
 import Data.Traversable (traverse)
@@ -38,7 +39,7 @@ test_reify_kind_sigs =
              type family A5 a where
                A5 a = a
 
-             type A6 :: forall (k :: Type) -> k -> Constraint
+             type A6 :: forall (k :: Bool) -> Proxy k -> Constraint
              class A6 a b where
                type A7 a c
 #endif
@@ -58,6 +59,7 @@ test_reify_kind_sigs =
            ++
            let k = mkName "k"
                typeKind = DConT typeKindName
+               boolKind = DConT ''Bool
                k_to_type = DArrowT `DAppT` DVarT k `DAppT` typeKind
                forall_k_invis_k_to_type = DForallT ForallInvis [DPlainTV k] k_to_type in
            [ (1, forall_k_invis_k_to_type)
@@ -65,9 +67,10 @@ test_reify_kind_sigs =
            , (3, forall_k_invis_k_to_type)
            , (4, forall_k_invis_k_to_type)
            , (5, k_to_type)
-           , (6, DForallT ForallVis [DKindedTV k typeKind] $
-                 DArrowT `DAppT` DVarT k `DAppT` DConT ''Constraint)
-           , (7, DArrowT `DAppT` typeKind `DAppT`
+           , (6, DForallT ForallVis [DKindedTV k boolKind] $
+                 DArrowT `DAppT` (DConT ''Proxy `DAppT` DVarT k)
+                         `DAppT` DConT ''Constraint)
+           , (7, DArrowT `DAppT` boolKind `DAppT`
                    (DArrowT `DAppT` typeKind `DAppT` typeKind))
            ]
 #endif

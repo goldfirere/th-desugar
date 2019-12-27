@@ -967,7 +967,7 @@ find_assoc_type_kind n cls_tvb_kind_map sub_dec =
     ascribe_tf_tvb_kind tvb =
       case tvb of
         KindedTV{}  -> tvb
-        PlainTV tvn -> KindedTV tvn $ fromMaybe StarT $ Map.lookup n cls_tvb_kind_map
+        PlainTV tvn -> KindedTV tvn $ fromMaybe StarT $ Map.lookup tvn cls_tvb_kind_map
 
 -- Data types have CUSKs when:
 --
