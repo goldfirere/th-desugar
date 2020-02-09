@@ -7,18 +7,19 @@ Allows for reification from a list of declarations, without looking a name
 up in the environment.
 -}
 
-{-# LANGUAGE CPP, GeneralizedNewtypeDeriving, ScopedTypeVariables #-}
+{-# LANGUAGE CPP, GeneralizedNewtypeDeriving, ScopedTypeVariables,
+             TupleSections #-}
 
 module Language.Haskell.TH.Desugar.Reify (
   -- * Reification
-  reifyWithLocals_maybe, reifyWithLocals, reifyWithWarning, reifyInDecs,
+  reifyWithLocals_maybe, reifyWithLocals, reifyWithWarning,
 
   -- ** Fixity reification
-  qReifyFixity, reifyFixity, reifyFixityWithLocals, reifyFixityInDecs,
+  qReifyFixity, reifyFixity, reifyFixityWithLocals,
 
   -- ** Type reification
   qReifyType, reifyType,
-  reifyTypeWithLocals_maybe, reifyTypeWithLocals, reifyTypeInDecs,
+  reifyTypeWithLocals_maybe, reifyTypeWithLocals,
 
   -- * Datatype lookup
   getDataD, dataConNameToCon, dataConNameToDataName,
@@ -39,6 +40,7 @@ import Control.Monad.State
 import Control.Monad.Writer
 import Control.Monad.RWS
 import Control.Monad.Trans.Instances ()
+import Data.Coerce
 import qualified Data.Foldable as F
 #if __GLASGOW_HASKELL__ < 710
 import Data.Foldable (foldMap)
@@ -64,7 +66,7 @@ import Language.Haskell.TH.Desugar.Util
 -- bottoms may be used if necessary.
 reifyWithLocals_maybe :: DsMonad q => Name -> q (Maybe Info)
 reifyWithLocals_maybe name = qRecover
-  (return . reifyInDecs name =<< localDeclarations)
+  (return . Map.lookup (ReifiableName name) =<< localInfoMap)
   (Just `fmap` qReify name)
 
 -- | Like 'reifyWithLocals_maybe', but throws an exception upon failure,
@@ -171,20 +173,10 @@ dataConNameToCon con_name = do
   -- the constructor to get the tycon, and then reify the tycon to get the `Con`s
   type_name <- dataConNameToDataName con_name
   (_, cons) <- getDataD "This seems to be an error in GHC." type_name
-  let m_con = find (any (con_name ==) . get_con_name) cons
+  let m_con = find (any (con_name ==) . conNames) cons
   case m_con of
     Just con -> return con
     Nothing -> impossible "Datatype does not contain one of its own constructors."
-
-  where
-    get_con_name (NormalC name _)     = [name]
-    get_con_name (RecC name _)        = [name]
-    get_con_name (InfixC _ name _)    = [name]
-    get_con_name (ForallC _ _ con)    = get_con_name con
-#if __GLASGOW_HASKELL__ > 710
-    get_con_name (GadtC names _ _)    = names
-    get_con_name (RecGadtC names _ _) = names
-#endif
 
 --------------------------------------------------
 -- DsMonad
@@ -196,14 +188,44 @@ class (Quasi m, Fail.MonadFail m) => DsMonad m where
   -- | Produce a list of local declarations.
   localDeclarations :: m [Dec]
 
+  -- | TODO RGS: Docs
+  localInfoMap :: m (Map ReifiableName Info)
+
+  -- | TODO RGS: Decs
+  localInstancesMap :: m (Map ReifiableName [InstanceDec])
+
+  -- | TODO RGS: Docs
+  localFixityMap :: m (Map ReifiableName Fixity)
+
+  -- | TODO RGS: Docs
+  localTypeMap :: m (Map ReifiableName Type)
+
 instance DsMonad Q where
   localDeclarations = return []
+  localInfoMap      = return Map.empty
+  localInstancesMap = return Map.empty
+  localFixityMap    = return Map.empty
+  localTypeMap      = return Map.empty
+
 instance DsMonad IO where
   localDeclarations = return []
+  localInfoMap      = return Map.empty
+  localInstancesMap = return Map.empty
+  localFixityMap    = return Map.empty
+  localTypeMap      = return Map.empty
+
+-- | TODO RGS: Docs
+data DsEnv = DsEnv
+  { dsEnvDecs         :: [Dec]
+  , dsEnvInfoMap      :: Map ReifiableName Info
+  , dsEnvInstancesMap :: Map ReifiableName [InstanceDec]
+  , dsEnvFixityMap    :: Map ReifiableName Fixity
+  , dsEnvTypeMap      :: Map ReifiableName Type
+  }
 
 -- | A convenient implementation of the 'DsMonad' class. Use by calling
 -- 'withLocalDeclarations'.
-newtype DsM q a = DsM (ReaderT [Dec] q a)
+newtype DsM q a = DsM (ReaderT DsEnv q a)
   deriving ( Functor, Applicative, Monad, MonadTrans, Quasi, Fail.MonadFail
 #if __GLASGOW_HASKELL__ >= 803
            , MonadIO
@@ -211,194 +233,232 @@ newtype DsM q a = DsM (ReaderT [Dec] q a)
            )
 
 instance (Quasi q, Fail.MonadFail q) => DsMonad (DsM q) where
-  localDeclarations = DsM ask
+  localDeclarations = DsM $ asks dsEnvDecs
+  localInfoMap      = DsM $ asks dsEnvInfoMap
+  localInstancesMap = DsM $ asks dsEnvInstancesMap
+  localFixityMap    = DsM $ asks dsEnvFixityMap
+  localTypeMap      = DsM $ asks dsEnvTypeMap
 
 instance DsMonad m => DsMonad (ReaderT r m) where
   localDeclarations = lift localDeclarations
+  localInfoMap      = lift localInfoMap
+  localInstancesMap = lift localInstancesMap
+  localFixityMap    = lift localFixityMap
+  localTypeMap      = lift localTypeMap
 
 instance DsMonad m => DsMonad (StateT s m) where
   localDeclarations = lift localDeclarations
+  localInfoMap      = lift localInfoMap
+  localInstancesMap = lift localInstancesMap
+  localFixityMap    = lift localFixityMap
+  localTypeMap      = lift localTypeMap
 
 instance (DsMonad m, Monoid w) => DsMonad (WriterT w m) where
   localDeclarations = lift localDeclarations
+  localInfoMap      = lift localInfoMap
+  localInstancesMap = lift localInstancesMap
+  localFixityMap    = lift localFixityMap
+  localTypeMap      = lift localTypeMap
 
 instance (DsMonad m, Monoid w) => DsMonad (RWST r w s m) where
   localDeclarations = lift localDeclarations
+  localInfoMap      = lift localInfoMap
+  localInstancesMap = lift localInstancesMap
+  localFixityMap    = lift localFixityMap
+  localTypeMap      = lift localTypeMap
 
 -- | Add a list of declarations to be considered when reifying local
 -- declarations.
 withLocalDeclarations :: DsMonad q => [Dec] -> DsM q a -> q a
 withLocalDeclarations new_decs (DsM x) = do
-  orig_decs <- localDeclarations
-  runReaderT x (orig_decs ++ new_decs)
+  cusks <- cusksEnabled
+
+  old_decs          <- localDeclarations
+  old_info_map      <- localInfoMap
+  old_instances_map <- localInstancesMap
+  old_fixity_map    <- localFixityMap
+  old_type_map      <- localTypeMap
+  let new_fixity_map    = filterFixities new_decs
+      new_instances_map = filterInstanceDecs new_decs
+      new_type_map      = filterTypes cusks new_decs
+      new_info_map      = filterInfos new_fixity_map new_instances_map
+                                      new_type_map new_decs
+
+      unioned_fixity_map    = union_locals old_fixity_map new_fixity_map
+                              -- TODO RGS: Why Map.unionWith (++) here?
+      unioned_info_map      = union_locals old_info_map new_info_map
+      unioned_instances_map = Map.unionWith (++) old_instances_map new_instances_map
+      unioned_type_map      = union_locals old_type_map new_type_map
+
+      env' = DsEnv { -- Note how we append new local declarations to the right
+                     -- of existing ones. See Note [TODO RGS].
+                     --
+                     -- This is not as efficient as it could be, but it will
+                     -- only ever cause problems if one repeatedly nests uses
+                     -- of `withLocalDeclarations`. This is fairly uncommon,
+                     -- however, so I won't bother improving this unless
+                     -- someone asks for it.
+                     dsEnvDecs         = old_decs ++ new_decs
+                   , dsEnvInfoMap      = unioned_info_map
+                   , dsEnvInstancesMap = unioned_instances_map
+                   , dsEnvFixityMap    = unioned_fixity_map
+                   , dsEnvTypeMap      = unioned_type_map
+                   }
+  runReaderT x env'
+  where
+    -- TODO RGS: Docs. Also, should duplicate entries be an error?
+    union_locals :: Map ReifiableName a -> Map ReifiableName a -> Map ReifiableName a
+    union_locals old_map new_map = Map.union old_map new_map
+
+conNames :: Con -> [Name]
+conNames (NormalC name _)     = [name]
+conNames (RecC name _)        = [name]
+conNames (InfixC _ name _)    = [name]
+conNames (ForallC _ _ con)    = conNames con
+#if __GLASGOW_HASKELL__ >= 800
+conNames (GadtC names _ _)    = names
+conNames (RecGadtC names _ _) = names
+#endif
+
+recSelNames :: Con -> [Name]
+recSelNames NormalC{}            = []
+recSelNames InfixC{}             = []
+recSelNames (RecC _ vstys)       = map (\(n,_,_) -> n) vstys
+recSelNames (ForallC _ _ c)      = recSelNames c
+#if __GLASGOW_HASKELL__ >= 800
+recSelNames GadtC{}              = []
+recSelNames (RecGadtC _ vstys _) = map (\(n,_,_) -> n) vstys
+#endif
+
+foreignName :: Foreign -> Name
+foreignName (ImportF _ _ _ n _) = n
+foreignName (ExportF _ _ n _)   = n
 
 ---------------------------
 -- Reifying local declarations
 ---------------------------
 
--- | Look through a list of declarations and possibly return a relevant 'Info'
-reifyInDecs :: Name -> [Dec] -> Maybe Info
-reifyInDecs n decs = snd `fmap` firstMatch (reifyInDec n decs) decs
-
--- | Look through a list of declarations and possibly return a fixity.
-reifyFixityInDecs :: Name -> [Dec] -> Maybe Fixity
-reifyFixityInDecs n = firstMatch match_fixity
-  where
-    match_fixity (InfixD fixity n')        | n `nameMatches` n'
-                                           = Just fixity
-    match_fixity (ClassD _ _ _ _ sub_decs) = firstMatch match_fixity sub_decs
-    match_fixity _                         = Nothing
-
 -- | A reified thing along with the name of that thing.
 type Named a = (Name, a)
 
-reifyInDec :: Name -> [Dec] -> Dec -> Maybe (Named Info)
-reifyInDec n decs (FunD n' _) | n `nameMatches` n' = Just (n', mkVarI n decs)
-reifyInDec n decs (ValD pat _ _)
-  | Just n' <- find (nameMatches n) (F.toList (extractBoundNamesPat pat)) = Just (n', mkVarI n decs)
-#if __GLASGOW_HASKELL__ > 710
-reifyInDec n _    dec@(DataD    _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
-reifyInDec n _    dec@(NewtypeD _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
-#else
-reifyInDec n _    dec@(DataD    _ n' _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
-reifyInDec n _    dec@(NewtypeD _ n' _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
-#endif
-reifyInDec n _    dec@(TySynD n' _ _)       | n `nameMatches` n' = Just (n', TyConI dec)
-reifyInDec n decs dec@(ClassD _ n' _ _ _)   | n `nameMatches` n'
-  = Just (n', ClassI (quantifyClassDecMethods dec) (findInstances n decs))
-reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `nameMatches` n'
-  = Just (n', mkVarITy n decs ty)
-reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `nameMatches` n'
-  = Just (n', mkVarITy n decs ty)
-#if __GLASGOW_HASKELL__ > 710
-reifyInDec n decs dec@(OpenTypeFamilyD (TypeFamilyHead n' _ _ _)) | n `nameMatches` n'
-  = Just (n', FamilyI dec (findInstances n decs))
-reifyInDec n decs dec@(DataFamilyD n' _ _) | n `nameMatches` n'
-  = Just (n', FamilyI dec (findInstances n decs))
-reifyInDec n _    dec@(ClosedTypeFamilyD (TypeFamilyHead n' _ _ _) _) | n `nameMatches` n'
-  = Just (n', FamilyI dec [])
-#else
-reifyInDec n decs dec@(FamilyD _ n' _ _) | n `nameMatches` n'
-  = Just (n', FamilyI dec (findInstances n decs))
-reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `nameMatches` n'
-  = Just (n', FamilyI dec [])
-#endif
-#if __GLASGOW_HASKELL__ >= 801
-reifyInDec n decs (PatSynD n' _ _ _) | n `nameMatches` n'
-  = Just (n', mkPatSynI n decs)
-#endif
+mk_reifiable_name_map :: [Named a] -> Map ReifiableName a
+mk_reifiable_name_map = Map.fromList . coerce
 
-#if __GLASGOW_HASKELL__ > 710
-reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
-  = Just info
-reifyInDec n decs (NewtypeD _ ty_name tvbs _mk con _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) [con]
-  = Just info
-#else
-reifyInDec n decs (DataD _ ty_name tvbs cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
-  = Just info
-reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) [con]
-  = Just info
-#endif
-#if __GLASGOW_HASKELL__ > 710
-reifyInDec n _decs (ClassD _ ty_name tvbs _ sub_decs)
-  | Just (n', ty) <- findType n sub_decs
-  = Just (n', ClassOpI n (quantifyClassMethodType ty_name tvbs True ty) ty_name)
-#else
-reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
-  | Just (n', ty) <- findType n sub_decs
-  = Just (n', ClassOpI n (quantifyClassMethodType ty_name tvbs True ty)
-                       ty_name (fromMaybe defaultFixity $
-                                reifyFixityInDecs n $ sub_decs ++ decs))
-#endif
-reifyInDec n decs (ClassD _ _ _ _ sub_decs)
-  | Just info <- firstMatch (reifyInDec n (sub_decs ++ decs)) sub_decs
-  = Just info
-#if __GLASGOW_HASKELL__ >= 711
-reifyInDec n decs (InstanceD _ _ _ sub_decs)
-#else
-reifyInDec n decs (InstanceD _ _ sub_decs)
-#endif
-  | Just info <- firstMatch reify_in_instance sub_decs
-  = Just info
+-- | TODO RGS: Docs
+filterFixities :: [Dec] -> Map ReifiableName Fixity
+filterFixities = mk_reifiable_name_map . concatMap filter_fixities
   where
-    reify_in_instance dec@(DataInstD {})    = reifyInDec n (sub_decs ++ decs) dec
-    reify_in_instance dec@(NewtypeInstD {}) = reifyInDec n (sub_decs ++ decs) dec
-    reify_in_instance _                     = Nothing
-#if __GLASGOW_HASKELL__ >= 807
-reifyInDec n decs (DataInstD _ _ lhs _ cons _)
-  | (ConT ty_name, tys) <- unfoldType lhs
-  , Just info <- maybeReifyCon n decs ty_name tys cons
-  = Just info
-reifyInDec n decs (NewtypeInstD _ _ lhs _ con _)
-  | (ConT ty_name, tys) <- unfoldType lhs
-  , Just info <- maybeReifyCon n decs ty_name tys [con]
-  = Just info
-#elif __GLASGOW_HASKELL__ > 710
-reifyInDec n decs (DataInstD _ ty_name tys _ cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) cons
-  = Just info
-reifyInDec n decs (NewtypeInstD _ ty_name tys _ con _)
-  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) [con]
-  = Just info
-#else
-reifyInDec n decs (DataInstD _ ty_name tys cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) cons
-  = Just info
-reifyInDec n decs (NewtypeInstD _ ty_name tys con _)
-  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) [con]
-  = Just info
-#endif
+    filter_fixities :: Dec -> [Named Fixity]
+    filter_fixities (InfixD fixity n)         = [(n, fixity)]
+    filter_fixities (ClassD _ _ _ _ sub_decs) = concatMap filter_fixities sub_decs
+    filter_fixities _                         = []
 
-reifyInDec _ _ _ = Nothing
-
-maybeReifyCon :: Name -> [Dec] -> Name -> [TypeArg] -> [Con] -> Maybe (Named Info)
-maybeReifyCon n _decs ty_name ty_args cons
-  | Just (n', con) <- findCon n cons
-    -- See Note [Use unSigType in maybeReifyCon]
-  , let full_con_ty = unSigType $ con_to_type h98_tvbs h98_res_ty con
-  = Just ( n', DataConI n full_con_ty ty_name
-#if __GLASGOW_HASKELL__ < 800
-                        fixity
-#endif
-         )
-
-  | Just (n', rec_sel_info) <- findRecSelector n cons
-  , let (tvbs, sel_ty, con_res_ty) = extract_rec_sel_info rec_sel_info
-        -- See Note [Use unSigType in maybeReifyCon]
-        full_sel_ty = unSigType $ maybeForallT tvbs [] $ mkArrows [con_res_ty] sel_ty
-      -- we don't try to ferret out naughty record selectors.
-  = Just ( n', VarI n full_sel_ty Nothing
-#if __GLASGOW_HASKELL__ < 800
-                    fixity
-#endif
-         )
+-- | TODO RGS: Docs
+filterInfos :: Map ReifiableName Fixity
+            -> Map ReifiableName [InstanceDec]
+            -> Map ReifiableName Type
+            -> [Dec] -> Map ReifiableName Info
+filterInfos fixity_map instances_map type_map =
+  mk_reifiable_name_map . concatMap filter_infos
   where
-    extract_rec_sel_info :: RecSelInfo -> ([TyVarBndr], Type, Type)
-      -- Returns ( Selector type variable binders
-      --         , Record field type
-      --         , constructor result type )
-    extract_rec_sel_info rec_sel_info =
-      case rec_sel_info of
-        RecSelH98 sel_ty -> (h98_tvbs, sel_ty, h98_res_ty)
-        RecSelGADT sel_ty con_res_ty ->
-          ( freeVariablesWellScoped [con_res_ty, sel_ty]
-          , sel_ty, con_res_ty)
-
-    h98_tvbs   = freeVariablesWellScoped $ map probablyWrongUnTypeArg ty_args
-    h98_res_ty = applyType (ConT ty_name) ty_args
-
-#if __GLASGOW_HASKELL__ < 800
-    fixity = fromMaybe defaultFixity $ reifyFixityInDecs n _decs
+    filter_infos :: Dec -> [Named Info]
+    filter_infos (FunD n _) =
+      [(n, mk_var_i n)]
+    filter_infos (ValD pat _ _) =
+      map (\n -> (n, mk_var_i n)) (F.toList $ extractBoundNamesPat pat)
+    filter_infos dec@(TySynD n _ _) =
+      [(n, TyConI dec)]
+    filter_infos dec@(ClassD _ n _ _ sub_decs) =
+      (n, mkClassI instances_map n dec) : concatMap (filter_class_sub_dec_infos n) sub_decs
+    filter_infos (InstanceD
+#if __GLASGOW_HASKELL__ >= 800
+                            _
 #endif
-maybeReifyCon _ _ _ _ _ = Nothing
+                            _ _ sub_decs) =
+      concatMap filter_instance_sub_dec_infos sub_decs
+    filter_infos (ForeignD fgn) =
+      let n = foreignName fgn in [(n, mk_var_i n)]
+    filter_infos dec@(DataD _ n _
+#if __GLASGOW_HASKELL__ >= 800
+                            _
+#endif
+                            cons _) =
+      (n, TyConI dec) : concatMap (con_infos n) cons
+    filter_infos dec@(NewtypeD _ n _
+#if __GLASGOW_HASKELL__ >= 800
+                               _
+#endif
+                               con _) =
+      (n, TyConI dec) : con_infos n con
+#if __GLASGOW_HASKELL__ >= 800
+    filter_infos dec@(DataFamilyD n _ _) =
+      [(n, mk_family_i n dec)]
+    filter_infos dec@(OpenTypeFamilyD (TypeFamilyHead n _ _ _)) =
+      [(n, mk_family_i n dec)]
+    filter_infos dec@(ClosedTypeFamilyD (TypeFamilyHead n _ _ _) _) =
+      [(n, mk_family_i n dec)]
+#else
+    filter_infos dec@(FamilyD _ n _ _) =
+      [(n, mk_family_i n dec)]
+    filter_infos dec@(ClosedTypeFamilyD n _ _ _) =
+      [(n, mk_family_i n dec)]
+#endif
+#if __GLASGOW_HASKELL__ >= 808
+    filter_infos (DataInstD _ _ lhs _ cons _)
+      | (ConT n, _) <- unfoldType lhs
+      = concatMap (con_infos n) cons
+    filter_infos (NewtypeInstD _ _ lhs _ con _)
+      | (ConT n, _) <- unfoldType lhs
+      = con_infos n con
+#else
+    filter_infos (DataInstD _ n _
+#if __GLASGOW_HASKELL__ >= 800
+                            _
+#endif
+                            cons _)
+      = concatMap (con_infos n) cons
+    filter_infos (NewtypeInstD _ n _
+#if __GLASGOW_HASKELL__ >= 800
+                               _
+#endif
+                               con _)
+      = con_infos n con
+#endif
+#if __GLASGOW_HASKELL__ >= 802
+    filter_infos (PatSynD n _ _ _) =
+      [(n, mkPatSynI type_map n)]
+#endif
+    filter_infos _ = []
+
+    filter_class_sub_dec_infos :: Name -> Dec -> [Named Info]
+    filter_class_sub_dec_infos cls_name sub_dec =
+      case sub_dec of
+        SigD meth_name _  ->
+          [(meth_name, mkClassOpI fixity_map type_map cls_name meth_name)]
+#if __GLASGOW_HASKELL__ >= 800
+        DataFamilyD{}     -> filter_infos sub_dec
+        OpenTypeFamilyD{} -> filter_infos sub_dec
+#else
+        FamilyD{}         -> filter_infos sub_dec
+#endif
+        _                 -> []
+
+    filter_instance_sub_dec_infos :: Dec -> [Named Info]
+    filter_instance_sub_dec_infos dec@DataInstD{}    = filter_infos dec
+    filter_instance_sub_dec_infos dec@NewtypeInstD{} = filter_infos dec
+    filter_instance_sub_dec_infos _                  = []
+
+    mk_var_i    = mkVarI fixity_map type_map
+    mk_family_i = mkFamilyI instances_map
+
+    con_infos :: Name -> Con -> [Named Info]
+    con_infos data_name con =
+         map (\con_name -> (con_name, mkDataConI fixity_map type_map data_name con_name)) (conNames con)
+      ++ map (\sel_name -> (sel_name, mk_var_i sel_name)) (recSelNames con)
 
 {-
-Note [Use unSigType in maybeReifyCon]
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Note [Use unSigType in filterTypes]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Make sure to call unSigType on the type of a reified data constructor or
 record selector. Otherwise, if you have this:
 
@@ -433,86 +493,96 @@ con_to_type h98_tvbs h98_result_ty con =
     go (RecGadtC _ vstys rty) = (True, mkArrows (map thdOf3 vstys) rty)
 #endif
 
-mkVarI :: Name -> [Dec] -> Info
-mkVarI n decs = mkVarITy n decs (maybe (no_type n) snd $ findType n decs)
-
-mkVarITy :: Name -> [Dec] -> Type -> Info
-#if __GLASGOW_HASKELL__ > 710
-mkVarITy n _decs ty = VarI n ty Nothing
-#else
-mkVarITy n decs ty = VarI n ty Nothing (fromMaybe defaultFixity $
-                                        reifyFixityInDecs n decs)
+mkVarI :: Map ReifiableName Fixity -> Map ReifiableName Type
+       -> Name -> Info
+mkVarI _fixity_map type_map n =
+  VarI n (fromMaybe (no_type n) $ Map.lookup (coerce n) type_map) Nothing
+#if __GLASGOW_HASKELL__ < 800
+       (fromMaybe defaultFixity $ Map.lookup (coerce n) _fixity_map)
 #endif
 
-findType :: Name -> [Dec] -> Maybe (Named Type)
-findType n = firstMatch match_type
-  where
-    match_type (SigD n' ty) | n `nameMatches` n' = Just (n', ty)
-    match_type _                                 = Nothing
+mkDataConI :: Map ReifiableName Fixity -> Map ReifiableName Type -> Name
+           -> Name -> Info
+mkDataConI _fixity_map type_map data_name con_name =
+  DataConI con_name (fromMaybe (no_type con_name) $ Map.lookup (coerce con_name) type_map) data_name
+#if __GLASGOW_HASKELL__ < 800
+                    (fromMaybe defaultFixity $ Map.lookup (coerce con_name) _fixity_map)
+#endif
 
-#if __GLASGOW_HASKELL__ >= 801
-mkPatSynI :: Name -> [Dec] -> Info
-mkPatSynI n decs = PatSynI n (fromMaybe (no_type n) $ findPatSynType n decs)
+mkFamilyI :: Map ReifiableName [InstanceDec] -> Name -> Dec -> Info
+mkFamilyI instances_map n dec =
+  FamilyI dec (fromMaybe [] $ Map.lookup (coerce n) instances_map)
 
-findPatSynType :: Name -> [Dec] -> Maybe PatSynType
-findPatSynType n = firstMatch match_pat_syn_type
-  where
-    match_pat_syn_type (PatSynSigD n' psty) | n `nameMatches` n' = Just psty
-    match_pat_syn_type _                                         = Nothing
+mkClassI :: Map ReifiableName [InstanceDec] -> Name -> Dec -> Info
+mkClassI instances_map n dec =
+  ClassI (quantifyClassDecMethods dec) (fromMaybe [] $ Map.lookup (coerce n) instances_map)
+
+mkClassOpI :: Map ReifiableName Fixity -> Map ReifiableName Type -> Name
+           -> Name -> Info
+mkClassOpI _fixity_map type_map cls_name meth_name =
+  ClassOpI meth_name (fromMaybe (no_type meth_name) $ Map.lookup (coerce meth_name) type_map) cls_name
+#if __GLASGOW_HASKELL__ < 800
+           (fromMaybe defaultFixity $ Map.lookup (coerce meth_name) _fixity_map)
+#endif
+
+#if __GLASGOW_HASKELL__ >= 802
+mkPatSynI :: Map ReifiableName Type -> Name -> Info
+mkPatSynI type_map n = PatSynI n (fromMaybe (no_type n) $ Map.lookup (coerce n) type_map)
 #endif
 
 no_type :: Name -> Type
 no_type n = error $ "No type information found in local declaration for "
                     ++ show n
 
-findInstances :: Name -> [Dec] -> [Dec]
-findInstances n = map stripInstanceDec . concatMap match_instance
+-- | TODO RGS: Docs.
+filterInstanceDecs :: [Dec] -> Map ReifiableName [InstanceDec]
+filterInstanceDecs =
+    F.foldl' (Map.unionWith (++)) Map.empty
+  . map (\(n, d) -> Map.singleton (ReifiableName n) [stripInstanceDec d])
+  . concatMap filter_instance_decs
   where
-#if __GLASGOW_HASKELL__ >= 711
-    match_instance d@(InstanceD _ _ ty _)
+    filter_instance_decs :: Dec -> [Named InstanceDec]
+#if __GLASGOW_HASKELL__ >= 800
+    filter_instance_decs d@(InstanceD _ _ ty sub_decs)
 #else
-    match_instance d@(InstanceD _ ty _)
+    filter_instance_decs d@(InstanceD _ ty sub_decs)
 #endif
-                                               | ConT n' <- ty_head ty
-                                               , n `nameMatches` n' = [d]
-#if __GLASGOW_HASKELL__ >= 807
-    match_instance (DataInstD ctxt _ lhs mk cons derivs)
-                                                  | ConT n' <- ty_head lhs
-                                                  , n `nameMatches` n' = [d]
+      = maybeToList m_dec_entry ++ concatMap filter_instance_decs sub_decs
+      where
+        m_dec_entry = case ty_head ty of
+                        ConT n -> Just (n, d)
+                        _      -> Nothing
+#if __GLASGOW_HASKELL__ >= 808
+    filter_instance_decs (DataInstD ctxt _ lhs mk cons derivs)
+      | ConT n <- ty_head lhs
+      = [(n, d)]
       where
         mtvbs = rejig_data_inst_tvbs ctxt lhs mk
         d = DataInstD ctxt mtvbs lhs mk cons derivs
-    match_instance (NewtypeInstD ctxt _ lhs mk con derivs)
-                                                  | ConT n' <- ty_head lhs
-                                                  , n `nameMatches` n' = [d]
+    filter_instance_decs (NewtypeInstD ctxt _ lhs mk con derivs)
+      | ConT n <- ty_head lhs
+      = [(n, d)]
       where
         mtvbs = rejig_data_inst_tvbs ctxt lhs mk
         d = NewtypeInstD ctxt mtvbs lhs mk con derivs
-#elif __GLASGOW_HASKELL__ > 710
-    match_instance d@(DataInstD _ n' _ _ _ _)    | n `nameMatches` n' = [d]
-    match_instance d@(NewtypeInstD _ n' _ _ _ _) | n `nameMatches` n' = [d]
+#elif __GLASGOW_HASKELL__ >= 800
+    filter_instance_decs d@(DataInstD _ n _ _ _ _)    = [(n, d)]
+    filter_instance_decs d@(NewtypeInstD _ n _ _ _ _) = [(n, d)]
 #else
-    match_instance d@(DataInstD _ n' _ _ _)    | n `nameMatches` n' = [d]
-    match_instance d@(NewtypeInstD _ n' _ _ _) | n `nameMatches` n' = [d]
+    filter_instance_decs d@(DataInstD _ n _ _ _)      = [(n, d)]
+    filter_instance_decs d@(NewtypeInstD _ n _ _ _)   = [(n, d)]
 #endif
-#if __GLASGOW_HASKELL__ >= 807
-    match_instance (TySynInstD (TySynEqn _ lhs rhs))
-                                               | ConT n' <- ty_head lhs
-                                               , n `nameMatches` n' = [d]
+#if __GLASGOW_HASKELL__ >= 808
+    filter_instance_decs (TySynInstD (TySynEqn _ lhs rhs))
+      | ConT n <- ty_head lhs
+      = [(n, d)]
       where
         mtvbs = rejig_tvbs [lhs, rhs]
         d = TySynInstD (TySynEqn mtvbs lhs rhs)
 #else
-    match_instance d@(TySynInstD n' _)         | n `nameMatches` n' = [d]
+    filter_instance_decs d@(TySynInstD n _) = [(n, d)]
 #endif
-
-#if __GLASGOW_HASKELL__ >= 711
-    match_instance (InstanceD _ _ _ decs)
-#else
-    match_instance (InstanceD _ _ decs)
-#endif
-                                        = concatMap match_instance decs
-    match_instance _                    = []
+    filter_instance_decs _ = []
 
 #if __GLASGOW_HASKELL__ >= 807
     -- See Note [Rejigging reified type family equations variable binders]
@@ -688,52 +758,10 @@ maybeForallT tvbs cxt ty
   | ForallT tvbs2 cxt2 ty2 <- ty = ForallT (tvbs ++ tvbs2) (cxt ++ cxt2) ty2
   | otherwise                    = ForallT tvbs cxt ty
 
-findCon :: Name -> [Con] -> Maybe (Named Con)
-findCon n = firstMatch match_con
-  where
-    match_con :: Con -> Maybe (Named Con)
-    match_con con =
-      case con of
-        NormalC n' _  | n `nameMatches` n' -> Just (n', con)
-        RecC n' _     | n `nameMatches` n' -> Just (n', con)
-        InfixC _ n' _ | n `nameMatches` n' -> Just (n', con)
-        ForallC _ _ c -> case match_con c of
-                           Just (n', _) -> Just (n', con)
-                           Nothing      -> Nothing
-#if __GLASGOW_HASKELL__ > 710
-        GadtC nms _ _    -> gadt_case con nms
-        RecGadtC nms _ _ -> gadt_case con nms
-#endif
-        _                -> Nothing
-
-#if __GLASGOW_HASKELL__ > 710
-    gadt_case :: Con -> [Name] -> Maybe (Named Con)
-    gadt_case con nms = case find (n `nameMatches`) nms of
-                          Just n' -> Just (n', con)
-                          Nothing -> Nothing
-#endif
-
 data RecSelInfo
   = RecSelH98  Type -- The record field's type
   | RecSelGADT Type -- The record field's type
                Type -- The GADT return type
-
-findRecSelector :: Name -> [Con] -> Maybe (Named RecSelInfo)
-findRecSelector n = firstMatch match_con
-  where
-    match_con :: Con -> Maybe (Named RecSelInfo)
-    match_con (RecC _ vstys)            = fmap (liftSnd RecSelH98) $
-                                          firstMatch match_rec_sel vstys
-#if __GLASGOW_HASKELL__ >= 800
-    match_con (RecGadtC _ vstys ret_ty) = fmap (liftSnd (`RecSelGADT` ret_ty)) $
-                                          firstMatch match_rec_sel vstys
-#endif
-    match_con (ForallC _ _ c)           = match_con c
-    match_con _                         = Nothing
-
-    match_rec_sel (n', _, sel_ty)
-      | n `nameMatches` n' = Just (n', sel_ty)
-    match_rec_sel _        = Nothing
 
 ---------------------------------
 -- Reifying fixities
@@ -767,7 +795,7 @@ reifyFixity = qReifyFixity
 -- you really need to tell the difference.)
 reifyFixityWithLocals :: DsMonad q => Name -> q (Maybe Fixity)
 reifyFixityWithLocals name = qRecover
-  (return . reifyFixityInDecs name =<< localDeclarations)
+  (return . Map.lookup (ReifiableName name) =<< localFixityMap)
   (qReifyFixity name)
 
 --------------------------------------
@@ -779,19 +807,44 @@ reifyFixityWithLocals name = qRecover
 #if __GLASGOW_HASKELL__ < 809
 qReifyType :: forall m. Quasi m => Name -> m Type
 qReifyType name = do
-  info <- qReify name
-  case infoType info <|> info_kind info of
+  info  <- qReify name
+  cusks <- cusksEnabled
+  case info_type info <|> info_kind cusks info of
     Just t  -> return t
     Nothing -> fail $ "Could not reify the full type of " ++ nameBase name
   where
-    info_kind :: Info -> Maybe Kind
-    info_kind info = do
+    info_type :: Info -> Maybe Type
+    info_type info =
+      case info of
+        ClassOpI _ t _
+#if __GLASGOW_HASKELL__ < 800
+                 _
+#endif
+                       -> Just t
+        DataConI _ t _
+#if __GLASGOW_HASKELL__ < 800
+                 _
+#endif
+                       -> Just t
+        VarI _ t _
+#if __GLASGOW_HASKELL__ < 800
+             _
+#endif
+                       -> Just t
+        TyVarI _ t     -> Just t
+#if __GLASGOW_HASKELL__ >= 802
+        PatSynI _ t    -> Just t
+#endif
+        _              -> Nothing
+
+    info_kind :: Bool -> Info -> Maybe Kind
+    info_kind cusks info = do
       dec <- case info of
                ClassI d _  -> Just d
                TyConI d    -> Just d
                FamilyI d _ -> Just d
                _           -> Nothing
-      match_cusk name dec
+      Map.lookup (coerce name) $ filterTypes cusks [dec]
 
 {- | @reifyType nm@ attempts to find the type or kind of @nm@. For example,
 @reifyType 'not@   returns @Bool -> Bool@, and
@@ -816,160 +869,232 @@ reifyTypeWithLocals name = do
 -- mean that the full type of the name cannot be determined. (Use
 -- 'reifyWithLocals_maybe' if you really need to tell the difference.)
 reifyTypeWithLocals_maybe :: DsMonad q => Name -> q (Maybe Type)
-reifyTypeWithLocals_maybe name = do
-#if __GLASGOW_HASKELL__ >= 809
+reifyTypeWithLocals_maybe name = qRecover
+  (return . Map.lookup (ReifiableName name) =<< localTypeMap)
+  (Just `fmap` qReifyType name)
+
+-- | TODO RGS: Docs
+filterTypes :: Bool -> [Dec] -> Map ReifiableName Type
+filterTypes cusks decs =
+  mk_reifiable_name_map $ concatMap filter_decs_with_types decs
+  where
+    standalone_type_map :: Map ReifiableName Type
+    standalone_type_map = mk_reifiable_name_map $ mapMaybe filter_standalone_type decs
+
+    -- Only contains Names of things with standalone type or kind signatures.
+    filter_standalone_type :: Dec -> Maybe (Named Type)
+    filter_standalone_type (SigD n ty)       = Just (n, ty)
+#if __GLASGOW_HASKELL__ >= 802
+    filter_standalone_type (PatSynSigD n ty) = Just (n, ty)
+#endif
+#if __GLASGOW_HASKELL__ >= 810
+    filter_standalone_type (KiSigD n ki)     = Just (n, ki)
+#endif
+    filter_standalone_type _                 = Nothing
+
+    filter_decs_with_types :: Dec -> [Named Type]
+    filter_decs_with_types (FunD n _) =
+      maybeToList $ lookup_standalone_type n
+    filter_decs_with_types (ValD pat _ _) =
+      mapMaybe lookup_standalone_type $ F.toList $ extractBoundNamesPat pat
+    filter_decs_with_types (TySynD n tvbs rhs) =
+      maybeToList $ lookup_standalone_kind n $ ty_syn_kind tvbs rhs
+    filter_decs_with_types (ClassD _ n tvbs _ sub_decs) =
+         maybeToList (lookup_standalone_kind n $ class_kind tvbs)
+      ++ whenAlt assoc_type_cusks
+                 (mapMaybe (class_assoc_type_kind cls_tvb_kind_map) sub_decs)
+      ++ mapMaybe (class_meth_type n tvbs) sub_decs
+      where
+        m_cls_sak = Map.lookup (coerce n) standalone_type_map
+
+        -- An associated type family can only have a CUSK if its parent class either:
+        --
+        -- 1. Has a standalone kind signature, or
+        -- 2. Also has a CUSK (under -XCUSKs)
+        assoc_type_cusks = isJust m_cls_sak || (cusks && all tvb_is_kinded tvbs)
+
+        cls_tvb_kind_map
+            -- If a class has a standalone kind signature, then we can determine the
+            -- full kind of its associated types in 99% of cases.
+            -- See Note [The limitations of standalone kind signatures] for what
+            -- happens in the other 1% of cases.
+          | Just ki <- m_cls_sak
+          = let (arg_kis, _res_ki) = unravelType ki
+                mb_vis_arg_kis     = map vis_arg_kind_maybe $ filterVisFunArgs arg_kis in
+            Map.fromList [ (tvName tvb, tvb_kind)
+                         | (tvb, mb_vis_arg_ki) <- zip tvbs mb_vis_arg_kis
+                         , Just tvb_kind <- [mb_vis_arg_ki <|> tvb_kind_maybe tvb]
+                         ]
+
+          | otherwise
+          = Map.fromList [ (tvName tvb, tvb_kind)
+                         | tvb <- tvbs
+                         , Just tvb_kind <- [tvb_kind_maybe tvb]
+                         ]
+    filter_decs_with_types (InstanceD
+#if __GLASGOW_HASKELL__ >= 800
+                                      _
+#endif
+                                      _ _ sub_decs) =
+      concatMap filter_instance_sub_decs_with_types sub_decs
+    filter_decs_with_types (ForeignD fgn) = [foreign_type fgn]
+#if __GLASGOW_HASKELL__ >= 800
+    filter_decs_with_types (DataD _ n tvbs m_ki cons _) =
+         maybeToList (lookup_standalone_kind n $ datatype_kind tvbs m_ki)
+      ++ concatMap (con_types n (map tvbToTANormalWithSig tvbs)) cons
+    filter_decs_with_types (NewtypeD _ n tvbs m_ki con _) =
+         maybeToList (lookup_standalone_kind n $ datatype_kind tvbs m_ki)
+      ++ con_types n (map tvbToTANormalWithSig tvbs) con
+    filter_decs_with_types (DataFamilyD n tvbs m_ki) =
+      maybeToList $ lookup_standalone_kind n (open_ty_fam_kind tvbs m_ki)
+    filter_decs_with_types (OpenTypeFamilyD (TypeFamilyHead n tvbs res_sig _)) =
+      maybeToList $ lookup_standalone_kind n $ open_ty_fam_kind tvbs $ res_sig_to_kind res_sig
+    filter_decs_with_types (ClosedTypeFamilyD (TypeFamilyHead n tvbs res_sig _) _) =
+      maybeToList $ lookup_standalone_kind n $ closed_ty_fam_kind tvbs $ res_sig_to_kind res_sig
+#else
+    filter_decs_with_types (DataD _ n tvbs cons _) =
+         maybeToList (lookup_standalone_kind n $ datatype_kind tvbs Nothing)
+      ++ concatMap (con_types n (map tvbToTANormalWithSig tvbs)) cons
+    filter_decs_with_types (NewtypeD _ n tvbs con _) =
+         maybeToList (lookup_standalone_kind n $ datatype_kind tvbs Nothing)
+      ++ con_types n (map tvbToTANormalWithSig tvbs) con
+    filter_decs_with_types (FamilyD _ n tvbs m_ki) =
+      maybeToList $ lookup_standalone_kind n $ open_ty_fam_kind tvbs m_ki
+    filter_decs_with_types (ClosedTypeFamilyD n tvbs m_ki _) =
+      maybeToList $ lookup_standalone_kind n $ closed_ty_fam_kind tvbs m_ki
+#endif
+#if __GLASGOW_HASKELL__ >= 808
+    filter_decs_with_types (DataInstD _ _ lhs _ cons _)
+      | (ConT n, ty_args) <- unfoldType lhs
+      = concatMap (con_types n ty_args) cons
+    filter_decs_with_types (NewtypeInstD _ _ lhs _ con _)
+      | (ConT n, ty_args) <- unfoldType lhs
+      = con_types n ty_args con
+#else
+    filter_decs_with_types (DataInstD _ n tys
+#if __GLASGOW_HASKELL__ >= 800
+                                      _
+#endif
+                                      cons _)
+      = concatMap (con_types n (map TANormal tys)) cons
+    filter_decs_with_types (NewtypeInstD _ n tys
+#if __GLASGOW_HASKELL__ >= 800
+                                         _
+#endif
+                                         con _)
+      = con_types n (map TANormal tys) con
+#endif
+#if __GLASGOW_HASKELL__ >= 802
+    filter_decs_with_types (PatSynD n _ _ _) =
+      maybeToList $ lookup_standalone_type n
+#endif
+    filter_decs_with_types _ = []
+
+    class_meth_type :: Name -> [TyVarBndr] -> Dec -> Maybe (Named Type)
+    class_meth_type cls_name cls_tvbs sub_dec =
+      case sub_dec of
+        SigD meth_name meth_ty
+          -> Just (meth_name, quantifyClassMethodType cls_name cls_tvbs True meth_ty)
+        _ -> Nothing
+
+    filter_instance_sub_decs_with_types :: Dec -> [Named Type]
+    filter_instance_sub_decs_with_types d@DataInstD{}    = filter_decs_with_types d
+    filter_instance_sub_decs_with_types d@NewtypeInstD{} = filter_decs_with_types d
+    filter_instance_sub_decs_with_types _                = []
+
+    foreign_type :: Foreign -> Named Type
+    foreign_type (ImportF _ _ _ n ty) = (n, ty)
+    foreign_type (ExportF _ _   n ty) = (n, ty)
+
+    lookup_standalone_type :: Name -> Maybe (Named Type)
+    lookup_standalone_type n = fmap (n,) $ Map.lookup (coerce n) standalone_type_map
+
+    -- Used only for type-level declarations. If a standalone kind signature
+    -- cannot be found, fall back on the declaration's CUSK (if applicable).
+    lookup_standalone_kind :: Name -> Maybe Kind -> Maybe (Named Kind)
+    lookup_standalone_kind n m_cusk =
+      fmap (n,) $ Map.lookup (coerce n) standalone_type_map <|> whenAlt cusks m_cusk
+
+    -- TODO RGS: Docs for the arguments
+    con_types :: Name -> [TypeArg] -> Con -> [Named Type]
+    con_types ty_name ty_args con =
+         map (,full_con_ty) (conNames con)
+      ++ map mk_rec_sel_type (rec_sel_infos con)
+      where
+        h98_tvbs   = freeVariablesWellScoped $ map probablyWrongUnTypeArg ty_args
+        h98_res_ty = applyType (ConT ty_name) ty_args
+
+        -- See Note [Use unSigType in filterTypes]
+        full_con_ty = unSigType $ con_to_type h98_tvbs h98_res_ty con
+
+        extract_rec_sel_info :: RecSelInfo -> ([TyVarBndr], Type, Type)
+          -- Returns ( Selector type variable binders
+          --         , Record field type
+          --         , constructor result type )
+        extract_rec_sel_info rec_sel_info =
+          case rec_sel_info of
+            RecSelH98 sel_ty -> (h98_tvbs, sel_ty, h98_res_ty)
+            RecSelGADT sel_ty con_res_ty ->
+              ( freeVariablesWellScoped [con_res_ty, sel_ty]
+              , sel_ty, con_res_ty)
+
+        mk_rec_sel_type :: Named RecSelInfo -> Named Type
+        mk_rec_sel_type (n, rec_sel_info) =
+          let (tvbs, sel_ty, con_res_ty) = extract_rec_sel_info rec_sel_info
+              -- See Note [Use unSigType in filterTypes]
+              full_sel_ty = unSigType $ maybeForallT tvbs [] $ mkArrows [con_res_ty] sel_ty
+          in (n, full_sel_ty)
+
+    -- TODO RGS: Docs for the arguments
+    rec_sel_infos :: Con -> [Named RecSelInfo]
+    rec_sel_infos NormalC{}                 = []
+    rec_sel_infos InfixC{}                  = []
+    rec_sel_infos (ForallC _ _ c)           = rec_sel_infos c
+    rec_sel_infos (RecC _ vstys)            =
+      map (\(n, _, sel_ty) -> (n, RecSelH98 sel_ty)) vstys
+#if __GLASGOW_HASKELL__ >= 800
+    rec_sel_infos GadtC{}                   = []
+    rec_sel_infos (RecGadtC _ vstys ret_ty) =
+      map (\(n, _, sel_ty) -> (n, RecSelGADT sel_ty ret_ty)) vstys
+#endif
+
+    -- Uncover the kind of an associated type family. There is an invariant
+    -- that this function should only ever be called when the kind of the
+    -- parent class is known (i.e., if it has a standalone kind signature or a
+    -- CUSK). Despite this, it is possible for this function to return Nothing.
+    -- See Note [The limitations of standalone kind signatures].
+    class_assoc_type_kind :: Map Name Kind -> Dec -> Maybe (Named Kind)
+    class_assoc_type_kind cls_tvb_kind_map sub_dec =
+      case sub_dec of
+#if __GLASGOW_HASKELL__ >= 800
+        DataFamilyD n tf_tvbs m_ki ->
+          fmap (n,) $ build_kind (map ascribe_tf_tvb_kind tf_tvbs) (default_res_ki m_ki)
+        OpenTypeFamilyD (TypeFamilyHead n tf_tvbs res_sig _) ->
+          fmap (n,) $ build_kind (map ascribe_tf_tvb_kind tf_tvbs)
+                                 (default_res_ki $ res_sig_to_kind res_sig)
+#else
+        FamilyD _ n tf_tvbs m_ki ->
+          fmap (n,) $ build_kind (map ascribe_tf_tvb_kind tf_tvbs) (default_res_ki m_ki)
+#endif
+        _ -> Nothing
+      where
+        ascribe_tf_tvb_kind :: TyVarBndr -> TyVarBndr
+        ascribe_tf_tvb_kind tvb =
+          case tvb of
+            KindedTV{}  -> tvb
+            PlainTV tvn -> KindedTV tvn $ fromMaybe StarT $ Map.lookup tvn cls_tvb_kind_map
+
+-- If using GHC 8.10 or later, check if the -XCUSKs language extension is enabled.
+-- If using an older GHC, return True, as the behavior of -XCUSKs was the norm.
+cusksEnabled :: Quasi q => q Bool
+cusksEnabled = do
+#if __GLASGOW_HASKELL__ >= 810
   cusks <- qIsExtEnabled CUSKs
 #else
   -- On earlier GHCs, the behavior of -XCUSKs was the norm.
   let cusks = True
 #endif
-  qRecover (return . reifyTypeInDecs cusks name =<< localDeclarations)
-           (Just `fmap` qReifyType name)
-
--- | Look through a list of declarations and return its full type, if
--- available.
-reifyTypeInDecs :: Bool -> Name -> [Dec] -> Maybe Type
-reifyTypeInDecs cusks name decs =
-  (reifyInDecs name decs >>= infoType) <|> findKind cusks name decs
-
--- Extract the type information (if any) contained in an Info.
-infoType :: Info -> Maybe Type
-infoType info =
-  case info of
-    ClassOpI _ t _
-#if __GLASGOW_HASKELL__ < 800
-             _
-#endif
-                   -> Just t
-    DataConI _ t _
-#if __GLASGOW_HASKELL__ < 800
-             _
-#endif
-                   -> Just t
-    VarI _ t _
-#if __GLASGOW_HASKELL__ < 800
-         _
-#endif
-                   -> Just t
-    TyVarI _ t     -> Just t
-#if __GLASGOW_HASKELL__ >= 802
-    PatSynI _ t    -> Just t
-#endif
-    _              -> Nothing
-
--- Like findType, but instead searching for kind signatures.
--- This mostly searches through `KiSigD`s, but if the -XCUSKs extension is
--- enabled, this also retrieves kinds for declarations with CUSKs.
-findKind :: Bool -- Is -XCUSKs enabled?
-         -> Name -> [Dec] -> Maybe Kind
-findKind cusks name decls =
-      firstMatch (match_kind_sig name decls) decls
-  <|> whenAlt cusks (firstMatch (match_cusk name) decls)
-
--- Look for a declaration's kind by searching for its standalone kind
--- signature, if available.
-match_kind_sig :: Name -> [Dec] -> Dec -> Maybe Kind
-match_kind_sig n decs (ClassD _ n' tvbs _ sub_decs)
-  -- If a class has a standalone kind signature, then we can determine the
-  -- full kind of its associated types in 99% of cases.
-  -- See Note [The limitations of standalone kind signatures] for what
-  -- happens in the other 1% of cases.
-  | Just ki <- firstMatch (find_kind_sig n') decs
-  , let (arg_kis, _res_ki) = unravelType ki
-        mb_vis_arg_kis     = map vis_arg_kind_maybe $ filterVisFunArgs arg_kis
-        cls_tvb_kind_map   =
-          Map.fromList [ (tvName tvb, tvb_kind)
-                       | (tvb, mb_vis_arg_ki) <- zip tvbs mb_vis_arg_kis
-                       , Just tvb_kind <- [mb_vis_arg_ki <|> tvb_kind_maybe tvb]
-                       ]
-  = firstMatch (find_assoc_type_kind n cls_tvb_kind_map) sub_decs
-match_kind_sig n _ dec = find_kind_sig n dec
-
-find_kind_sig :: Name -> Dec -> Maybe Kind
-#if __GLASGOW_HASKELL__ >= 809
-find_kind_sig n (KiSigD n' ki)
-  | n `nameMatches` n' = Just ki
-#endif
-find_kind_sig _ _ = Nothing
-
--- Compute a declaration's kind by retrieving its CUSK, if it has one.
--- This is only done when -XCUSKs is enabled, or on older GHCs where
--- CUSKs were the only means of specifying this information.
-match_cusk :: Name -> Dec -> Maybe Kind
-#if __GLASGOW_HASKELL__ >= 800
-match_cusk n (DataD _ n' tvbs m_ki _ _)
-  | n `nameMatches` n'
-  = datatype_kind tvbs m_ki
-match_cusk n (NewtypeD _ n' tvbs m_ki _ _)
-  | n `nameMatches` n'
-  = datatype_kind tvbs m_ki
-match_cusk n (DataFamilyD n' tvbs m_ki)
-  | n `nameMatches` n'
-  = open_ty_fam_kind tvbs m_ki
-match_cusk n (OpenTypeFamilyD (TypeFamilyHead n' tvbs res_sig _))
-  | n `nameMatches` n'
-  = open_ty_fam_kind tvbs (res_sig_to_kind res_sig)
-match_cusk n (ClosedTypeFamilyD (TypeFamilyHead n' tvbs res_sig _) _)
-  | n `nameMatches` n'
-  = closed_ty_fam_kind tvbs (res_sig_to_kind res_sig)
-#else
-match_cusk n (DataD _ n' tvbs _ _)
-  | n `nameMatches` n'
-  = datatype_kind tvbs Nothing
-match_cusk n (NewtypeD _ n' tvbs _ _)
-  | n `nameMatches` n'
-  = datatype_kind tvbs Nothing
-match_cusk n (FamilyD _ n' tvbs m_ki)
-  | n `nameMatches` n'
-  = open_ty_fam_kind tvbs m_ki
-match_cusk n (ClosedTypeFamilyD n' tvbs m_ki _)
-  | n `nameMatches` n'
-  = closed_ty_fam_kind tvbs m_ki
-#endif
-match_cusk n (TySynD n' tvbs rhs)
-  | n `nameMatches` n'
-  = ty_syn_kind tvbs rhs
-match_cusk n (ClassD _ n' tvbs _ sub_decs)
-  | n `nameMatches` n'
-  = class_kind tvbs
-  | -- An associated type family can only have a CUSK if its parent class
-    -- also has a CUSK.
-    all tvb_is_kinded tvbs
-  , let cls_tvb_kind_map = Map.fromList [ (tvName tvb, tvb_kind)
-                                        | tvb <- tvbs
-                                        , Just tvb_kind <- [tvb_kind_maybe tvb]
-                                        ]
-  = firstMatch (find_assoc_type_kind n cls_tvb_kind_map) sub_decs
-match_cusk _ _ = Nothing
-
--- Uncover the kind of an associated type family. There is an invariant
--- that this function should only ever be called when the kind of the
--- parent class is known (i.e., if it has a standalone kind signature or a
--- CUSK). Despite this, it is possible for this function to return Nothing.
--- See Note [The limitations of standalone kind signatures].
-find_assoc_type_kind :: Name -> Map Name Kind -> Dec -> Maybe Kind
-find_assoc_type_kind n cls_tvb_kind_map sub_dec =
-  case sub_dec of
-#if __GLASGOW_HASKELL__ >= 800
-    DataFamilyD n' tf_tvbs m_ki
-      |  n `nameMatches` n'
-      -> build_kind (map ascribe_tf_tvb_kind tf_tvbs) (default_res_ki m_ki)
-    OpenTypeFamilyD (TypeFamilyHead n' tf_tvbs res_sig _)
-      |  n `nameMatches` n'
-      -> build_kind (map ascribe_tf_tvb_kind tf_tvbs)
-                    (default_res_ki $ res_sig_to_kind res_sig)
-#else
-    FamilyD _ n' tf_tvbs m_ki
-      |  n `nameMatches` n'
-      -> build_kind (map ascribe_tf_tvb_kind tf_tvbs) (default_res_ki m_ki)
-#endif
-    _ -> Nothing
-  where
-    ascribe_tf_tvb_kind :: TyVarBndr -> TyVarBndr
-    ascribe_tf_tvb_kind tvb =
-      case tvb of
-        KindedTV{}  -> tvb
-        PlainTV tvn -> KindedTV tvn $ fromMaybe StarT $ Map.lookup tvn cls_tvb_kind_map
+  return cusks
 
 -- Data types have CUSKs when:
 --
@@ -1151,11 +1276,14 @@ lookupNameWithLocals ns s = do
     built_name = mkName s
 
     consult_locals = do
-      decs <- localDeclarations
-      let mb_infos = map (reifyInDec built_name decs) decs
-          infos = catMaybes mb_infos
+      -- TODO RGS: This is a bit tricky, since we are using `Map.assocs localInfoMap`
+      -- instead of `reifyWithLocals_maybe`. Explain why.
+      all_infos <- fmap Map.assocs localInfoMap
+      let name_infos = mapMaybe (\(ReifiableName n, i) ->
+                                  if n `nameMatches` built_name
+                                  then Just (n, i) else Nothing) all_infos
       return $ firstMatch (if ns then find_type_name
-                                 else find_value_name) infos
+                                 else find_value_name) name_infos
 
     -- These functions work over Named Infos so we can avoid performing
     -- tiresome pattern-matching to retrieve the name associated with each Info.

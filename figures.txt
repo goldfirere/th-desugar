@@ -1,0 +1,61 @@
+-----
+-- TODO RGS: Delete this before merging
+-----
+
+BEFORE CHANGES
+
+$ time /opt/cabal/3.2/bin/cabal build singletons
+Build profile: -w ghc-8.10.0.20200123 -O1
+...
+
+real    3m1.058s
+user    2m59.019s
+sys     0m1.822s
+
+$ time /opt/cabal/3.2/bin/cabal test eliminators:spec
+Build profile: -w ghc-8.10.0.20200123 -O1
+In order, the following will be built (use -v for more details):
+ - eliminators-0.6 (test:spec) (first run)
+...
+
+real    0m37.116s
+user    0m36.325s
+sys     0m0.831s
+
+$ time /opt/ghc/8.10.1/bin/ghc Bug.hs
+...
+
+real    0m5.801s
+user    0m5.525s
+sys     0m0.276s
+
+----------------------------------------------------------------------------
+
+AFTER CHANGES
+
+$ time /opt/cabal/3.2/bin/cabal build singletons
+Build profile: -w ghc-8.10.0.20200123 -O1
+In order, the following will be built (use -v for more details):
+ - singletons-2.7 (lib:singletons) (first run)
+...
+
+real    3m5.636s
+user    3m4.006s
+sys     0m1.768s
+
+$ time /opt/cabal/3.2/bin/cabal test eliminators:spec
+Build profile: -w ghc-8.10.0.20200123 -O1
+In order, the following will be built (use -v for more details):
+ - eliminators-0.6 (test:spec) (first run)
+...
+
+real    0m37.347s
+user    0m36.596s
+sys     0m0.797s
+
+$ time /opt/ghc/8.10.1/bin/ghc Bug.hs
+...
+
+real    0m5.934s
+user    0m5.677s
+sys     0m0.263s

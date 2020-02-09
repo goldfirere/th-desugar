@@ -6,7 +6,8 @@ rae@cs.brynmawr.edu
 Utility functions for th-desugar package.
 -}
 
-{-# LANGUAGE CPP, DeriveDataTypeable, RankNTypes, ScopedTypeVariables, TupleSections #-}
+{-# LANGUAGE CPP, DeriveDataTypeable, GeneralizedNewtypeDeriving,
+             RankNTypes, ScopedTypeVariables, TupleSections #-}
 
 #if __GLASGOW_HASKELL__ >= 800
 {-# LANGUAGE AllowAmbiguousTypes #-}
@@ -24,7 +25,8 @@ module Language.Haskell.TH.Desugar.Util (
   thirdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat,
   tvbToType, tvbToTypeWithSig, tvbToTANormalWithSig,
-  nameMatches, thdOf3, liftFst, liftSnd, firstMatch,
+  ReifiableName(..), nameMatches,
+  thdOf3, liftFst, liftSnd, firstMatch,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
@@ -135,22 +137,44 @@ tvbToTypeWithSig (KindedTV n k) = SigT (VarT n) k
 tvbToTANormalWithSig :: TyVarBndr -> TypeArg
 tvbToTANormalWithSig = TANormal . tvbToTypeWithSig
 
+-- | TODO RGS: Docs
+newtype ReifiableName = ReifiableName { getReifiableName :: Name }
+  deriving (Data, Ppr, Typeable)
+
+instance Eq ReifiableName where
+  ReifiableName n1 == ReifiableName n2 = nameMatches n1 n2
+
+instance Ord ReifiableName where
+  ReifiableName n1 `compare` ReifiableName n2 = nameOrdering n1 n2
+
+instance Show ReifiableName where
+  showsPrec p (ReifiableName n) = showsPrec p n
+
 -- | Do two names name the same thing?
 nameMatches :: Name -> Name -> Bool
-nameMatches n1@(Name occ1 flav1) n2@(Name occ2 flav2)
-  | NameS <- flav1 = occ1 == occ2
-  | NameS <- flav2 = occ1 == occ2
+nameMatches n1 n2 = nameOrdering n1 n2 == EQ
+
+-- | TODO RGS: Docs (also think of a better name)
+nameOrdering :: Name -> Name -> Ordering
+nameOrdering (Name occ1 flav1) (Name occ2 flav2)
+  | NameS <- flav1 = occ1 `compare` occ2
+  | NameS <- flav2 = occ1 `compare` occ2
   | NameQ mod1 <- flav1
   , NameQ mod2 <- flav2
-  = mod1 == mod2 && occ1 == occ2
+  = (mod1 `compare` mod2) `mappend` (occ1 `compare` occ2)
   | NameQ mod1 <- flav1
   , NameG _ _ mod2 <- flav2
-  = mod1 == mod2 && occ1 == occ2
+  = (mod1 `compare` mod2) `mappend` (occ1 `compare` occ2)
   | NameG _ _ mod1 <- flav1
   , NameQ mod2 <- flav2
-  = mod1 == mod2 && occ1 == occ2
+  = (mod1 `compare` mod2) `mappend` (occ1 `compare` occ2)
+    -- TODO: Explain why we don't use Name's Ord instance in these last cases.
+  | NameG ns1 pkg1 mod1 <- flav1
+  , NameG ns2 pkg2 mod2 <- flav2
+  = (mod1 `compare` mod2) `mappend` (occ1 `compare` occ2) `mappend` (ns1 `compare` ns2)
+                          `mappend` (pkg1 `compare` pkg2)
   | otherwise
-  = n1 == n2
+  = (occ1 `compare` occ2) `mappend` (flav1 `compare` flav2)
 
 -- | Extract the degree of a tuple
 tupleDegree_maybe :: String -> Maybe Int
