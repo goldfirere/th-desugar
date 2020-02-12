@@ -43,6 +43,8 @@ Version 1.11 [????.??.??]
   `DDec`.
 * Add `dsReifyType`, `reifyTypeWithLocals_maybe`, and `reifyTypeWithLocals`,
   which allow looking up the types or kinds of locally declared entities.
+* Fix a bug in which `reifyFixityWithLocals` would not look into local fixity
+  declarations inside of type classes.
 
 Version 1.10
 ------------
