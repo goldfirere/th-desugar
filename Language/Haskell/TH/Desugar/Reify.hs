@@ -244,8 +244,10 @@ reifyInDecs n decs = snd `fmap` firstMatch (reifyInDec n decs) decs
 reifyFixityInDecs :: Name -> [Dec] -> Maybe Fixity
 reifyFixityInDecs n = firstMatch match_fixity
   where
-    match_fixity (InfixD fixity n') | n `nameMatches` n' = Just fixity
-    match_fixity _                                       = Nothing
+    match_fixity (InfixD fixity n')        | n `nameMatches` n'
+                                           = Just fixity
+    match_fixity (ClassD _ _ _ _ sub_decs) = firstMatch match_fixity sub_decs
+    match_fixity _                         = Nothing
 
 -- | A reified thing along with the name of that thing.
 type Named a = (Name, a)

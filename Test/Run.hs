@@ -392,6 +392,28 @@ test_t112 =
            eqBA = fvsBAExpected `eqTH` fvsBAActual
        [| [eqAB, eqBA] |])
 
+test_t132 :: Bool
+test_t132 =
+  $(do let c      = mkName "C"
+           m      = mkName "m"
+           a      = mkName "a"
+           fixity = Fixity 5 InfixR
+           -- Defines a class with a fixity declaration inside, i.e.,
+           --
+           --   class C a where
+           --     infixr 5 `m`
+           --     m :: a
+           --
+           -- We define this by hand to avoid GHC#17608 on pre-8.12 GHCs.
+           decs = sweeten [ DClassD [] c [DPlainTV a] []
+                            [ DLetDec (DInfixD fixity m)
+                            , DLetDec (DSigD m (DVarT a))
+                            ]
+                          ]
+           expected = Just fixity
+       actual <- withLocalDeclarations decs (reifyFixityWithLocals m)
+       expected `eqTHSplice` actual)
+
 -- Unit tests for functions that compute free variables (e.g., fvDType)
 test_fvs :: [Bool]
 test_fvs =
@@ -587,6 +609,8 @@ main = hspec $ do
 
     zipWithM (\b n -> it ("toposorts free variables deterministically " ++ show n) b)
       test_t112 [1..]
+
+    it "reifies fixity declarations inside of classes" $ test_t132
 
     zipWithM (\b n -> it ("computes free variables correctly " ++ show n) b)
       test_fvs [1..]
