@@ -44,6 +44,8 @@ import Language.Haskell.TH hiding ( cxt )
 import Language.Haskell.TH.Datatype (tvName)
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.OSet (OSet)
+import Language.Haskell.TH.Instances () -- Backports Ord instances to old versions
+                                        -- of template-haskell that lack them
 import Language.Haskell.TH.Syntax
 
 import qualified Control.Monad.Fail as Fail
@@ -211,7 +213,7 @@ splitTuple_maybe t = go [] t
 data ForallVisFlag
   = ForallVis   -- ^ A visible @forall@ (with an arrow)
   | ForallInvis -- ^ An invisible @forall@ (with a dot)
-  deriving (Eq, Show, Typeable, Data)
+  deriving (Eq, Ord, Show, Typeable, Data)
 
 -- | The list of arguments in a function 'Type'.
 data FunArgs
@@ -227,7 +229,7 @@ data FunArgs
   | FAAnon Type FunArgs
     -- ^ An anonymous argument followed by an arrow. For example, the @a@
     --   in @a -> r@.
-  deriving (Eq, Show, Typeable, Data)
+  deriving (Eq, Ord, Show, Typeable, Data)
 
 -- | A /visible/ function argument type (i.e., one that must be supplied
 -- explicitly in the source code). This is in contrast to /invisible/
@@ -238,7 +240,7 @@ data VisFunArg
     -- ^ A visible @forall@ (e.g., @forall a -> a@).
   | VisFAAnon Type
     -- ^ An anonymous argument followed by an arrow (e.g., @a -> r@).
-  deriving (Eq, Show, Typeable, Data)
+  deriving (Eq, Ord, Show, Typeable, Data)
 
 -- | Filter the visible function arguments from a list of 'FunArgs'.
 filterVisFunArgs :: FunArgs -> [VisFunArg]
@@ -348,7 +350,7 @@ unfoldType = go []
 data TypeArg
   = TANormal Type
   | TyArg Kind
-  deriving (Eq, Show, Typeable, Data)
+  deriving (Eq, Ord, Show, Typeable, Data)
 
 -- | Apply one 'Type' to a list of arguments.
 applyType :: Type -> [TypeArg] -> Type

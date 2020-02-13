@@ -43,6 +43,7 @@ Version 1.11 [????.??.??]
   `DDec`.
 * Add `dsReifyType`, `reifyTypeWithLocals_maybe`, and `reifyTypeWithLocals`,
   which allow looking up the types or kinds of locally declared entities.
+* Derive `Ord` instances for all data types in `Language.Haskell.TH.Desugar`.
 * Fix a bug in which `reifyFixityWithLocals` would not look into local fixity
   declarations inside of type classes.
 

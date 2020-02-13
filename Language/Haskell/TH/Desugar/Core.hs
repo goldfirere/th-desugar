@@ -1412,7 +1412,7 @@ applyDType = foldl apply
 data DTypeArg
   = DTANormal DType
   | DTyArg DKind
-  deriving (Eq, Show, Typeable, Data, Generic)
+  deriving (Eq, Ord, Show, Typeable, Data, Generic)
 
 -- | Desugar a 'TypeArg'.
 dsTypeArg :: DsMonad q => TypeArg -> q DTypeArg
@@ -1627,7 +1627,7 @@ data DFunArgs
   | DFAAnon DType DFunArgs
     -- ^ An anonymous argument followed by an arrow. For example, the @a@
     --   in @a -> r@.
-  deriving (Eq, Show, Typeable, Data, Generic)
+  deriving (Eq, Ord, Show, Typeable, Data, Generic)
 
 -- | A /visible/ function argument type (i.e., one that must be supplied
 -- explicitly in the source code). This is in contrast to /invisible/
@@ -1638,7 +1638,7 @@ data DVisFunArg
     -- ^ A visible @forall@ (e.g., @forall a -> a@).
   | DVisFAAnon DType
     -- ^ An anonymous argument followed by an arrow (e.g., @a -> r@).
-  deriving (Eq, Show, Typeable, Data, Generic)
+  deriving (Eq, Ord, Show, Typeable, Data, Generic)
 
 -- | Filter the visible function arguments from a list of 'DFunArgs'.
 filterDVisFunArgs :: DFunArgs -> [DVisFunArg]
