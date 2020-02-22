@@ -315,7 +315,10 @@ reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
                                 reifyFixityInDecs n $ sub_decs ++ decs))
 #endif
 reifyInDec n decs (ClassD _ _ _ _ sub_decs)
-  | Just info <- firstMatch (reifyInDec n (sub_decs ++ decs)) sub_decs
+  | Just info <- firstMatch (reifyInDec n decs) sub_decs
+                 -- Important: don't pass (sub_decs ++ decs) to reifyInDec
+                 -- above, or else type family defaults can be confused for
+                 -- actual instances. See #134.
   = Just info
 #if __GLASGOW_HASKELL__ >= 711
 reifyInDec n decs (InstanceD _ _ _ sub_decs)
@@ -599,6 +602,7 @@ quantifyClassDecMethods (ClassD cxt cls_name cls_tvbs fds sub_decs)
     go (SigD n ty) =
       Just $ SigD n
            $ quantifyClassMethodType cls_name cls_tvbs prepend_cls ty
+    go d@(TySynInstD {})      = Just d
 #if __GLASGOW_HASKELL__ > 710
     go d@(OpenTypeFamilyD {}) = Just d
     go d@(DataFamilyD {})     = Just d
