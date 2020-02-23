@@ -67,8 +67,8 @@ module Language.Haskell.TH.Desugar (
   -- * Reification
   reifyWithWarning,
 
-  -- | The following definitions allow you to register a list of
-  -- @Dec@s to be used in reification queries.
+  -- ** Local reification
+  -- $localReification
   withLocalDeclarations, dsReify, dsReifyType,
   reifyWithLocals_maybe, reifyWithLocals, reifyFixityWithLocals,
   reifyTypeWithLocals_maybe, reifyTypeWithLocals,
@@ -426,3 +426,60 @@ conExistentialTvbs data_ty (DCon tvbs _ _ _ ret_ty) = do
                             | tvb <- tvbs
                             , M.notMember (dtvbName tvb) gadtSubt
                             ]
+
+{- $localReification
+
+@template-haskell@ reification functions like 'reify' and 'qReify', as well as
+@th-desugar@'s 'reifyWithWarning', only look through declarations that either
+(1) have already been typechecked in the current module, or (2) are in scope
+because of imports. We refer to this as /global/ reification. Sometimes,
+however, you may wish to reify declarations that have been quoted but not
+yet been typechecked, such as in the following example:
+
+@
+example :: IO ()
+example = putStrLn
+  $(do decs <- [d| data Foo = MkFoo |]
+       info <- 'reify' (mkName \"Foo\")
+       stringE $ pprint info)
+@
+
+Because @Foo@ only exists in a TH quote, it is not available globally. As a
+result, the call to @'reify' (mkName \"Foo\")@ will fail.
+
+To make this sort of example possible, @th-desugar@ extends global reification
+with /local/ reification. A function that performs local reification (such
+as 'dsReify', 'reifyWithLocals', or similar functions that have a 'DsMonad'
+context) looks through both typechecked (or imported) declarations /and/ quoted
+declarations that are currently in scope. One can add quoted declarations in
+the current scope by using the 'withLocalDeclarations' function. Here is an
+example of how to repair the example above using 'withLocalDeclarations':
+
+@
+example2 :: IO ()
+example2 = putStrLn
+  $(do decs <- [d| data Foo = MkFoo |]
+       info <- 'withLocalDeclarations' decs $
+                 'reifyWithLocals' (mkName \"Foo\")
+       stringE $ pprint info)
+@
+
+Note that 'withLocalDeclarations' should only be used to add quoted
+declarations with names that are not duplicates of existing global or local
+declarations. Adding duplicate declarations through 'withLocalDeclarations'
+is undefined behavior and should be avoided. This is unlikely to happen if
+you are only using 'withLocalDeclarations' in conjunction with TH quotes,
+however. For instance, this is /not/ an example of duplicate declarations:
+
+@
+data T = MkT1
+
+$(do decs <- [d| data T = MkT2 |]
+     info <- 'withLocalDeclarations' decs ...
+     ...)
+@
+
+The quoted @data T = MkT2@ does not conflict with the top-level @data T = Mk1@
+since declaring a data type within TH quotes gives it a fresh, unique name that
+distinguishes it from any other data types already in scope.
+-}
