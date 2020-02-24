@@ -516,6 +516,11 @@ reifyDecs = [d|
   class R2 a b where
     r3 :: a -> b -> c -> a
     type R4 b a :: *
+#if __GLASGOW_HASKELL__ >= 800
+    -- Only define this on GHC 8.0 or later, since TH had trouble quoting
+    -- associated type family defaults before then.
+    type R4 b a = Either a b
+#endif
     data R5 a :: *
 
   data R6 a = R7 { r8 :: a -> a, r9 :: Bool }

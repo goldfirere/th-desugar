@@ -45,6 +45,8 @@ Version 1.11 [????.??.??]
   which allow looking up the types or kinds of locally declared entities.
 * Fix a bug in which `reifyFixityWithLocals` would not look into local fixity
   declarations inside of type classes.
+* Fix a bug in which `reifyFixityWithLocals` would return incorrect results
+  for classes with associated type family defaults.
 
 Version 1.10
 ------------
