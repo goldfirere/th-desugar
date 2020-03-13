@@ -380,9 +380,12 @@ test_t112 :: [Bool]
 test_t112 =
   $(do a <- newName "a"
        b <- newName "b"
-       let [aVar, bVar] = map DVarT    [a, b]
-           [aTvb, bTvb] = map DPlainTV [a, b]
-       let fvsABExpected = [aTvb, bTvb]
+       let aVar = DVarT a
+           bVar = DVarT b
+           aTvb = DPlainTV a
+           bTvb = DPlainTV b
+
+           fvsABExpected = [aTvb, bTvb]
            fvsABActual   = toposortTyVarsOf [aVar, bVar]
 
            fvsBAExpected = [bTvb, aTvb]

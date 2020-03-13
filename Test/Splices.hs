@@ -192,8 +192,8 @@ test33_tvbs = [| let f :: forall a (b :: * -> *). Monad b => a -> b a
                      f = return in
                  [f 1, f 2] :: [Maybe Int] |]
 
-test34_let_as = [| let a@(Just x) = Just 5 in
-                   show x ++ show a |]
+test34_let_as = [| let a@(x, y) = (5, 6) in
+                   show x ++ show y ++ show a |]
 
 type Pair a = (a, a)
 test35_expand = [| let f :: Pair a -> a

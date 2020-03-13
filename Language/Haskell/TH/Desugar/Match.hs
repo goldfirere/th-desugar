@@ -347,7 +347,10 @@ matchLiterals (var:vars) sub_groups
   where
     match_group :: DsMonad q => [EquationInfo] -> q (Lit, MatchResult)
     match_group eqns
-      = do let DLitP lit = firstPat (head eqns)
+      = do let lit = case firstPat (head eqns) of
+                       DLitP lit' -> lit'
+                       _          -> error $ "Internal error in th-desugar "
+                                          ++ "(matchLiterals.match_group)"
            match_result <- simplCase vars (shiftEqns eqns)
            return (lit, match_result)
 matchLiterals [] _ = error "Internal error in th-desugar (matchLiterals)"
