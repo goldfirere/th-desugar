@@ -1,7 +1,7 @@
 `th-desugar` release notes
 ==========================
 
-Version 1.11 [????.??.??]
+Version 1.11 [2020.03.25]
 -------------------------
 * Support GHC 8.10.
 * Add support for visible dependent quantification. As part of this change,
