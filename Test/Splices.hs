@@ -494,11 +494,11 @@ testRecSelTypes n = do
   let ty1' = return $ unqualify ty1
       ty2' = return $ unqualify ty2
   [| let x :: $ty1'
-         x = undefined
+         x _ = undefined
          y :: $ty2'
-         y = undefined
+         y _ = undefined
      in
-     $(return $ VarE $ mkName "hasSameType") x y |]
+     $(return $ VarE $ mkName "hasSameType") (\d -> x d) (\d -> y d) |]
 
 
 -- used for expand
