@@ -1,8 +1,8 @@
 `th-desugar` release notes
 ==========================
 
-next [????.??.??]
------------------
+Version 1.12 [????.??.??]
+-------------------------
 * Make the test suite compile with GHC 8.12.
 
 Version 1.11 [2020.03.25]

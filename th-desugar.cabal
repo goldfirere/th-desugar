@@ -1,5 +1,5 @@
 name:           th-desugar
-version:        1.11
+version:        1.12
 cabal-version:  >= 1.10
 synopsis:       Functions to desugar Template Haskell
 homepage:       https://github.com/goldfirere/th-desugar
