@@ -84,8 +84,7 @@ $(dsDecSplice S.dectest18)
 $(do decs <- S.rec_sel_test
      withLocalDeclarations decs $ do
        [DDataD nd [] name [DPlainTV tvbName] k cons []] <- dsDecs decs
-       let arg_ty = (DConT name) `DAppT` (DVarT tvbName)
-       recsels <- getRecordSelectors arg_ty cons
+       recsels <- getRecordSelectors cons
        let num_sels = length recsels `div` 2 -- ignore type sigs
        when (num_sels /= S.rec_sel_test_num_sels) $
          qReport True $ "Wrong number of record selectors extracted.\n"

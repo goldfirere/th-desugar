@@ -474,13 +474,13 @@ type instance Poly x = Int
 flatten_dvald_test = [| let (a,b,c) = ("foo", 4, False) in
                         show a ++ show b ++ show c |]
 
-rec_sel_test = [d| data RecordSel a = forall b. (Show a, Eq b) =>
+rec_sel_test = [d| data RecordSel a = Show a =>
                                       MkRecord { recsel1 :: (Int, a)
-                                            , recsel_naughty :: (a, b)
-                                            , recsel2 :: (forall b. b -> a)
-                                            , recsel3 :: Bool }
-                                    | MkRecord2 { recsel4 :: (a, a) } |]
-rec_sel_test_num_sels = 4 :: Int   -- exclude naughty one
+                                               , recsel2 :: (forall b. b -> a)
+                                               , recsel3 :: Bool }
+                                    | MkRecord2 { recsel3 :: Bool
+                                                , recsel4 :: (a, a) } |]
+rec_sel_test_num_sels = 4 :: Int
 
 testRecSelTypes :: Int -> Q Exp
 testRecSelTypes n = do

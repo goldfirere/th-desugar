@@ -100,8 +100,7 @@ module Language.Haskell.TH.Desugar (
 #if __GLASGOW_HASKELL__ >= 800
   bindIP,
 #endif
-  conExistentialTvbs, mkExtraDKindBinders,
-  dTyVarBndrToDType, toposortTyVarsOf,
+  mkExtraDKindBinders, dTyVarBndrToDType, toposortTyVarsOf,
 
   -- ** 'FunArgs' and 'VisFunArg'
   FunArgs(..), VisFunArg(..), filterVisFunArgs, ravelType, unravelType,
@@ -124,7 +123,6 @@ import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Expand
 import Language.Haskell.TH.Desugar.FV
 import Language.Haskell.TH.Desugar.Match
-import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.Reify
 import Language.Haskell.TH.Desugar.Subst
 import Language.Haskell.TH.Desugar.Sweeten
@@ -232,38 +230,38 @@ flattenDValD other_dec = return [other_dec]
 --
 -- instead of returning one binding for @X1@ and another binding for @X2@.
 --
--- 'getRecordSelectors' attempts to filter out \"naughty\" record selectors
--- whose types mention existentially quantified type variables. But see the
--- documentation for 'conExistentialTvbs' for limitations to this approach.
-
--- See https://github.com/goldfirere/singletons/issues/180 for an example where
--- the latter behavior can bite you.
-
-getRecordSelectors :: DsMonad q
-                   => DType        -- ^ the type of the argument
-                   -> [DCon]
-                   -> q [DLetDec]
-getRecordSelectors arg_ty cons = merge_let_decs `fmap` concatMapM get_record_sels cons
+-- 'getRecordSelectors' does not attempt to filter out \"naughty\" record
+-- selectors—that is, records whose field types mention existentially
+-- quantified type variables that do not appear in the constructor's return
+-- type. Here is an example of a naughty record selector:
+--
+-- @
+-- data Some :: (Type -> Type) -> Type where
+--   MkSome :: { getSome :: f a } -> Some f
+-- @
+--
+-- GHC itself will not allow the use of @getSome@ as a top-level function due
+-- to its type @f a@ mentioning the existential variable @a@, but
+-- 'getRecordSelectors' will return it nonetheless. Ultimately, this design
+-- choice is a practical one, as detecting which type variables are existential
+-- in Template Haskell is difficult in the general case.
+getRecordSelectors :: DsMonad q => [DCon] -> q [DLetDec]
+getRecordSelectors cons = merge_let_decs `fmap` concatMapM get_record_sels cons
   where
-    get_record_sels con@(DCon con_tvbs _ con_name con_fields con_ret_ty) =
+    get_record_sels (DCon con_tvbs _ con_name con_fields con_ret_ty) =
       case con_fields of
         DRecC fields -> go fields
         DNormalC{}   -> return []
         where
           go fields = do
             varName <- qNewName "field"
-            con_ex_tvbs <- conExistentialTvbs arg_ty con
-            let con_univ_tvbs  = deleteFirstsBy ((==) `on` dtvbName) con_tvbs con_ex_tvbs
-                con_ex_tvb_set = OS.fromList $ map dtvbName con_ex_tvbs
-                forall'        = DForallT ForallInvis con_univ_tvbs
-                num_pats       = length fields
             return $ concat
-              [ [ DSigD name (forall' $ DArrowT `DAppT` con_ret_ty `DAppT` field_ty)
-                , DFunD name [DClause [DConP con_name (mk_field_pats n num_pats varName)]
+              [ [ DSigD name $ DForallT ForallInvis con_tvbs
+                             $ DArrowT `DAppT` con_ret_ty `DAppT` field_ty
+                , DFunD name [DClause [DConP con_name
+                                         (mk_field_pats n (length fields) varName)]
                                       (DVarE varName)] ]
               | ((name, _strict, field_ty), n) <- zip fields [0..]
-              , OS.null (fvDType field_ty `OS.intersection` con_ex_tvb_set)
-                  -- exclude "naughty" selectors
               ]
 
     mk_field_pats :: Int -> Int -> Name -> [DPat]
@@ -355,77 +353,6 @@ mkExtraDKindBinders k = do
     mk_tvb :: DVisFunArg -> q DTyVarBndr
     mk_tvb (DVisFADep tvb) = return tvb
     mk_tvb (DVisFAAnon ki) = DKindedTV <$> qNewName "a" <*> return ki
-
--- | Returns all of a constructor's existentially quantified type variable
--- binders.
---
--- Detecting the presence of existentially quantified type variables in the
--- context of Template Haskell is quite involved. Here is an example that
--- we will use to explain how this works:
---
--- @
--- data family Foo a b
--- data instance Foo (Maybe a) b where
---   MkFoo :: forall x y z. x -> y -> z -> Foo (Maybe x) [z]
--- @
---
--- In @MkFoo@, @x@ is universally quantified, whereas @y@ and @z@ are
--- existentially quantified. Note that @MkFoo@ desugars (in Core) to
--- something like this:
---
--- @
--- data instance Foo (Maybe a) b where
---   MkFoo :: forall a b y z. (b ~ [z]). a -> y -> z -> Foo (Maybe a) b
--- @
---
--- Here, we can see that @a@ appears in the desugared return type (it is a
--- simple alpha-renaming of @x@), so it is universally quantified. On the other
--- hand, neither @y@ nor @z@ appear in the desugared return type, so they are
--- existentially quantified.
---
--- This analysis would not have been possible without knowing what the original
--- data declaration's type was (in this case, @Foo (Maybe a) b@), which is why
--- we require it as an argument. Our algorithm for detecting existentially
--- quantified variables is not too different from what was described above:
--- we match the constructor's return type with the original data type, forming
--- a substitution, and check which quantified variables are not part of the
--- domain of the substitution.
---
--- Be warned: this may overestimate which variables are existentially
--- quantified when kind variables are involved. For instance, consider this
--- example:
---
--- @
--- data S k (a :: k)
--- data T a where
---   MkT :: forall k (a :: k). { foo :: Proxy (a :: k), bar :: S k a } -> T a
--- @
---
--- Here, the kind variable @k@ does not appear syntactically in the return type
--- @T a@, so 'conExistentialTvbs' would mistakenly flag @k@ as existential.
---
--- There are various tricks we could employ to improve this, but ultimately,
--- making this behave correctly with respect to @PolyKinds@ 100% of the time
--- would amount to performing kind inference in Template Haskell, which is
--- quite difficult. For the sake of simplicity, we have decided to stick with
--- a dumb-but-predictable syntactic check.
-conExistentialTvbs :: DsMonad q
-                   => DType -- ^ The type of the original data declaration
-                   -> DCon
-                   -> q [DTyVarBndr]
-conExistentialTvbs data_ty (DCon tvbs _ _ _ ret_ty) = do
-  data_ty' <- expandType data_ty
-  ret_ty'  <- expandType ret_ty
-  case matchTy YesIgnore ret_ty' data_ty' of
-    Nothing -> fail $ showString "Unable to match type "
-                    . showsPrec 11 ret_ty'
-                    . showString " with "
-                    . showsPrec 11 data_ty'
-                    $ ""
-    Just gadtSubt -> return [ tvb
-                            | tvb <- tvbs
-                            , M.notMember (dtvbName tvb) gadtSubt
-                            ]
 
 {- $localReification
 

@@ -3,6 +3,39 @@
 
 Version 1.12 [????.??.??]
 -------------------------
+* The type of the `getRecordSelectors` function has changed:
+
+  ```diff
+  -getRecordSelectors :: DsMonad q => DType -> [DCon] -> q [DLetDec]
+  +getRecordSelectors :: DsMonad q =>          [DCon] -> q [DLetDec]
+  ```
+
+  The old type signature had a `DType` argument whose sole purpose was to help
+  determine which type variables were existential, as this information was used
+  to filter out "naughty" record selectors, like the example below:
+
+  ```hs
+  data Some :: (Type -> Type) -> Type where
+    MkSome :: { getSome :: f a } -> Some f
+  ```
+
+  The old implementation of `getRecordSelectors` would not include `getSome` in
+  the returned list, as its type `f a` mentions an existential type variable,
+  `a`, that is not mentioned in the return type `Some f`. The new
+  implementation of `getRecordSelectors`, on the other hand, makes no attempt
+  to filter out naughty record selectors, so it would include `getSome`.
+
+  This reason for this change is ultimately because determining which type
+  variables are existentially quantified in the context of Template
+  Haskell is rather challenging in the general case. There are heuristics we
+  could employ to guess which variables are existential, but we have found
+  these heuristics difficult to predict (let alone specify). As a result, we
+  take the slightly less correct (but much easier to explain) approach of
+  returning all record selectors, regardless of whether they are naughty or not.
+* The `conExistentialTvbs` function has been removed. It was horribly buggy,
+  especially in the presence of GADT constructors. Moreover, this function was
+  used in the implementation of `getRecordSelectors` function, so bugs in
+  `conExistentialTvbs` often affected the results of `getRecordSelectors`.
 * Make the test suite compile with GHC 8.12.
 
 Version 1.11 [2020.03.25]
