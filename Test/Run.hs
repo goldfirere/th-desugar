@@ -8,7 +8,8 @@ rae@cs.brynmawr.edu
              RankNTypes, TypeFamilies,
              DataKinds, ConstraintKinds, PolyKinds, MultiParamTypeClasses,
              FlexibleInstances, ExistentialQuantification,
-             ScopedTypeVariables, GADTs, ViewPatterns, TupleSections #-}
+             ScopedTypeVariables, GADTs, ViewPatterns, TupleSections,
+             TypeOperators #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind
@@ -351,13 +352,21 @@ test_t100 =
        -- bother testing this on pre-8.0 GHCs.
 #endif
 
-test_t102 :: Bool
+test_t102 :: [Bool]
 test_t102 =
-  $(do decs <- [d| data Foo x where MkFoo :: forall a. { unFoo :: a } -> Foo a |]
-       withLocalDeclarations decs $ do
-         [DDataD _ _ foo [DPlainTV x] _ cons _] <- dsDecs decs
-         recs <- getRecordSelectors (DConT foo `DAppT` DVarT x) cons
-         (length recs `div` 2) `eqTHSplice` 1)
+  $(do decs1 <- [d| data Foo x where MkFoo :: forall a. { unFoo :: a } -> Foo a |]
+       let b1 = withLocalDeclarations decs1 $ do
+                  [DDataD _ _ _ _ _ cons1 _] <- dsDecs decs1
+                  recs1 <- getRecordSelectors cons1
+                  (length recs1 `div` 2) `eqTHSplice` 1
+       decs2 <- [d| data HList l where
+                      Nil  :: HList '[]
+                      (:>) :: { hhead :: x, htail :: HList xs } -> HList (x ': xs) |]
+       let b2 = withLocalDeclarations decs2 $ do
+                  [DDataD _ _ _ _ _ cons2 _] <- dsDecs decs2
+                  recs2 <- getRecordSelectors cons2
+                  (length recs2 `div` 2) `eqTHSplice` 2
+       [| [$b1, $b2] |])
 
 test_t103 :: Bool
 test_t103 =
@@ -604,7 +613,8 @@ main = hspec $ do
 
     it "reifies GADT record selectors correctly" $ test_t100
 
-    it "collects GADT record selectors correctly" $ test_t102
+    zipWithM (\b n -> it ("collects GADT record selectors correctly" ++ show n) b)
+      test_t102 [1..]
 
     it "quantifies kind variables in desugared ADT constructors" $ test_t103
 
