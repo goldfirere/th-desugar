@@ -6,14 +6,16 @@ Defines the desugared Template Haskell AST. The desugared types and
 constructors are prefixed with a D.
 -}
 
-{-# LANGUAGE CPP, DeriveDataTypeable, DeriveGeneric #-}
+{-# LANGUAGE CPP, DeriveDataTypeable, DeriveFunctor, DeriveGeneric #-}
 
 module Language.Haskell.TH.Desugar.AST where
 
 import Data.Data hiding (Fixity)
 import GHC.Generics hiding (Fixity)
 import Language.Haskell.TH
-import Language.Haskell.TH.Desugar.Util (ForallVisFlag)
+#if __GLASGOW_HASKELL__ < 900
+import Language.Haskell.TH.Datatype.TyVarBndr (Specificity)
+#endif
 
 -- | Corresponds to TH's @Exp@ type. Note that @DLamE@ takes names, not patterns.
 data DExp = DVarE Name
@@ -41,7 +43,7 @@ data DPat = DLitP Lit
 
 -- | Corresponds to TH's @Type@ type, used to represent
 -- types and kinds.
-data DType = DForallT ForallVisFlag [DTyVarBndr] DType
+data DType = DForallT DForallTelescope DType
            | DConstrainedT DCxt DType
            | DAppT DType DType
            | DAppKindT DType DKind
@@ -53,6 +55,17 @@ data DType = DForallT ForallVisFlag [DTyVarBndr] DType
            | DWildCardT
            deriving (Eq, Show, Typeable, Data, Generic)
 
+-- | The type variable binders in a @forall@.
+data DForallTelescope
+  = DForallVis   [DTyVarBndrUnit]
+    -- ^ A visible @forall@ (e.g., @forall a -> {...}@).
+    --   These do not have any notion of specificity, so we use
+    --   '()' as a placeholder value in the 'DTyVarBndr's.
+  | DForallInvis [DTyVarBndrSpec]
+    -- ^ An invisible @forall@ (e.g., @forall a {b} c -> {...}@),
+    --   where each binder has a 'Specificity'.
+  deriving (Eq, Show, Typeable, Data, Generic)
+
 -- | Kinds are types. Corresponds to TH's @Kind@
 type DKind = DType
 
@@ -63,9 +76,16 @@ type DPred = DType
 type DCxt = [DPred]
 
 -- | Corresponds to TH's @TyVarBndr@
-data DTyVarBndr = DPlainTV Name
-                | DKindedTV Name DKind
-                deriving (Eq, Show, Typeable, Data, Generic)
+data DTyVarBndr flag
+  = DPlainTV Name flag
+  | DKindedTV Name flag DKind
+  deriving (Eq, Show, Typeable, Data, Generic, Functor)
+
+-- | Corresponds to TH's @TyVarBndrSpec@
+type DTyVarBndrSpec = DTyVarBndr Specificity
+
+-- | Corresponds to TH's @TyVarBndrUnit@
+type DTyVarBndrUnit = DTyVarBndr ()
 
 -- | Corresponds to TH's @Match@ type.
 data DMatch = DMatch DPat DExp
@@ -90,19 +110,19 @@ data NewOrData = Newtype
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
-          | DDataD NewOrData DCxt Name [DTyVarBndr] (Maybe DKind) [DCon] [DDerivClause]
-          | DTySynD Name [DTyVarBndr] DType
-          | DClassD DCxt Name [DTyVarBndr] [FunDep] [DDec]
-          | DInstanceD (Maybe Overlap) (Maybe [DTyVarBndr]) DCxt DType [DDec]
+          | DDataD NewOrData DCxt Name [DTyVarBndrUnit] (Maybe DKind) [DCon] [DDerivClause]
+          | DTySynD Name [DTyVarBndrUnit] DType
+          | DClassD DCxt Name [DTyVarBndrUnit] [FunDep] [DDec]
+          | DInstanceD (Maybe Overlap) (Maybe [DTyVarBndrUnit]) DCxt DType [DDec]
           | DForeignD DForeign
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
-          | DDataFamilyD Name [DTyVarBndr] (Maybe DKind)
-          | DDataInstD NewOrData DCxt (Maybe [DTyVarBndr]) DType (Maybe DKind)
+          | DDataFamilyD Name [DTyVarBndrUnit] (Maybe DKind)
+          | DDataInstD NewOrData DCxt (Maybe [DTyVarBndrUnit]) DType (Maybe DKind)
                        [DCon] [DDerivClause]
           | DTySynInstD DTySynEqn
           | DRoleAnnotD Name [Role]
-          | DStandaloneDerivD (Maybe DDerivStrategy) (Maybe [DTyVarBndr]) DCxt DType
+          | DStandaloneDerivD (Maybe DDerivStrategy) (Maybe [DTyVarBndrUnit]) DCxt DType
           | DDefaultSigD Name DType
           | DPatSynD Name PatSynArgs DPatSynDir DPat
           | DPatSynSigD Name DPatSynType
@@ -135,14 +155,14 @@ data PatSynArgs
 #endif
 
 -- | Corresponds to TH's 'TypeFamilyHead' type
-data DTypeFamilyHead = DTypeFamilyHead Name [DTyVarBndr] DFamilyResultSig
+data DTypeFamilyHead = DTypeFamilyHead Name [DTyVarBndrUnit] DFamilyResultSig
                                        (Maybe InjectivityAnn)
                      deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's 'FamilyResultSig' type
 data DFamilyResultSig = DNoSig
                       | DKindSig DKind
-                      | DTyVarSig DTyVarBndr
+                      | DTyVarSig DTyVarBndrUnit
                       deriving (Eq, Show, Typeable, Data, Generic)
 
 #if __GLASGOW_HASKELL__ <= 710
@@ -165,7 +185,7 @@ data InjectivityAnn = InjectivityAnn Name [Name]
 --   other.
 --
 -- * A 'DCon' always has an explicit return type.
-data DCon = DCon [DTyVarBndr] DCxt Name DConFields
+data DCon = DCon [DTyVarBndrSpec] DCxt Name DConFields
                  DType  -- ^ The GADT result type
           deriving (Eq, Show, Typeable, Data, Generic)
 
@@ -252,7 +272,7 @@ data DForeign = DImportF Callconv Safety String Name DType
 data DPragma = DInlineP Name Inline RuleMatch Phases
              | DSpecialiseP Name DType (Maybe Inline) Phases
              | DSpecialiseInstP DType
-             | DRuleP String (Maybe [DTyVarBndr]) [DRuleBndr] DExp DExp Phases
+             | DRuleP String (Maybe [DTyVarBndrUnit]) [DRuleBndr] DExp DExp Phases
              | DAnnP AnnTarget DExp
              | DLineP Int String
              | DCompleteP [Name] (Maybe Name)
@@ -264,7 +284,7 @@ data DRuleBndr = DRuleVar Name
                deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @TySynEqn@ type (to store type family equations).
-data DTySynEqn = DTySynEqn (Maybe [DTyVarBndr]) DType DType
+data DTySynEqn = DTySynEqn (Maybe [DTyVarBndrUnit]) DType DType
                deriving (Eq, Show, Typeable, Data, Generic)
 
 -- | Corresponds to TH's @Info@ type.

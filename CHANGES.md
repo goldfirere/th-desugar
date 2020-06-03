@@ -3,6 +3,49 @@
 
 Version 1.12 [????.??.??]
 -------------------------
+* Support GHC 9.0.
+* Add support for explicit specificity. As part of this change,
+  the way `th-desugar` represents type variable binders has been overhauled:
+  * The `DTyVarBndr` data type is now parameterized by a `flag` type parameter:
+
+    ```hs
+    data DTyVarBndr flag
+      = DPlainTV Name flag
+      | DKindedTV Name flag DKind
+    ```
+
+    This can be instantiated to `Specificity` (for type variable binders that
+    can be specified or inferred) or `()` (for type variable binders where
+    specificity is irrelevant). `DTyVarBndrSpec` and `DTyVarBndrUnit` are also
+    provided as type synonyms for `DTyVarBndr Specificity` and `DTyVarBndr ()`,
+    respectively.
+  * In order to interface with `TyVarBndr` (the TH counterpart to `DTyVarBndr`)
+    in a backwards-compatible way, `th-desugar` now depends on the
+    `th-abstraction` library.
+  * The `ForallVisFlag` has been removed in favor of the new `DForallTelescope`
+    data type, which not only distinguishes between invisible and visible
+    `forall`s but also uses the correct type variable flag for invisible type
+    variables (`Specificity`) and visible type variables (`()`).
+  * The type of the `dsTvb` is now different on pre-9.0 versions of GHC:
+
+    ```hs
+    #if __GLASGOW_HASKELL__ >= 900
+    dsTvb :: DsMonad q => TyVarBndr flag -> q (DTyVarBndr flag)
+    #else
+    dsTvb :: DsMonad q => flag -> TyVarBndr -> q (DTyVarBndr flag)
+    #endif
+    ```
+
+    This is unfortunately required by the fact that prior to GHC 9.0, there is
+    no `flag` information stored anywhere in a `TyVarBndr`. If you need to use
+    `dsTvb` in a backward-compatible way, `L.H.TH.Desugar` now provides
+    `dsTvbSpec` and `dsTvbUnit` functions which specialise `dsTvb` to
+    particular `flag` types:
+
+    ```hs
+    dsTvbSpec :: DsMonad q => TyVarBndrSpec -> q DTyVarBndrSpec
+    dsTvbUnit :: DsMonad q => TyVarBndrUnit -> q DTyVarBndrUnit
+    ```
 * The type of the `getRecordSelectors` function has changed:
 
   ```diff
@@ -54,7 +97,13 @@ Version 1.12 [????.??.??]
   not supported on an old version of GHC, but now an error will be thrown
   instead. `decToTH` and `letDecToTH`, which transitively invoke `pragmaToTH`,
   have had their types updated to accommodate `pragmaToTH`'s type change.
-* Make the test suite compile with GHC 8.12.
+* The type of the `substTyVarBndrs` function has been simplified to avoid the
+  needless use of continuation-passing style:
+
+  ```diff
+  -substTyVarBndrs :: Quasi q => DSubst -> [DTyVarBndr flag] -> (DSubst -> [DTyVarBndr flag] -> q a) -> q a
+  +substTyVarBndrs :: Quasi q => DSubst -> [DTyVarBndr flag] -> q (DSubst, [DTyVarBndr flag])
+  ```
 
 Version 1.11 [2020.03.25]
 -------------------------

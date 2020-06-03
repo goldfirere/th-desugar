@@ -15,6 +15,7 @@ module Language.Haskell.TH.Desugar.Core where
 import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
 import Language.Haskell.TH hiding (match, clause, cxt)
+import Language.Haskell.TH.Datatype.TyVarBndr
 import Language.Haskell.TH.Syntax hiding (lift)
 
 #if __GLASGOW_HASKELL__ < 709
@@ -105,7 +106,11 @@ dsExp (CaseE exp matches) = do
   matches' <- dsMatches scrutinee matches
   return $ DLetE [DValD (DVarP scrutinee) exp'] $
            DCaseE (DVarE scrutinee) matches'
-dsExp (DoE stmts) = dsDoStmts stmts
+dsExp (DoE
+#if __GLASGOW_HASKELL__ >= 900
+           _
+#endif
+           stmts) = dsDoStmts stmts
 dsExp (CompE stmts) = dsComp stmts
 dsExp (ArithSeqE (FromR exp)) = DAppE (DVarE 'enumFrom) <$> dsExp exp
 dsExp (ArithSeqE (FromThenR exp1 exp2)) =
@@ -691,9 +696,9 @@ dsDec (NewtypeD cxt n tvbs con derivings) =
   dsDataDec Newtype cxt n tvbs Nothing [con] derivings
 #endif
 dsDec (TySynD n tvbs ty) =
-  (:[]) <$> (DTySynD n <$> mapM dsTvb tvbs <*> dsType ty)
+  (:[]) <$> (DTySynD n <$> mapM dsTvbUnit tvbs <*> dsType ty)
 dsDec (ClassD cxt n tvbs fds decs) =
-  (:[]) <$> (DClassD <$> dsCxt cxt <*> pure n <*> mapM dsTvb tvbs
+  (:[]) <$> (DClassD <$> dsCxt cxt <*> pure n <*> mapM dsTvbUnit tvbs
                      <*> pure fds <*> dsDecs decs)
 #if __GLASGOW_HASKELL__ >= 711
 dsDec (InstanceD over cxt ty decs) =
@@ -710,12 +715,12 @@ dsDec d@(PragmaD {}) = dsTopLevelLetDec d
 dsDec (OpenTypeFamilyD tfHead) =
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead tfHead)
 dsDec (DataFamilyD n tvbs m_k) =
-  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsType m_k)
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvbUnit tvbs <*> mapM dsType m_k)
 #else
 dsDec (FamilyD TypeFam n tvbs m_k) = do
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead n tvbs m_k)
 dsDec (FamilyD DataFam n tvbs m_k) =
-  (:[]) <$> (DDataFamilyD n <$> mapM dsTvb tvbs <*> mapM dsType m_k)
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvbUnit tvbs <*> mapM dsType m_k)
 #endif
 #if __GLASGOW_HASKELL__ >= 807
 dsDec (DataInstD cxt mtvbs lhs mk cons derivings) =
@@ -779,10 +784,10 @@ dsDec (KiSigD n ki) = (:[]) <$> (DKiSigD n <$> dsType ki)
 
 -- | Desugar a 'DataD' or 'NewtypeD'.
 dsDataDec :: DsMonad q
-          => NewOrData -> Cxt -> Name -> [TyVarBndr]
+          => NewOrData -> Cxt -> Name -> [TyVarBndrUnit]
           -> Maybe Kind -> [Con] -> [DerivingClause] -> q [DDec]
 dsDataDec nd cxt n tvbs mk cons derivings = do
-  tvbs' <- mapM dsTvb tvbs
+  tvbs' <- mapM dsTvbUnit tvbs
   let h98_tvbs = case mk of
                    -- If there's an explicit return kind, we're dealing with a
                    -- GADT, so this argument goes unused in dsCon.
@@ -796,10 +801,10 @@ dsDataDec nd cxt n tvbs mk cons derivings = do
 
 -- | Desugar a 'DataInstD' or a 'NewtypeInstD'.
 dsDataInstDec :: DsMonad q
-              => NewOrData -> Cxt -> Name -> Maybe [TyVarBndr] -> [TypeArg]
+              => NewOrData -> Cxt -> Name -> Maybe [TyVarBndrUnit] -> [TypeArg]
               -> Maybe Kind -> [Con] -> [DerivingClause] -> q [DDec]
 dsDataInstDec nd cxt n mtvbs tys mk cons derivings = do
-  mtvbs' <- mapM (mapM dsTvb) mtvbs
+  mtvbs' <- mapM (mapM dsTvbUnit) mtvbs
   tys'   <- mapM dsTypeArg tys
   let lhs' = applyDType (DConT n) tys'
       h98_tvbs =
@@ -824,12 +829,12 @@ dsDataInstDec nd cxt n mtvbs tys mk cons derivings = do
 dsFamilyResultSig :: DsMonad q => FamilyResultSig -> q DFamilyResultSig
 dsFamilyResultSig NoSig          = return DNoSig
 dsFamilyResultSig (KindSig k)    = DKindSig <$> dsType k
-dsFamilyResultSig (TyVarSig tvb) = DTyVarSig <$> dsTvb tvb
+dsFamilyResultSig (TyVarSig tvb) = DTyVarSig <$> dsTvbUnit tvb
 
 -- | Desugar a @TypeFamilyHead@
 dsTypeFamilyHead :: DsMonad q => TypeFamilyHead -> q DTypeFamilyHead
 dsTypeFamilyHead (TypeFamilyHead n tvbs result inj)
-  = DTypeFamilyHead n <$> mapM dsTvb tvbs
+  = DTypeFamilyHead n <$> mapM dsTvbUnit tvbs
                       <*> dsFamilyResultSig result
                       <*> pure inj
 
@@ -838,12 +843,12 @@ typeFamilyHeadName (TypeFamilyHead n _ _ _) = n
 #else
 -- | Desugar bits and pieces into a 'DTypeFamilyHead'
 dsTypeFamilyHead :: DsMonad q
-                 => Name -> [TyVarBndr] -> Maybe Kind -> q DTypeFamilyHead
+                 => Name -> [TyVarBndrUnit] -> Maybe Kind -> q DTypeFamilyHead
 dsTypeFamilyHead n tvbs m_kind = do
   result_sig <- case m_kind of
     Nothing -> return DNoSig
     Just k  -> DKindSig <$> dsType k
-  DTypeFamilyHead n <$> mapM dsTvb tvbs
+  DTypeFamilyHead n <$> mapM dsTvbUnit tvbs
                     <*> pure result_sig
                     <*> pure Nothing
 #endif
@@ -960,10 +965,10 @@ dsTopLevelLetDec = fmap (map DLetDec . fst) . dsLetDec
 -- we require passing these as arguments. (If we desugar an actual GADT
 -- constructor, these arguments are ignored.)
 dsCon :: DsMonad q
-      => [DTyVarBndr] -- ^ The universally quantified type variables
-                      --   (used if desugaring a non-GADT constructor).
-      -> DType        -- ^ The original data declaration's type
-                      --   (used if desugaring a non-GADT constructor).
+      => [DTyVarBndrUnit] -- ^ The universally quantified type variables
+                          --   (used if desugaring a non-GADT constructor).
+      -> DType            -- ^ The original data declaration's type
+                          --   (used if desugaring a non-GADT constructor).
       -> Con -> q [DCon]
 dsCon univ_dtvbs data_type con = do
   dcons' <- dsCon' con
@@ -971,8 +976,10 @@ dsCon univ_dtvbs data_type con = do
     case m_gadt_type of
       Nothing ->
         let ex_dtvbs   = dtvbs
-            expl_dtvbs = univ_dtvbs ++ ex_dtvbs
-            impl_dtvbs = toposortTyVarsOf $ mapMaybe extractTvbKind expl_dtvbs in
+            expl_dtvbs = changeDTVFlags SpecifiedSpec univ_dtvbs ++
+                         ex_dtvbs
+            impl_dtvbs = changeDTVFlags SpecifiedSpec $
+                         toposortTyVarsOf $ mapMaybe extractTvbKind expl_dtvbs in
         DCon (impl_dtvbs ++ expl_dtvbs) dcxt n fields data_type
       Just gadt_type ->
         let univ_ex_dtvbs = dtvbs in
@@ -987,7 +994,7 @@ dsCon univ_dtvbs data_type con = do
 -- * If returning Nothing, we're dealing with a non-GADT constructor, so
 --   the returned DTyVarBndrs are the existentials only.
 dsCon' :: DsMonad q
-       => Con -> q [(Name, [DTyVarBndr], DCxt, DConFields, Maybe DType)]
+       => Con -> q [(Name, [DTyVarBndrSpec], DCxt, DConFields, Maybe DType)]
 dsCon' (NormalC n stys) = do
   dtys <- mapM dsBangType stys
   return [(n, [], [], DNormalC False dtys, Nothing)]
@@ -999,7 +1006,7 @@ dsCon' (InfixC sty1 n sty2) = do
   dty2 <- dsBangType sty2
   return [(n, [], [], DNormalC True [dty1, dty2], Nothing)]
 dsCon' (ForallC tvbs cxt con) = do
-  dtvbs <- mapM dsTvb tvbs
+  dtvbs <- mapM dsTvbSpec tvbs
   dcxt <- dsCxt cxt
   dcons' <- dsCon' con
   return $ flip map dcons' $ \(n, dtvbs', dcxt', fields, m_gadt_type) ->
@@ -1057,7 +1064,7 @@ dsPragma (SpecialiseP n ty m_inl phases) = DSpecialiseP n <$> dsType ty
 dsPragma (SpecialiseInstP ty)            = DSpecialiseInstP <$> dsType ty
 #if __GLASGOW_HASKELL__ >= 807
 dsPragma (RuleP str mtvbs rbs lhs rhs phases)
-                                         = DRuleP str <$> mapM (mapM dsTvb) mtvbs
+                                         = DRuleP str <$> mapM (mapM dsTvbUnit) mtvbs
                                                       <*> mapM dsRuleBndr rbs
                                                       <*> dsExp lhs
                                                       <*> dsExp rhs
@@ -1089,7 +1096,7 @@ dsRuleBndr (TypedRuleVar n ty) = DTypedRuleVar n <$> dsType ty
 -- this information prior to GHC 8.8.
 dsTySynEqn :: DsMonad q => Name -> TySynEqn -> q DTySynEqn
 dsTySynEqn _ (TySynEqn mtvbs lhs rhs) =
-  DTySynEqn <$> mapM (mapM dsTvb) mtvbs <*> dsType lhs <*> dsType rhs
+  DTySynEqn <$> mapM (mapM dsTvbUnit) mtvbs <*> dsType lhs <*> dsType rhs
 #else
 -- | Desugar a @TySynEqn@. (Available only with GHC 7.8+)
 dsTySynEqn :: DsMonad q => Name -> TySynEqn -> q DTySynEqn
@@ -1135,7 +1142,8 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
 -- | Desugar a type
 dsType :: DsMonad q => Type -> q DType
 dsType (ForallT tvbs preds ty) =
-  mkDForallConstrainedT ForallInvis <$> mapM dsTvb tvbs <*> dsCxt preds <*> dsType ty
+  mkDForallConstrainedT <$> (DForallInvis <$> mapM dsTvbSpec tvbs)
+                        <*> dsCxt preds <*> dsType ty
 dsType (AppT t1 t2) = DAppT <$> dsType t1 <*> dsType t2
 dsType (SigT ty ki) = DSigT <$> dsType ty <*> dsType ki
 dsType (VarT name) = return $ DVarT name
@@ -1174,13 +1182,37 @@ dsType (ImplicitParamT n t) = do
   return $ DConT ''IP `DAppT` DLitT (StrTyLit n) `DAppT` t'
 #endif
 #if __GLASGOW_HASKELL__ >= 809
-dsType (ForallVisT tvbs ty) = DForallT ForallVis <$> mapM dsTvb tvbs <*> dsType ty
+dsType (ForallVisT tvbs ty) =
+  DForallT <$> (DForallVis <$> mapM dsTvbUnit tvbs) <*> dsType ty
 #endif
 
--- | Desugar a @TyVarBndr@
-dsTvb :: DsMonad q => TyVarBndr -> q DTyVarBndr
-dsTvb (PlainTV n) = return $ DPlainTV n
-dsTvb (KindedTV n k) = DKindedTV n <$> dsType k
+#if __GLASGOW_HASKELL__ >= 900
+-- | Desugar a 'TyVarBndr'.
+dsTvb :: DsMonad q => TyVarBndr_ flag -> q (DTyVarBndr flag)
+dsTvb (PlainTV n flag)    = return $ DPlainTV n flag
+dsTvb (KindedTV n flag k) = DKindedTV n flag <$> dsType k
+#else
+-- | Desugar a 'TyVarBndr' with a particular @flag@.
+dsTvb :: DsMonad q => flag -> TyVarBndr -> q (DTyVarBndr flag)
+dsTvb flag (PlainTV n)    = return $ DPlainTV n flag
+dsTvb flag (KindedTV n k) = DKindedTV n flag <$> dsType k
+#endif
+
+-- | Desugar a 'TyVarBndrSpec'.
+dsTvbSpec :: DsMonad q => TyVarBndrSpec -> q DTyVarBndrSpec
+#if __GLASGOW_HASKELL__ >= 900
+dsTvbSpec = dsTvb
+#else
+dsTvbSpec = dsTvb SpecifiedSpec
+#endif
+
+-- | Desugar a 'TyVarBndrUnit'.
+dsTvbUnit :: DsMonad q => TyVarBndrUnit -> q DTyVarBndrUnit
+#if __GLASGOW_HASKELL__ >= 900
+dsTvbUnit = dsTvb
+#else
+dsTvbUnit = dsTvb ()
+#endif
 
 -- | Desugar a @Cxt@
 dsCxt :: DsMonad q => Cxt -> q DCxt
@@ -1294,12 +1326,12 @@ dsPred t@(ForallVisT {}) =
 #endif
 
 -- | Desugar a quantified constraint.
-dsForallPred :: DsMonad q => [TyVarBndr] -> Cxt -> Pred -> q DCxt
+dsForallPred :: DsMonad q => [TyVarBndrSpec] -> Cxt -> Pred -> q DCxt
 dsForallPred tvbs cxt p = do
   ps' <- dsPred p
   case ps' of
-    [p'] -> (:[]) <$> (mkDForallConstrainedT ForallInvis
-                         <$> mapM dsTvb tvbs <*> dsCxt cxt <*> pure p')
+    [p'] -> (:[]) <$> (mkDForallConstrainedT <$>
+                         (DForallInvis <$> mapM dsTvbSpec tvbs) <*> dsCxt cxt <*> pure p')
     _    -> fail "Cannot desugar constraint tuples in the body of a quantified constraint"
               -- See GHC #15334.
 #endif
@@ -1318,9 +1350,9 @@ dsReifyType = traverse dsType <=< reifyTypeWithLocals_maybe
 -- a DType using DForallT and DConstrainedT as appropriate. The phrase
 -- "as appropriate" is used because DConstrainedT will not be used if the
 -- context is empty, per Note [Desugaring and sweetening ForallT].
-mkDForallConstrainedT :: ForallVisFlag -> [DTyVarBndr] -> DCxt -> DType -> DType
-mkDForallConstrainedT fvf tvbs ctxt ty =
-  DForallT fvf tvbs $ if null ctxt then ty else DConstrainedT ctxt ty
+mkDForallConstrainedT :: DForallTelescope -> DCxt -> DType -> DType
+mkDForallConstrainedT tele ctxt ty =
+  DForallT tele $ if null ctxt then ty else DConstrainedT ctxt ty
 
 -- create a list of expressions in the same order as the fields in the first argument
 -- but with the values as given in the second argument
@@ -1428,9 +1460,9 @@ filterDTANormals = mapMaybe getDTANormal
     getDTANormal (DTyArg {})   = Nothing
 
 -- | Convert a 'DTyVarBndr' into a 'DType'
-dTyVarBndrToDType :: DTyVarBndr -> DType
-dTyVarBndrToDType (DPlainTV a)    = DVarT a
-dTyVarBndrToDType (DKindedTV a k) = DVarT a `DSigT` k
+dTyVarBndrToDType :: DTyVarBndr flag -> DType
+dTyVarBndrToDType (DPlainTV a _)    = DVarT a
+dTyVarBndrToDType (DKindedTV a _ k) = DVarT a `DSigT` k
 
 -- | Extract the underlying 'DType' or 'DKind' from a 'DTypeArg'. This forgets
 -- information about whether a type is a normal argument or not, so use with
@@ -1454,7 +1486,7 @@ strictToBang = id
 
 -- Take a data type name (which does not belong to a data family) and
 -- apply it to its type variable binders to form a DType.
-nonFamilyDataReturnType :: Name -> [DTyVarBndr] -> DType
+nonFamilyDataReturnType :: Name -> [DTyVarBndrUnit] -> DType
 nonFamilyDataReturnType con_name =
   applyDType (DConT con_name) . map (DTANormal . dTyVarBndrToDType)
 
@@ -1470,7 +1502,7 @@ dataFamInstReturnType fam_name = applyDType (DConT fam_name)
 -- arguments. We accomplish this by taking the free variables of the types
 -- and performing a reverse topological sort on them to ensure that the
 -- returned list is well scoped.
-dataFamInstTvbs :: [DTypeArg] -> [DTyVarBndr]
+dataFamInstTvbs :: [DTypeArg] -> [DTyVarBndrUnit]
 dataFamInstTvbs = toposortTyVarsOf . map probablyWrongUnDTypeArg
 
 -- | Take a list of 'DType's, find their free variables, and sort them in
@@ -1486,7 +1518,7 @@ dataFamInstTvbs = toposortTyVarsOf . map probablyWrongUnDTypeArg
 --
 -- On older GHCs, this takes measures to avoid returning explicitly bound
 -- kind variables, which was not possible before @TypeInType@.
-toposortTyVarsOf :: [DType] -> [DTyVarBndr]
+toposortTyVarsOf :: [DType] -> [DTyVarBndrUnit]
 toposortTyVarsOf tys =
   let freeVars :: [Name]
       freeVars = F.toList $ foldMap fvDType tys
@@ -1495,7 +1527,7 @@ toposortTyVarsOf tys =
       varKindSigs = foldMap go_ty tys
         where
           go_ty :: DType -> Map Name DKind
-          go_ty (DForallT _ tvbs t) = go_tvbs tvbs (go_ty t)
+          go_ty (DForallT tele t) = go_tele tele (go_ty t)
           go_ty (DConstrainedT ctxt t) = foldMap go_ty ctxt `mappend` go_ty t
           go_ty (DAppT t1 t2) = go_ty t1 `mappend` go_ty t2
           go_ty (DAppKindT t k) = go_ty t `mappend` go_ty k
@@ -1510,12 +1542,16 @@ toposortTyVarsOf tys =
           go_ty (DLitT {}) = mempty
           go_ty DWildCardT = mempty
 
-          go_tvbs :: [DTyVarBndr] -> Map Name DKind -> Map Name DKind
+          go_tele :: DForallTelescope -> Map Name DKind -> Map Name DKind
+          go_tele (DForallVis   tvbs) = go_tvbs tvbs
+          go_tele (DForallInvis tvbs) = go_tvbs tvbs
+
+          go_tvbs :: [DTyVarBndr flag] -> Map Name DKind -> Map Name DKind
           go_tvbs tvbs m = foldr go_tvb m tvbs
 
-          go_tvb :: DTyVarBndr -> Map Name DKind -> Map Name DKind
-          go_tvb (DPlainTV n)    m = M.delete n m
-          go_tvb (DKindedTV n k) m = M.delete n m `mappend` go_ty k
+          go_tvb :: DTyVarBndr flag -> Map Name DKind -> Map Name DKind
+          go_tvb (DPlainTV n _)    m = M.delete n m
+          go_tvb (DKindedTV n _ k) m = M.delete n m `mappend` go_ty k
 
       -- | Do a topological sort on a list of tyvars,
       --   so that binders occur before occurrences
@@ -1569,7 +1605,7 @@ toposortTyVarsOf tys =
         maybe S.empty (OS.toSet . fvDType)
                       (M.lookup n varKindSigs)
       ascribeWithKind n =
-        maybe (DPlainTV n) (DKindedTV n) (M.lookup n varKindSigs)
+        maybe (DPlainTV n ()) (DKindedTV n ()) (M.lookup n varKindSigs)
 
       -- An annoying wrinkle: GHCs before 8.0 don't support explicitly
       -- quantifying kinds, so something like @forall k (a :: k)@ would be
@@ -1588,23 +1624,23 @@ toposortTyVarsOf tys =
      filter (not . isKindBinderOnOldGHCs) $
      scopedSort freeVars
 
-dtvbName :: DTyVarBndr -> Name
-dtvbName (DPlainTV n)    = n
-dtvbName (DKindedTV n _) = n
+dtvbName :: DTyVarBndr flag -> Name
+dtvbName (DPlainTV n _)    = n
+dtvbName (DKindedTV n _ _) = n
 
 -- | Reconstruct an arrow 'DType' from its argument and result types.
 ravelDType :: DFunArgs -> DType -> DType
-ravelDType DFANil                     res = res
-ravelDType (DFAForalls fvf tvbs args) res = DForallT fvf tvbs (ravelDType args res)
-ravelDType (DFACxt cxt args)          res = DConstrainedT cxt (ravelDType args res)
-ravelDType (DFAAnon t args)           res = DAppT (DAppT DArrowT t) (ravelDType args res)
+ravelDType DFANil                 res = res
+ravelDType (DFAForalls tele args) res = DForallT tele (ravelDType args res)
+ravelDType (DFACxt cxt args)      res = DConstrainedT cxt (ravelDType args res)
+ravelDType (DFAAnon t args)       res = DAppT (DAppT DArrowT t) (ravelDType args res)
 
 -- | Decompose a function 'DType' into its arguments (the 'DFunArgs') and its
 -- result type (the 'DType).
 unravelDType :: DType -> (DFunArgs, DType)
-unravelDType (DForallT fvf tvbs ty) =
+unravelDType (DForallT tele ty) =
   let (args, res) = unravelDType ty in
-  (DFAForalls fvf tvbs args, res)
+  (DFAForalls tele args, res)
 unravelDType (DConstrainedT cxt ty) =
   let (args, res) = unravelDType ty in
   (DFACxt cxt args, res)
@@ -1617,7 +1653,7 @@ unravelDType t = (DFANil, t)
 data DFunArgs
   = DFANil
     -- ^ No more arguments.
-  | DFAForalls ForallVisFlag [DTyVarBndr] DFunArgs
+  | DFAForalls DForallTelescope DFunArgs
     -- ^ A series of @forall@ed type variables followed by a dot (if
     --   'ForallInvis') or an arrow (if 'ForallVis'). For example,
     --   the type variables @a1 ... an@ in @forall a1 ... an. r@.
@@ -1634,7 +1670,7 @@ data DFunArgs
 -- arguments (e.g., the @c@ in @c => r@), which are instantiated without
 -- the need for explicit user input.
 data DVisFunArg
-  = DVisFADep DTyVarBndr
+  = DVisFADep DTyVarBndrUnit
     -- ^ A visible @forall@ (e.g., @forall a -> a@).
   | DVisFAAnon DType
     -- ^ An anonymous argument followed by an arrow (e.g., @a -> r@).
@@ -1643,10 +1679,10 @@ data DVisFunArg
 -- | Filter the visible function arguments from a list of 'DFunArgs'.
 filterDVisFunArgs :: DFunArgs -> [DVisFunArg]
 filterDVisFunArgs DFANil = []
-filterDVisFunArgs (DFAForalls fvf tvbs args) =
-  case fvf of
-    ForallVis   -> map DVisFADep tvbs ++ args'
-    ForallInvis -> args'
+filterDVisFunArgs (DFAForalls tele args) =
+  case tele of
+    DForallVis tvbs -> map DVisFADep tvbs ++ args'
+    DForallInvis _  -> args'
   where
     args' = filterDVisFunArgs args
 filterDVisFunArgs (DFACxt _ args) =
@@ -1669,16 +1705,29 @@ unfoldDType :: DType -> (DType, [DTypeArg])
 unfoldDType = go []
   where
     go :: [DTypeArg] -> DType -> (DType, [DTypeArg])
-    go acc (DForallT _ _ ty) = go acc ty
+    go acc (DForallT _ ty)   = go acc ty
     go acc (DAppT ty1 ty2)   = go (DTANormal ty2:acc) ty1
     go acc (DAppKindT ty ki) = go (DTyArg ki:acc) ty
     go acc (DSigT ty _)      = go acc ty
     go acc ty                = (ty, acc)
 
--- | Extract the kind from a 'TyVarBndr', if one is present.
-extractTvbKind :: DTyVarBndr -> Maybe DKind
-extractTvbKind (DPlainTV _) = Nothing
-extractTvbKind (DKindedTV _ k) = Just k
+-- | Extract the kind from a 'DTyVarBndr', if one is present.
+extractTvbKind :: DTyVarBndr flag -> Maybe DKind
+extractTvbKind (DPlainTV _ _)    = Nothing
+extractTvbKind (DKindedTV _ _ k) = Just k
+
+-- | Set the flag in a list of 'DTyVarBndr's. This is often useful in contexts
+-- where one needs to re-use a list of 'DTyVarBndr's from one flag setting to
+-- another flag setting. For example, in order to re-use the 'DTyVarBndr's bound
+-- by a 'DDataD' in a 'DForallT', one can do the following:
+--
+-- @
+-- case x of
+--   'DDataD' _ _ _ tvbs _ _ _ ->
+--     'DForallT' ('DForallInvis' ('changeDTVFlags' 'SpecifiedSpec' tvbs)) ...
+-- @
+changeDTVFlags :: newFlag -> [DTyVarBndr oldFlag] -> [DTyVarBndr newFlag]
+changeDTVFlags new_flag = map (new_flag <$)
 
 -- | Some functions in this module only use certain arguments on particular
 -- versions of GHC. Other versions of GHC (that don't make use of those

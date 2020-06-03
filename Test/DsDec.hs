@@ -82,7 +82,7 @@ $(dsDecSplice S.dectest18)
 
 $(do decs <- S.rec_sel_test
      withLocalDeclarations decs $ do
-       [DDataD nd [] name [DPlainTV tvbName] k cons []] <- dsDecs decs
+       [DDataD nd [] name [DPlainTV tvbName ()] k cons []] <- dsDecs decs
        recsels <- getRecordSelectors cons
        let num_sels = length recsels `div` 2 -- ignore type sigs
        when (num_sels /= S.rec_sel_test_num_sels) $
@@ -95,5 +95,5 @@ $(do decs <- S.rec_sel_test
                  fields' = zip stricts types
              in
              DCon tvbs cxt con_name (DNormalC False fields') rty
-           plaindata = [DDataD nd [] name [DPlainTV tvbName] k (map unrecord cons) []]
+           plaindata = [DDataD nd [] name [DPlainTV tvbName ()] k (map unrecord cons) []]
        return (decsToTH plaindata ++ map letDecToTH recsels))
