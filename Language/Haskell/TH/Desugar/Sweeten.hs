@@ -40,9 +40,10 @@ import Prelude hiding (exp)
 import Control.Arrow
 
 import Language.Haskell.TH hiding (cxt)
+import Language.Haskell.TH.Datatype.TyVarBndr
 
 import Language.Haskell.TH.Desugar.AST
-import Language.Haskell.TH.Desugar.Core (DTypeArg(..))
+import Language.Haskell.TH.Desugar.Core (DTypeArg(..), changeDTVFlags)
 import Language.Haskell.TH.Desugar.Util
 
 expToTH :: DExp -> Exp
@@ -110,11 +111,11 @@ decToTH (DClassD cxt n tvbs fds decs) =
 decToTH (DInstanceD over mtvbs _cxt _ty decs) =
   instanceDToTH over cxt' ty' decs
   where
-  (cxt', ty') = case mtvbs of
+  (cxt', ty') = case fmap (changeDTVFlags SpecifiedSpec) mtvbs of
                   Nothing    -> (_cxt, _ty)
                   Just _tvbs ->
 #if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
-                                ([], DForallT ForallInvis _tvbs $ DConstrainedT _cxt _ty)
+                                ([], DForallT (DForallInvis _tvbs) $ DConstrainedT _cxt _ty)
 #else
                                 -- See #117
                                 error $ "Explicit foralls in instance declarations "
@@ -159,11 +160,11 @@ decToTH (DRoleAnnotD n roles) = RoleAnnotD n roles
 decToTH (DStandaloneDerivD mds mtvbs _cxt _ty) =
   standaloneDerivDToTH mds cxt' ty'
   where
-  (cxt', ty') = case mtvbs of
+  (cxt', ty') = case fmap (changeDTVFlags SpecifiedSpec) mtvbs of
                   Nothing    -> (_cxt, _ty)
                   Just _tvbs ->
 #if __GLASGOW_HASKELL__ < 710 || __GLASGOW_HASKELL__ >= 802
-                                ([], DForallT ForallInvis _tvbs $ DConstrainedT _cxt _ty)
+                                ([], DForallT (DForallInvis _tvbs) $ DConstrainedT _cxt _ty)
 #else
                                 -- See #117
                                 error $ "Explicit foralls in standalone deriving declarations "
@@ -201,7 +202,7 @@ data DNewOrDataCons
   | DDataCons   [DCon]
 
 -- | Sweeten a 'DDataInstD'.
-dataInstDecToTH :: DNewOrDataCons -> DCxt -> Maybe [DTyVarBndr] -> DType
+dataInstDecToTH :: DNewOrDataCons -> DCxt -> Maybe [DTyVarBndrUnit] -> DType
                 -> Maybe DKind -> [DDerivClause] -> Dec
 dataInstDecToTH ndc cxt _mtvbs lhs _mk derivings =
   case ndc of
@@ -244,10 +245,10 @@ frsToTH (DKindSig k)    = KindSig (typeToTH k)
 frsToTH (DTyVarSig tvb) = TyVarSig (tvbToTH tvb)
 #else
 frsToTH :: DFamilyResultSig -> Maybe Kind
-frsToTH DNoSig                      = Nothing
-frsToTH (DKindSig k)                = Just (typeToTH k)
-frsToTH (DTyVarSig (DPlainTV _))    = Nothing
-frsToTH (DTyVarSig (DKindedTV _ k)) = Just (typeToTH k)
+frsToTH DNoSig                        = Nothing
+frsToTH (DKindSig k)                  = Just (typeToTH k)
+frsToTH (DTyVarSig (DPlainTV _ _))    = Nothing
+frsToTH (DTyVarSig (DKindedTV _ _ k)) = Just (typeToTH k)
 #endif
 
 #if __GLASGOW_HASKELL__ <= 710
@@ -413,19 +414,18 @@ typeToTH :: DType -> Type
 -- We need a special case for DForallT ForallInvis followed by DConstrainedT
 -- so that we may collapse them into a single ForallT when sweetening.
 -- See Note [Desugaring and sweetening ForallT] in L.H.T.Desugar.Core.
-typeToTH (DForallT ForallInvis tvbs (DConstrainedT ctxt ty)) =
+typeToTH (DForallT (DForallInvis tvbs) (DConstrainedT ctxt ty)) =
   ForallT (map tvbToTH tvbs) (map predToTH ctxt) (typeToTH ty)
-typeToTH (DForallT fvf tvbs ty) =
-  case fvf of
-    ForallInvis -> ForallT tvbs' [] ty'
-    ForallVis ->
+typeToTH (DForallT tele ty) =
+  case tele of
+    DForallInvis  tvbs -> ForallT (map tvbToTH tvbs) [] ty'
+    DForallVis   _tvbs ->
 #if __GLASGOW_HASKELL__ >= 809
-      ForallVisT tvbs' ty'
+      ForallVisT (map tvbToTH _tvbs) ty'
 #else
       error "Visible dependent quantification supported only in GHC 8.10+"
 #endif
   where
-    tvbs' = map tvbToTH tvbs
     ty'   = typeToTH ty
 typeToTH (DConstrainedT cxt ty) = ForallT [] (map predToTH cxt) (typeToTH ty)
 typeToTH (DAppT t1 t2)          = AppT (typeToTH t1) (typeToTH t2)
@@ -447,9 +447,9 @@ typeToTH (DAppKindT t k)        = AppKindT (typeToTH t) (typeToTH k)
 typeToTH (DAppKindT t _)        = typeToTH t
 #endif
 
-tvbToTH :: DTyVarBndr -> TyVarBndr
-tvbToTH (DPlainTV n)           = PlainTV n
-tvbToTH (DKindedTV n k)        = KindedTV n (typeToTH k)
+tvbToTH :: DTyVarBndr flag -> TyVarBndr_ flag
+tvbToTH (DPlainTV n flag)    = plainTVFlag n flag
+tvbToTH (DKindedTV n flag k) = kindedTVFlag n flag (typeToTH k)
 
 cxtToTH :: DCxt -> Cxt
 cxtToTH = map predToTH
@@ -525,15 +525,12 @@ predToTH DWildCardT  = error "Wildcards supported only in GHC 8.0+"
 -- We need a special case for DForallT ForallInvis followed by DConstrainedT
 -- so that we may collapse them into a single ForallT when sweetening.
 -- See Note [Desugaring and sweetening ForallT] in L.H.T.Desugar.Core.
-predToTH (DForallT ForallInvis tvbs (DConstrainedT ctxt p)) =
+predToTH (DForallT (DForallInvis tvbs) (DConstrainedT ctxt p)) =
   ForallT (map tvbToTH tvbs) (map predToTH ctxt) (predToTH p)
-predToTH (DForallT fvf tvbs p) =
-  case fvf of
-    ForallInvis -> ForallT tvbs' [] p'
-    ForallVis   -> error "Visible dependent quantifier spotted at head of a constraint"
-  where
-    tvbs' = map tvbToTH tvbs
-    p'    = predToTH p
+predToTH (DForallT tele p) =
+  case tele of
+    DForallInvis tvbs -> ForallT (map tvbToTH tvbs) [] (predToTH p)
+    DForallVis _      -> error "Visible dependent quantifier spotted at head of a constraint"
 predToTH (DConstrainedT cxt p) = ForallT [] (map predToTH cxt) (predToTH p)
 #else
 predToTH (DForallT {})      = error "Quantified constraints supported only in GHC 8.6+"

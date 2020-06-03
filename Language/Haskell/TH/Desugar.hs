@@ -25,8 +25,9 @@ rae@cs.brynmawr.edu
 module Language.Haskell.TH.Desugar (
   -- * Desugared data types
   DExp(..), DLetDec(..), DPat(..),
-  DType(..), ForallVisFlag(..), DKind, DCxt, DPred,
-  DTyVarBndr(..), DMatch(..), DClause(..), DDec(..),
+  DType(..), DForallTelescope(..), DKind, DCxt, DPred,
+  DTyVarBndr(..), DTyVarBndrSpec, DTyVarBndrUnit, Specificity(..),
+  DMatch(..), DClause(..), DDec(..),
   DDerivClause(..), DDerivStrategy(..), DPatSynDir(..), DPatSynType,
   Overlap(..), PatSynArgs(..), NewOrData(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
@@ -42,7 +43,7 @@ module Language.Haskell.TH.Desugar (
   -- * Main desugaring functions
   dsExp, dsDecs, dsType, dsInfo,
   dsPatOverExp, dsPatsOverExp, dsPatX,
-  dsLetDecs, dsTvb, dsCxt,
+  dsLetDecs, dsTvb, dsTvbSpec, dsTvbUnit, dsCxt,
   dsCon, dsForeign, dsPragma, dsRuleBndr,
 
   -- ** Secondary desugaring functions
@@ -100,13 +101,15 @@ module Language.Haskell.TH.Desugar (
 #if __GLASGOW_HASKELL__ >= 800
   bindIP,
 #endif
-  mkExtraDKindBinders, dTyVarBndrToDType, toposortTyVarsOf,
+  mkExtraDKindBinders, dTyVarBndrToDType, changeDTVFlags, toposortTyVarsOf,
 
   -- ** 'FunArgs' and 'VisFunArg'
-  FunArgs(..), VisFunArg(..), filterVisFunArgs, ravelType, unravelType,
+  FunArgs(..), ForallTelescope(..), VisFunArg(..),
+  filterVisFunArgs, ravelType, unravelType,
 
   -- ** 'DFunArgs' and 'DVisFunArg'
-  DFunArgs(..), DVisFunArg(..), filterDVisFunArgs, ravelDType, unravelDType,
+  DFunArgs(..), DVisFunArg(..),
+  filterDVisFunArgs, ravelDType, unravelDType,
 
   -- ** 'TypeArg'
   TypeArg(..), applyType, filterTANormals, unfoldType,
@@ -118,6 +121,7 @@ module Language.Haskell.TH.Desugar (
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
   ) where
 
+import Language.Haskell.TH.Datatype.TyVarBndr
 import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.Core
 import Language.Haskell.TH.Desugar.Expand
@@ -143,8 +147,16 @@ import Control.Applicative
 
 -- | This class relates a TH type with its th-desugar type and allows
 -- conversions back and forth. The functional dependency goes only one
--- way because `Type` and `Kind` are type synonyms, but they desugar
--- to different types.
+-- way because we define the following instances on old versions of GHC:
+--
+-- @
+-- instance 'Desugar' 'TyVarBndrSpec' 'DTyVarBndrSpec'
+-- instance 'Desugar' 'TyVarBndrUnit' 'DTyVarBndrUnit'
+-- @
+--
+-- Prior to GHC 9.0, 'TyVarBndrSpec' and 'TyVarBndrUnit' are simply type
+-- synonyms for 'TyVarBndr', so making the functional dependencies
+-- bidirectional would cause these instances to be rejected.
 class Desugar th ds | ds -> th where
   desugar :: DsMonad q => th -> q ds
   sweeten :: ds -> th
@@ -161,9 +173,36 @@ instance Desugar Cxt DCxt where
   desugar = dsCxt
   sweeten = cxtToTH
 
-instance Desugar TyVarBndr DTyVarBndr where
+#if __GLASGOW_HASKELL__ >= 900
+-- | This instance is only @flag@-polymorphic on GHC 9.0 or later, since
+-- previous versions of GHC do not equip 'TyVarBndr' with a @flag@ type
+-- parameter. As a result, we define two separate instances for 'DTyVarBndr'
+-- on older GHCs:
+--
+-- @
+-- instance 'Desugar' 'TyVarBndrSpec' 'DTyVarBndrSpec'
+-- instance 'Desugar' 'TyVarBndrUnit' 'DTyVarBndrUnit'
+-- @
+instance Desugar (TyVarBndr flag) (DTyVarBndr flag) where
   desugar = dsTvb
   sweeten = tvbToTH
+#else
+-- | This instance monomorphizes the @flag@ parameter of 'DTyVarBndr' since
+-- pre-9.0 versions of GHC do not equip 'TyVarBndr' with a @flag@ type
+-- parameter. There is also a corresponding instance for
+-- 'TyVarBndrUnit'/'DTyVarBndrUnit'.
+instance Desugar TyVarBndrSpec DTyVarBndrSpec where
+  desugar = dsTvbSpec
+  sweeten = tvbToTH
+
+-- | This instance monomorphizes the @flag@ parameter of 'DTyVarBndr' since
+-- pre-9.0 versions of GHC do not equip 'TyVarBndr' with a @flag@ type
+-- parameter. There is also a corresponding instance for
+-- 'TyVarBndrSpec'/'DTyVarBndrSpec'.
+instance Desugar TyVarBndrUnit DTyVarBndrUnit where
+  desugar = dsTvbUnit
+  sweeten = tvbToTH
+#endif
 
 instance Desugar [Dec] [DDec] where
   desugar = dsDecs
@@ -256,7 +295,7 @@ getRecordSelectors cons = merge_let_decs `fmap` concatMapM get_record_sels cons
           go fields = do
             varName <- qNewName "field"
             return $ concat
-              [ [ DSigD name $ DForallT ForallInvis con_tvbs
+              [ [ DSigD name $ DForallT (DForallInvis con_tvbs)
                              $ DArrowT `DAppT` con_ret_ty `DAppT` field_ty
                 , DFunD name [DClause [DConP con_name
                                          (mk_field_pats n (length fields) varName)]
@@ -343,16 +382,16 @@ getRecordSelectors cons = merge_let_decs `fmap` concatMapM get_record_sels cons
 -- are fresh type variable names.
 --
 -- This expands kind synonyms if necessary.
-mkExtraDKindBinders :: forall q. DsMonad q => DKind -> q [DTyVarBndr]
+mkExtraDKindBinders :: forall q. DsMonad q => DKind -> q [DTyVarBndrUnit]
 mkExtraDKindBinders k = do
   k' <- expandType k
   let (fun_args, _) = unravelDType k'
       vis_fun_args  = filterDVisFunArgs fun_args
   mapM mk_tvb vis_fun_args
   where
-    mk_tvb :: DVisFunArg -> q DTyVarBndr
+    mk_tvb :: DVisFunArg -> q DTyVarBndrUnit
     mk_tvb (DVisFADep tvb) = return tvb
-    mk_tvb (DVisFAAnon ki) = DKindedTV <$> qNewName "a" <*> return ki
+    mk_tvb (DVisFAAnon ki) = DKindedTV <$> qNewName "a" <*> return () <*> return ki
 
 {- $localReification
 

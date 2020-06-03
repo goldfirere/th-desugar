@@ -30,7 +30,7 @@ module Language.Haskell.TH.Desugar.Util (
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
   topEverywhereM, isInfixDataCon,
   isTypeKindName, typeKindName,
-  unSigType, unfoldType, ForallVisFlag(..), FunArgs(..), VisFunArg(..),
+  unSigType, unfoldType, ForallTelescope(..), FunArgs(..), VisFunArg(..),
   filterVisFunArgs, ravelType, unravelType,
   TypeArg(..), applyType, filterTANormals, probablyWrongUnTypeArg
 #if __GLASGOW_HASKELL__ >= 800
@@ -41,7 +41,7 @@ module Language.Haskell.TH.Desugar.Util (
 import Prelude hiding (mapM, foldl, concatMap, any)
 
 import Language.Haskell.TH hiding ( cxt )
-import Language.Haskell.TH.Datatype (tvName)
+import Language.Haskell.TH.Datatype.TyVarBndr
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.OSet (OSet)
 import Language.Haskell.TH.Syntax
@@ -111,9 +111,8 @@ stripVarP_maybe (VarP name) = Just name
 stripVarP_maybe _           = Nothing
 
 -- | Extracts the name out of a @PlainTV@, or returns @Nothing@
-stripPlainTV_maybe :: TyVarBndr -> Maybe Name
-stripPlainTV_maybe (PlainTV n) = Just n
-stripPlainTV_maybe _           = Nothing
+stripPlainTV_maybe :: TyVarBndr_ flag -> Maybe Name
+stripPlainTV_maybe = elimTV Just (\_ _ -> Nothing)
 
 -- | Report that a certain TH construct is impossible
 impossible :: Fail.MonadFail q => String -> q a
@@ -121,18 +120,17 @@ impossible err = Fail.fail (err ++ "\n    This should not happen in Haskell.\n  
 
 -- | Convert a 'TyVarBndr' into a 'Type', dropping the kind signature
 -- (if it has one).
-tvbToType :: TyVarBndr -> Type
+tvbToType :: TyVarBndr_ flag -> Type
 tvbToType = VarT . tvName
 
 -- | Convert a 'TyVarBndr' into a 'Type', preserving the kind signature
 -- (if it has one).
-tvbToTypeWithSig :: TyVarBndr -> Type
-tvbToTypeWithSig (PlainTV n)    = VarT n
-tvbToTypeWithSig (KindedTV n k) = SigT (VarT n) k
+tvbToTypeWithSig :: TyVarBndr_ flag -> Type
+tvbToTypeWithSig = elimTV VarT (\n k -> SigT (VarT n) k)
 
 -- | Convert a 'TyVarBndr' into a 'TypeArg' (specifically, a 'TANormal'),
 -- preserving the kind signature (if it has one).
-tvbToTANormalWithSig :: TyVarBndr -> TypeArg
+tvbToTANormalWithSig :: TyVarBndr_ flag -> TypeArg
 tvbToTANormalWithSig = TANormal . tvbToTypeWithSig
 
 -- | Do two names name the same thing?
@@ -206,18 +204,23 @@ splitTuple_maybe t = go [] t
           = Just args
         go _ _ = Nothing
 
--- | Is a @forall@ invisible (e.g., @forall a b. {...}@, with a dot) or visible
--- (e.g., @forall a b -> {...}@, with an arrow)?
-data ForallVisFlag
-  = ForallVis   -- ^ A visible @forall@ (with an arrow)
-  | ForallInvis -- ^ An invisible @forall@ (with a dot)
+-- | The type variable binders in a @forall@. This is not used by the TH AST
+-- itself, but this is used as an intermediate data type in 'FAForalls'.
+data ForallTelescope
+  = ForallVis [TyVarBndrUnit]
+    -- ^ A visible @forall@ (e.g., @forall a -> {...}@).
+    --   These do not have any notion of specificity, so we use
+    --   '()' as a placeholder value in the 'TyVarBndr's.
+  | ForallInvis [TyVarBndrSpec]
+    -- ^ An invisible @forall@ (e.g., @forall a {b} c -> {...}@),
+    --   where each binder has a 'Specificity'.
   deriving (Eq, Show, Typeable, Data)
 
 -- | The list of arguments in a function 'Type'.
 data FunArgs
   = FANil
     -- ^ No more arguments.
-  | FAForalls ForallVisFlag [TyVarBndr] FunArgs
+  | FAForalls ForallTelescope FunArgs
     -- ^ A series of @forall@ed type variables followed by a dot (if
     --   'ForallInvis') or an arrow (if 'ForallVis'). For example,
     --   the type variables @a1 ... an@ in @forall a1 ... an. r@.
@@ -234,7 +237,7 @@ data FunArgs
 -- arguments (e.g., the @c@ in @c => r@), which are instantiated without
 -- the need for explicit user input.
 data VisFunArg
-  = VisFADep TyVarBndr
+  = VisFADep TyVarBndrUnit
     -- ^ A visible @forall@ (e.g., @forall a -> a@).
   | VisFAAnon Type
     -- ^ An anonymous argument followed by an arrow (e.g., @a -> r@).
@@ -243,10 +246,10 @@ data VisFunArg
 -- | Filter the visible function arguments from a list of 'FunArgs'.
 filterVisFunArgs :: FunArgs -> [VisFunArg]
 filterVisFunArgs FANil = []
-filterVisFunArgs (FAForalls fvf tvbs args) =
-  case fvf of
-    ForallVis   -> map VisFADep tvbs ++ args'
-    ForallInvis -> args'
+filterVisFunArgs (FAForalls tele args) =
+  case tele of
+    ForallVis tvbs -> map VisFADep tvbs ++ args'
+    ForallInvis _  -> args'
   where
     args' = filterVisFunArgs args
 filterVisFunArgs (FACxt _ args) =
@@ -260,10 +263,10 @@ ravelType FANil res = res
 -- We need a special case for FAForalls ForallInvis followed by FACxt so that we may
 -- collapse them into a single ForallT when raveling.
 -- See Note [Desugaring and sweetening ForallT] in L.H.T.Desugar.Core.
-ravelType (FAForalls ForallInvis tvbs (FACxt p args)) res =
+ravelType (FAForalls (ForallInvis tvbs) (FACxt p args)) res =
   ForallT tvbs p (ravelType args res)
-ravelType (FAForalls ForallInvis  tvbs  args)  res = ForallT tvbs [] (ravelType args res)
-ravelType (FAForalls ForallVis   _tvbs _args) _res =
+ravelType (FAForalls (ForallInvis  tvbs)  args)  res = ForallT tvbs [] (ravelType args res)
+ravelType (FAForalls (ForallVis   _tvbs) _args) _res =
 #if __GLASGOW_HASKELL__ >= 809
       ForallVisT _tvbs (ravelType _args _res)
 #else
@@ -277,14 +280,14 @@ ravelType (FAAnon t args)  res = AppT (AppT ArrowT t) (ravelType args res)
 unravelType :: Type -> (FunArgs, Type)
 unravelType (ForallT tvbs cxt ty) =
   let (args, res) = unravelType ty in
-  (FAForalls ForallInvis tvbs (FACxt cxt args), res)
+  (FAForalls (ForallInvis tvbs) (FACxt cxt args), res)
 unravelType (AppT (AppT ArrowT t1) t2) =
   let (args, res) = unravelType t2 in
   (FAAnon t1 args, res)
 #if __GLASGOW_HASKELL__ >= 809
 unravelType (ForallVisT tvbs ty) =
   let (args, res) = unravelType ty in
-  (FAForalls ForallVis tvbs args, res)
+  (FAForalls (ForallVis tvbs) args, res)
 #endif
 unravelType t = (FANil, t)
 

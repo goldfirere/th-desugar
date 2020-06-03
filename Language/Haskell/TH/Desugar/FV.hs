@@ -27,7 +27,7 @@ fvDType :: DType -> OSet Name
 fvDType = go
   where
     go :: DType -> OSet Name
-    go (DForallT _ tvbs ty)    = fv_dtvbs tvbs (go ty)
+    go (DForallT tele ty)      = fv_dtele tele (go ty)
     go (DConstrainedT ctxt ty) = foldMap fvDType ctxt <> go ty
     go (DAppT t1 t2)           = go t1 <> go t2
     go (DAppKindT t k)         = go t <> go k
@@ -61,11 +61,16 @@ extractBoundNamesDPat = go
 -- Binding forms
 -----
 
+-- | Adjust the free variables of something following a 'DForallTelescope'.
+fv_dtele :: DForallTelescope -> OSet Name -> OSet Name
+fv_dtele (DForallVis   tvbs) = fv_dtvbs tvbs
+fv_dtele (DForallInvis tvbs) = fv_dtvbs tvbs
+
 -- | Adjust the free variables of something following 'DTyVarBndr's.
-fv_dtvbs :: [DTyVarBndr] -> OSet Name -> OSet Name
+fv_dtvbs :: [DTyVarBndr flag] -> OSet Name -> OSet Name
 fv_dtvbs tvbs fvs = foldr fv_dtvb fvs tvbs
 
 -- | Adjust the free variables of something following a 'DTyVarBndr'.
-fv_dtvb :: DTyVarBndr -> OSet Name -> OSet Name
-fv_dtvb (DPlainTV n)    fvs = OS.delete n fvs
-fv_dtvb (DKindedTV n k) fvs = OS.delete n fvs <> fvDType k
+fv_dtvb :: DTyVarBndr flag -> OSet Name -> OSet Name
+fv_dtvb (DPlainTV n _)    fvs = OS.delete n fvs
+fv_dtvb (DKindedTV n _ k) fvs = OS.delete n fvs <> fvDType k

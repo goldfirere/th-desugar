@@ -61,13 +61,14 @@ test_reify_kind_sigs =
                typeKind = DConT typeKindName
                boolKind = DConT ''Bool
                k_to_type = DArrowT `DAppT` DVarT k `DAppT` typeKind
-               forall_k_invis_k_to_type = DForallT ForallInvis [DPlainTV k] k_to_type in
+               forall_k_invis_k_to_type =
+                 DForallT (DForallInvis [DPlainTV k SpecifiedSpec]) k_to_type in
            [ (1, forall_k_invis_k_to_type)
            , (2, k_to_type)
            , (3, forall_k_invis_k_to_type)
            , (4, forall_k_invis_k_to_type)
            , (5, k_to_type)
-           , (6, DForallT ForallVis [DKindedTV k boolKind] $
+           , (6, DForallT (DForallVis [DKindedTV k () boolKind]) $
                  DArrowT `DAppT` (DConT ''Proxy `DAppT` DVarT k)
                          `DAppT` DConT ''Constraint)
            , (7, DArrowT `DAppT` boolKind `DAppT`

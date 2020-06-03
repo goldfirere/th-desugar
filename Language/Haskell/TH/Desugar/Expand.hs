@@ -59,9 +59,9 @@ expand_type :: forall q. DsMonad q => IgnoreKinds -> DType -> q DType
 expand_type ign = go []
   where
     go :: [DTypeArg] -> DType -> q DType
-    go [] (DForallT fvf tvbs ty) =
-      DForallT fvf <$> mapM (expand_tvb ign) tvbs
-                   <*> expand_type ign ty
+    go [] (DForallT tele ty) =
+      DForallT <$> expand_tele ign tele
+               <*> expand_type ign ty
     go _ (DForallT {}) =
       impossible "A forall type is applied to another type."
     go [] (DConstrainedT cxt ty) =
@@ -88,10 +88,15 @@ expand_type ign = go []
     finish :: DType -> [DTypeArg] -> q DType
     finish ty args = return $ applyDType ty args
 
+-- | Expands all type synonyms in the kinds of a @forall@ telescope.
+expand_tele :: DsMonad q => IgnoreKinds -> DForallTelescope -> q DForallTelescope
+expand_tele ign (DForallVis   tvbs) = DForallVis   <$> mapM (expand_tvb ign) tvbs
+expand_tele ign (DForallInvis tvbs) = DForallInvis <$> mapM (expand_tvb ign) tvbs
+
 -- | Expands all type synonyms in a type variable binder's kind.
-expand_tvb :: DsMonad q => IgnoreKinds -> DTyVarBndr -> q DTyVarBndr
-expand_tvb _   tvb@DPlainTV{} = pure tvb
-expand_tvb ign (DKindedTV n k) = DKindedTV n <$> expand_type ign k
+expand_tvb :: DsMonad q => IgnoreKinds -> DTyVarBndr flag -> q (DTyVarBndr flag)
+expand_tvb _   tvb@DPlainTV{}       = pure tvb
+expand_tvb ign (DKindedTV n flag k) = DKindedTV n flag <$> expand_type ign k
 
 -- | Expand a constructor with given arguments
 expand_con :: forall q.
@@ -123,7 +128,7 @@ expand_con ign n args = do
           |  length normal_args >= length tvbs   -- this should always be true!
           -> do
             let (syn_args, rest_args) = splitAtList tvbs normal_args
-            ty <- substTy (M.fromList $ zip (map extractDTvbName tvbs) syn_args) rhs
+            ty <- substTy (M.fromList $ zip (map dtvbName tvbs) syn_args) rhs
             ty' <- expand_type ign ty
             return $ applyDType ty' $ map DTANormal rest_args
 
@@ -197,7 +202,7 @@ expand_con ign n args = do
             _                                        -> True
 
         -- Recursive cases
-        go_ty (DForallT _ tvbs ty)    = liftM2 (&&) (allM go_tvb tvbs) (go_ty ty)
+        go_ty (DForallT tele ty)      = liftM2 (&&) (go_tele tele) (go_ty ty)
         go_ty (DConstrainedT ctxt ty) = liftM2 (&&) (allM go_ty ctxt) (go_ty ty)
         go_ty (DAppT t1 t2)           = liftM2 (&&) (go_ty t1) (go_ty t2)
         go_ty (DAppKindT t k)         = liftM2 (&&) (go_ty t)  (go_ty k)
@@ -209,9 +214,13 @@ expand_con ign n args = do
         go_ty DWildCardT = return True
 
         -- These cases are uninteresting
-        go_tvb :: DTyVarBndr -> q Bool
-        go_tvb DPlainTV{}      = return True
-        go_tvb (DKindedTV _ k) = go_ty k
+        go_tele :: DForallTelescope -> q Bool
+        go_tele (DForallVis   tvbs) = allM go_tvb tvbs
+        go_tele (DForallInvis tvbs) = allM go_tvb tvbs
+
+        go_tvb :: DTyVarBndr flag -> q Bool
+        go_tvb DPlainTV{}        = return True
+        go_tvb (DKindedTV _ _ k) = go_ty k
 
     allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
     allM f = foldM (\b x -> (b &&) `liftM` f x) True
@@ -234,11 +243,6 @@ loop.
 To prevent these sorts of shenanigans, we simply stop whenever we see a type
 synonym with StarT as its right-hand side and return Type.
 -}
-
--- | Extract the name from a @TyVarBndr@
-extractDTvbName :: DTyVarBndr -> Name
-extractDTvbName (DPlainTV n) = n
-extractDTvbName (DKindedTV n _) = n
 
 -- | Expand all type synonyms and type families in the desugared abstract
 -- syntax tree provided, where type family simplification is on a "best effort"

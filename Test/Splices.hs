@@ -51,6 +51,7 @@ import GHC.Exts
 import GHC.TypeLits
 
 import Language.Haskell.TH
+import Language.Haskell.TH.Datatype.TyVarBndr
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Syntax (Quasi)
 import Data.Generics
@@ -88,11 +89,19 @@ assumeStarT :: Data a => a -> a
 #if __GLASGOW_HASKELL__ < 709
 assumeStarT = id
 #else
-assumeStarT = everywhere (mkT go)
+assumeStarT = everywhere (mkT assume_spec . mkT assume_unit)
   where
-    go :: TyVarBndr -> TyVarBndr
-    go (PlainTV n) = KindedTV n StarT
-    go (KindedTV n k) = KindedTV n (assumeStarT k)
+    assume_spec :: TyVarBndrSpec -> TyVarBndrSpec
+#if __GLASGOW_HASKELL__ >= 900
+    assume_spec (PlainTV n spec)    = KindedTV n spec StarT
+    assume_spec (KindedTV n spec k) = KindedTV n spec (assumeStarT k)
+#else
+    assume_spec = assume_unit
+#endif
+
+    assume_unit :: TyVarBndrUnit -> TyVarBndrUnit
+    assume_unit = elimTV (\n   -> kindedTV n StarT)
+                         (\n k -> kindedTV n (assumeStarT k))
 #endif
 
 dropTrailing0s :: Data a => a -> a
@@ -410,7 +419,7 @@ class ExCls a
 data ExData1 a
 data ExData2 a
 
-ds_dectest16 = DInstanceD Nothing (Just [DPlainTV (mkName "a")]) []
+ds_dectest16 = DInstanceD Nothing (Just [DPlainTV (mkName "a") ()]) []
                 (DConT ''ExCls `DAppT`
                   (DConT ''ExData1 `DAppT` DVarT (mkName "a"))) []
 dectest16 :: Q [Dec]
@@ -418,10 +427,10 @@ dectest16 = return [ InstanceD
 #if __GLASGOW_HASKELL__ >= 800
                        Nothing
 #endif
-                       [] (ForallT [PlainTV (mkName "a")] []
+                       [] (ForallT [plainTVSpecified (mkName "a")] []
                                    (ConT ''ExCls `AppT`
                                      (ConT ''ExData1 `AppT` VarT (mkName "a")))) [] ]
-ds_dectest17 = DStandaloneDerivD Nothing (Just [DPlainTV (mkName "a")]) []
+ds_dectest17 = DStandaloneDerivD Nothing (Just [DPlainTV (mkName "a") ()]) []
                 (DConT ''ExCls `DAppT`
                   (DConT ''ExData2 `DAppT` DVarT (mkName "a")))
 #if __GLASGOW_HASKELL__ >= 710
@@ -430,7 +439,7 @@ dectest17 = return [ StandaloneDerivD
 #if __GLASGOW_HASKELL__ >= 802
                        Nothing
 #endif
-                       [] (ForallT [PlainTV (mkName "a")] []
+                       [] (ForallT [plainTVSpecified (mkName "a")] []
                                    (ConT ''ExCls `AppT`
                                      (ConT ''ExData2 `AppT` VarT (mkName "a")))) ]
 #endif

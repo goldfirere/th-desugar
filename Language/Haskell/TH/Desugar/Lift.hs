@@ -23,7 +23,7 @@ import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Lift
 
-$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''ForallVisFlag, ''DTyVarBndr
+$(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DForallTelescope, ''DTyVarBndr
                  , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DDerivClause, ''DCon
                  , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
                  , ''DPatSynDir , ''NewOrData, ''DDerivStrategy
@@ -35,8 +35,12 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''ForallVisFlag, ''DTyVarBndr
 #if __GLASGOW_HASKELL__ < 801
                  , ''PatSynArgs
 #endif
+#if __GLASGOW_HASKELL__ < 900
+                 , ''Specificity
+#endif
 
                  , ''TypeArg,   ''DTypeArg
                  , ''FunArgs,   ''DFunArgs
                  , ''VisFunArg, ''DVisFunArg
+                 , ''ForallTelescope
                  ])

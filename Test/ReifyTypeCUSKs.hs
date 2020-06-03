@@ -96,7 +96,7 @@ test_reify_type_cusks, test_reify_type_no_cusks :: [Bool]
 #if __GLASGOW_HASKELL__ >= 800
            ++
            [ (8, let k = mkName "k" in
-                 DForallT ForallInvis [DPlainTV k] $
+                 DForallT (DForallInvis [DPlainTV k SpecifiedSpec]) $
                  DArrowT `DAppT` DVarT k `DAppT`
                    (DArrowT `DAppT` DVarT k `DAppT` typeKind))
            ]
@@ -105,19 +105,19 @@ test_reify_type_cusks, test_reify_type_no_cusks :: [Bool]
            ++
            [ (9, let j = mkName "j"
                      k = mkName "k" in
-                 DForallT ForallInvis [DPlainTV j] $
+                 DForallT (DForallInvis [DPlainTV j SpecifiedSpec]) $
                  DArrowT `DAppT` DVarT j `DAppT`
-                   (DForallT ForallInvis [DPlainTV k] $
+                   (DForallT (DForallInvis [DPlainTV k SpecifiedSpec]) $
                     DArrowT `DAppT` DVarT k `DAppT` typeKind))
            ]
 #endif
 #if __GLASGOW_HASKELL__ >= 809
            ++
            [ (10, let k = mkName "k" in
-                  DForallT ForallVis [DKindedTV k typeKind] $
+                  DForallT (DForallVis [DKindedTV k () typeKind]) $
                   DArrowT `DAppT` DVarT k `DAppT` typeKind)
            , (11, let k = mkName "k" in
-                  DForallT ForallVis [DPlainTV k] $
+                  DForallT (DForallVis [DPlainTV k ()]) $
                   DArrowT `DAppT` DVarT k `DAppT` typeKind)
            ]
 #endif

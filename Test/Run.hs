@@ -274,7 +274,7 @@ test_stuck_tyfam_expansion =
                    (decsToTH [ -- type family F (x :: k) :: k
                                DOpenTypeFamilyD
                                  (DTypeFamilyHead fam_name
-                                                  [DKindedTV x (DVarT k)]
+                                                  [DKindedTV x () (DVarT k)]
                                                   (DKindSig (DVarT k))
                                                   Nothing)
                                -- type instance F (x :: ()) = x
@@ -300,17 +300,23 @@ test_t92 :: Bool
 test_t92 =
   $(do a <- newName "a"
        f <- newName "f"
-       let t = DForallT ForallInvis [DPlainTV f] (DVarT f `DAppT` DVarT a)
-       toposortTyVarsOf [t] `eqTHSplice` [DPlainTV a])
+       let t = DForallT (DForallInvis [DPlainTV f SpecifiedSpec])
+                        (DVarT f `DAppT` DVarT a)
+       toposortTyVarsOf [t] `eqTHSplice` [DPlainTV a ()])
 
 test_t97 :: Bool
 test_t97 =
   $(do a <- newName "a"
        k <- newName "k"
-       let orig_ty = DForallT ForallInvis
-                       [DKindedTV a (DConT ''Constant `DAppT` DConT ''Int `DAppT` DVarT k)]
+       let orig_ty = DForallT
+                       (DForallInvis
+                         [DKindedTV a SpecifiedSpec
+                                      (DConT ''Constant `DAppT` DConT ''Int
+                                                        `DAppT` DVarT k)])
                        (DVarT a)
-           expected_ty = DForallT ForallInvis [DKindedTV a (DVarT k)] (DVarT a)
+           expected_ty = DForallT (DForallInvis
+                                    [DKindedTV a SpecifiedSpec (DVarT k)])
+                                  (DVarT a)
        expanded_ty <- expandType orig_ty
        expected_ty `eqTHSplice` expanded_ty)
 
@@ -323,7 +329,7 @@ test_getDataD_kind_sig =
                 data_kind_sig = DArrowT `DAppT` type_kind `DAppT`
                                   (DArrowT `DAppT` type_kind `DAppT` type_kind)
             (tvbs, _) <- withLocalDeclarations
-                           [decToTH (DDataD Data [] data_name [DPlainTV a]
+                           [decToTH (DDataD Data [] data_name [DPlainTV a ()]
                                             (Just data_kind_sig) [] [])]
                            (getDataD "th-desugar: Impossible" data_name)
             [| $(Syn.lift (length tvbs)) |])
@@ -338,7 +344,7 @@ test_t100 =
                      MkT :: forall a. { unT :: a } -> T a |]
        info <- withLocalDeclarations decs (dsReify (mkName "unT"))
        let -- forall a. T a -> a
-           exp_ty = DForallT ForallInvis [DPlainTV (mkName "a")] $
+           exp_ty = DForallT (DForallInvis [DPlainTV (mkName "a") SpecifiedSpec]) $
                     DArrowT `DAppT` (DConT (mkName "T") `DAppT` DVarT (mkName "a"))
                             `DAppT` DVarT (mkName "a")
        case info of
@@ -374,7 +380,7 @@ test_t103 =
   $(do decs <- [d| data P (a :: k) = MkP |]
        [DDataD _ _ _ _ _ [DCon tvbs _ _ _ _] _] <- dsDecs decs
        case tvbs of
-         [DPlainTV k, DKindedTV a (DVarT k')]
+         [DPlainTV k SpecifiedSpec, DKindedTV a SpecifiedSpec (DVarT k')]
            |  nameBase k == "k"
            ,  nameBase a == "a"
            ,  k == k'
@@ -391,8 +397,8 @@ test_t112 =
        b <- newName "b"
        let aVar = DVarT a
            bVar = DVarT b
-           aTvb = DPlainTV a
-           bTvb = DPlainTV b
+           aTvb = DPlainTV a ()
+           bTvb = DPlainTV b ()
 
            fvsABExpected = [aTvb, bTvb]
            fvsABActual   = toposortTyVarsOf [aVar, bVar]
@@ -416,8 +422,8 @@ test_t132 =
            --     infixr 5 `m`
            --     m :: a
            --
-           -- We define this by hand to avoid GHC#17608 on pre-8.12 GHCs.
-           decs = sweeten [ DClassD [] c [DPlainTV a] []
+           -- We define this by hand to avoid GHC#17608 on pre-9.0 GHCs.
+           decs = sweeten [ DClassD [] c [DPlainTV a ()] []
                             [ DLetDec (DInfixD fixity m)
                             , DLetDec (DSigD m (DVarT a))
                             ]
@@ -451,16 +457,21 @@ test_kind_substitution =
                  -- (Nothing :: Maybe a)
            ty1 = DSigT (DConT 'Nothing) (DConT ''Maybe `DAppT` DVarT a)
                  -- forall (c :: a). c
-           ty2 = DForallT ForallInvis [DKindedTV c (DVarT a)] (DVarT c)
+           ty2 = DForallT (DForallInvis [DKindedTV c SpecifiedSpec (DVarT a)])
+                          (DVarT c)
                  -- forall a (c :: a). c
-           ty3 = DForallT ForallInvis [DPlainTV a, DKindedTV c (DVarT a)] (DVarT c)
+           ty3 = DForallT (DForallInvis [ DPlainTV  a SpecifiedSpec
+                                        , DKindedTV c SpecifiedSpec (DVarT a)
+                                        ])
+                          (DVarT c)
                  -- forall (a :: k) k (b :: k). Proxy b -> Proxy a
-           ty4 = DForallT ForallInvis
-                          [ DKindedTV a (DVarT k)
-                          , DPlainTV k
-                          , DKindedTV b (DVarT k)
-                          ] (DArrowT `DAppT` (DConT ''Proxy `DAppT` DVarT b)
-                                     `DAppT` (DConT ''Proxy `DAppT` DVarT a))
+           ty4 = DForallT (DForallInvis
+                             [ DKindedTV a SpecifiedSpec (DVarT k)
+                             , DPlainTV  k SpecifiedSpec
+                             , DKindedTV b SpecifiedSpec (DVarT k)
+                             ])
+                          (DArrowT `DAppT` (DConT ''Proxy `DAppT` DVarT b)
+                                   `DAppT` (DConT ''Proxy `DAppT` DVarT a))
 
        substTy1 <- substTy subst ty1
        substTy2 <- substTy subst ty2
