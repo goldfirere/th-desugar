@@ -47,15 +47,16 @@ library
       ghc-prim,
       template-haskell >= 2.9 && < 2.17,
       containers >= 0.5,
-      fail == 4.9.*,
       mtl >= 2.1,
       ordered-containers >= 0.2.2,
-      semigroups >= 0.16,
       syb >= 0.4,
       th-abstraction >= 0.2.11,
       th-lift >= 0.6.1,
       th-orphans >= 0.13.7,
       transformers-compat >= 0.6.3
+  if !impl(ghc >= 8.0)
+      build-depends: fail == 4.9.*,
+                     semigroups >= 0.16
   default-extensions: TemplateHaskell
   exposed-modules:    Language.Haskell.TH.Desugar
                       Language.Haskell.TH.Desugar.Expand
