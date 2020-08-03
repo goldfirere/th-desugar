@@ -427,6 +427,8 @@ con_to_type h98_tvbs h98_result_ty con =
     (is_gadt, ty) | is_gadt   -> ty
                   | otherwise -> maybeForallT h98_tvbs [] ty
   where
+    -- Note that we deliberately ignore linear types and use (->) everywhere.
+    -- See [Gracefully handling linear types] in L.H.TH.Desugar.Core.
     go :: Con -> (Bool, Type) -- The Bool is True when dealing with a GADT
     go (NormalC _ stys)       = (False, mkArrows (map snd    stys)  h98_result_ty)
     go (RecC _ vstys)         = (False, mkArrows (map thdOf3 vstys) h98_result_ty)

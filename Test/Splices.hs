@@ -60,6 +60,8 @@ import Data.Generics
 import GHC.OverloadedLabels ( IsLabel(..) )
 #endif
 
+import Prelude as P
+
 dsSplice :: Q Exp -> Q Exp
 dsSplice expq = expq >>= dsExp >>= (return . expToTH)
 
@@ -111,6 +113,18 @@ dropTrailing0s = everywhere (mkT (mkName . frob . nameBase))
       | head str == 'r' = str
       | head str == 'R' = str
       | otherwise       = dropWhileEnd isDigit str
+
+-- Because th-desugar does not support linear types, we must pretend like
+-- MulArrowT does not exist for testing purposes.
+-- See Note [Gracefully handling linear types] in L.H.TH.Desugar.Core.
+delinearize :: Data a => a -> a
+delinearize = everywhere (mkT no_mul)
+  where
+    no_mul :: Type -> Type
+#if __GLASGOW_HASKELL__ >= 900
+    no_mul (MulArrowT `AppT` _) = ArrowT
+#endif
+    no_mul t                    = t
 
 eqTH :: (Data a, Show a) => a -> a -> Bool
 eqTH a b = show (unqualify a) == show (unqualify b)

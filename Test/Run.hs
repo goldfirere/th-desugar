@@ -531,7 +531,7 @@ $(return [])  -- somehow, this is necessary to get the staging correct for the
 normal_reifications :: [String]
 normal_reifications = $(do infos <- mapM reify reifyDecsNames
                            ListE <$> mapM (Syn.lift . show . Just)
-                                          (dropTrailing0s $ unqualify infos))
+                                          (dropTrailing0s $ delinearize $ unqualify infos))
 
 zipWith3M :: Monad m => (a -> b -> c -> m d) -> [a] -> [b] -> [c] -> m [d]
 zipWith3M f (a:as) (b:bs) (c:cs) = liftM2 (:) (f a b c) (zipWith3M f as bs cs)
