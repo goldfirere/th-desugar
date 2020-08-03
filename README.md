@@ -26,6 +26,9 @@ I will try to keep this package up-to-date with respect to changes in GHC.
 
 Known limitations
 -----------------
+
+## Limited support for kind inference
+
 `th-desugar` sometimes has to construct types for certain Haskell entities.
 For instance, `th-desugar` desugars all Haskell98-style constructors to use
 GADT syntax, so the following:
@@ -88,3 +91,12 @@ The following constructs are known to be susceptible to this issue:
 4. Locally reified data constructors
 5. Locally reified type family instances (on GHC 8.8 and later, in which the
    Template Haskell AST supports explicit `foralls` in type family equations)
+
+## Limited support for linear types
+
+Currently, the `th-desugar` AST deliberately makes it impossible to represent
+linear types, and desugaring a linear function arrow will simply turn into a
+normal function arrow `(->)`. This choice is partly motivated by issues in the
+way that linear types interact with Template Haskell, which sometimes make it
+impossible to tell whether a reified function type is linear or not. See, for
+instance, [GHC#18378](https://gitlab.haskell.org/ghc/ghc/-/issues/18378).

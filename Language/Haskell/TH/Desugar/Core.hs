@@ -1141,6 +1141,11 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
 
 -- | Desugar a type
 dsType :: DsMonad q => Type -> q DType
+#if __GLASGOW_HASKELL__ >= 900
+-- See Note [Gracefully handling linear types]
+dsType (MulArrowT `AppT` _) = return DArrowT
+dsType MulArrowT = fail "Cannot desugar exotic uses of linear types."
+#endif
 dsType (ForallT tvbs preds ty) =
   mkDForallConstrainedT <$> (DForallInvis <$> mapM dsTvbSpec tvbs)
                         <*> dsCxt preds <*> dsType ty
@@ -1197,6 +1202,40 @@ dsTvb :: DsMonad q => flag -> TyVarBndr -> q (DTyVarBndr flag)
 dsTvb flag (PlainTV n)    = return $ DPlainTV n flag
 dsTvb flag (KindedTV n k) = DKindedTV n flag <$> dsType k
 #endif
+
+{-
+Note [Gracefully handling linear types]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Per the README, th-desugar does not currently support linear types.
+Unfortunately, we cannot simply reject all occurrences of
+multiplicity-polymorphic function arrows (i.e., MulArrowT), as it is possible
+for "non-linear" code to contain them when reified. For example, the type of a
+Haskell98 data constructor such as `Just` will be reified as
+
+  a #-> Maybe a
+
+In terms of the TH AST, that is:
+
+  MulArrowT `AppT` PromotedConT 'One `AppT` VarT a `AppT` (ConT ''Maybe `AppT` VarT a)
+
+Therefore, in order to desugar these sorts of types, we have to do *something*
+with MulArrowT. The approach that th-desugar takes is to pretend that all
+multiplicity-polymorphic function arrows are actually ordinary function arrows
+(->) when desugaring types. In other words, whenever th-desugar sees
+(MulArrowT `AppT` m), for any particular value of `m`, it will turn it into
+DArrowT.
+
+This approach is enough to gracefully handle most uses of MulArrowT, as TH
+reification always generates MulArrowT applied to some particular multiplicity
+(as of GHC 9.0, at least). It's conceivable that some wily user could manually
+construct a TH AST containing MulArrowT in a different position, but since this
+situation is rare, we simply throw an error in such cases.
+
+We adopt a similar stance in L.H.TH.Desugar.Reify when locally reifying the
+types of data constructors: since th-desugar doesn't currently support linear
+types, we pretend as if MulArrowT does not exist. As a result, the type of
+`Just` would be locally reified as `a -> Maybe a`, not `a #-> Maybe a`.
+-}
 
 -- | Desugar a 'TyVarBndrSpec'.
 dsTvbSpec :: DsMonad q => TyVarBndrSpec -> q DTyVarBndrSpec
@@ -1323,6 +1362,9 @@ dsPred (ImplicitParamT n t) = do
 #if __GLASGOW_HASKELL__ >= 809
 dsPred t@(ForallVisT {}) =
   impossible $ "Visible dependent quantifier seen as head of constraint: " ++ show t
+#endif
+#if __GLASGOW_HASKELL__ >= 900
+dsPred MulArrowT = impossible "Linear arrow seen as head of constraint."
 #endif
 
 -- | Desugar a quantified constraint.
