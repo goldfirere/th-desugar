@@ -106,11 +106,11 @@ dsExp (CaseE exp matches) = do
   matches' <- dsMatches scrutinee matches
   return $ DLetE [DValD (DVarP scrutinee) exp'] $
            DCaseE (DVarE scrutinee) matches'
-dsExp (DoE
 #if __GLASGOW_HASKELL__ >= 900
-           _
+dsExp (DoE mb_mod stmts) = dsDoStmts mb_mod stmts
+#else
+dsExp (DoE        stmts) = dsDoStmts Nothing stmts
 #endif
-           stmts) = dsDoStmts stmts
 dsExp (CompE stmts) = dsComp stmts
 dsExp (ArithSeqE (FromR exp)) = DAppE (DVarE 'enumFrom) <$> dsExp exp
 dsExp (ArithSeqE (FromThenR exp1 exp2)) =
@@ -419,23 +419,27 @@ dsGuardStmts (RecS {} : _) _ _ = fail "th-desugar currently does not support Rec
 #endif
 
 -- | Desugar the @Stmt@s in a @do@ expression
-dsDoStmts :: DsMonad q => [Stmt] -> q DExp
-dsDoStmts [] = impossible "do-expression ended with something other than bare statement."
-dsDoStmts [NoBindS exp] = dsExp exp
-dsDoStmts (BindS pat exp : rest) = do
-  rest' <- dsDoStmts rest
-  dsBindS exp pat rest' "do expression"
-dsDoStmts (LetS decs : rest) = do
-  (decs', ip_binder) <- dsLetDecs decs
-  rest' <- dsDoStmts rest
-  return $ DLetE decs' $ ip_binder rest'
-dsDoStmts (NoBindS exp : rest) = do
-  exp' <- dsExp exp
-  rest' <- dsDoStmts rest
-  return $ DAppE (DAppE (DVarE '(>>)) exp') rest'
-dsDoStmts (ParS _ : _) = impossible "Parallel comprehension in a do-statement."
+dsDoStmts :: forall q. DsMonad q => Maybe ModName -> [Stmt] -> q DExp
+dsDoStmts mb_mod = go
+  where
+    go :: [Stmt] -> q DExp
+    go [] = impossible "do-expression ended with something other than bare statement."
+    go [NoBindS exp] = dsExp exp
+    go (BindS pat exp : rest) = do
+      rest' <- go rest
+      dsBindS mb_mod exp pat rest' "do expression"
+    go (LetS decs : rest) = do
+      (decs', ip_binder) <- dsLetDecs decs
+      rest' <- go rest
+      return $ DLetE decs' $ ip_binder rest'
+    go (NoBindS exp : rest) = do
+      exp' <- dsExp exp
+      rest' <- go rest
+      let sequence_name = mk_qual_do_name mb_mod '(>>)
+      return $ DAppE (DAppE (DVarE sequence_name) exp') rest'
+    go (ParS _ : _) = impossible "Parallel comprehension in a do-statement."
 #if __GLASGOW_HASKELL__ >= 807
-dsDoStmts (RecS {} : _) = fail "th-desugar currently does not support RecursiveDo"
+    go (RecS {} : _) = fail "th-desugar currently does not support RecursiveDo"
 #endif
 
 -- | Desugar the @Stmt@s in a list or monad comprehension
@@ -444,7 +448,7 @@ dsComp [] = impossible "List/monad comprehension ended with something other than
 dsComp [NoBindS exp] = DAppE (DVarE 'return) <$> dsExp exp
 dsComp (BindS pat exp : rest) = do
   rest' <- dsComp rest
-  dsBindS exp pat rest' "monad comprehension"
+  dsBindS Nothing exp pat rest' "monad comprehension"
 dsComp (LetS decs : rest) = do
   (decs', ip_binder) <- dsLetDecs decs
   rest' <- dsComp rest
@@ -468,12 +472,13 @@ dsComp (RecS {} : _) = fail "th-desugar currently does not support RecursiveDo"
 -- 'MonadFail' or 'Monad', depending on whether the @MonadFailDesugaring@
 -- language extension is enabled or not. (On GHCs older than 8.0, 'fail' from
 -- 'Monad' is always used.)
-dsBindS :: forall q. DsMonad q => Exp -> Pat -> DExp -> String -> q DExp
-dsBindS bind_arg_exp success_pat success_exp ctxt = do
+dsBindS :: forall q. DsMonad q
+        => Maybe ModName -> Exp -> Pat -> DExp -> String -> q DExp
+dsBindS mb_mod bind_arg_exp success_pat success_exp ctxt = do
   bind_arg_exp' <- dsExp bind_arg_exp
   (success_pat', success_exp') <- dsPatOverExp success_pat success_exp
   is_univ_pat <- isUniversalPattern success_pat'
-  let bind_into = DAppE (DAppE (DVarE '(>>=)) bind_arg_exp')
+  let bind_into = DAppE (DAppE (DVarE bind_name) bind_arg_exp')
   if is_univ_pat
      then bind_into <$> mkDLamEFromDPats [success_pat'] success_exp'
      else do arg_name  <- newUniqueName "arg"
@@ -485,19 +490,29 @@ dsBindS bind_arg_exp success_pat success_exp ctxt = do
                    DLitE (StringL $ "Pattern match failure in " ++ ctxt)
                ]
   where
+    bind_name = mk_qual_do_name mb_mod '(>>=)
+
     mk_fail_name :: q Name
 #if __GLASGOW_HASKELL__ >= 807
     -- GHC 8.8 deprecates the MonadFailDesugaring extension since its effects
     -- are always enabled. Furthermore, MonadFailDesugaring is no longer
     -- enabled by default, so simply use MonadFail.fail. (That happens to
     -- be the same as Prelude.fail in 8.8+.)
-    mk_fail_name = return 'MonadFail.fail
+    mk_fail_name = return fail_MonadFail_name
 #elif __GLASGOW_HASKELL__ >= 800
     mk_fail_name = do
       mfd <- qIsExtEnabled MonadFailDesugaring
-      return $ if mfd then 'MonadFail.fail else 'Prelude.fail
+      return $ if mfd then fail_MonadFail_name else fail_Prelude_name
 #else
-    mk_fail_name = return 'Prelude.fail
+    mk_fail_name = return fail_Prelude_name
+#endif
+
+#if __GLASGOW_HASKELL__ >= 800
+    fail_MonadFail_name = mk_qual_do_name mb_mod 'MonadFail.fail
+#endif
+
+#if __GLASGOW_HASKELL__ < 807
+    fail_Prelude_name = mk_qual_do_name mb_mod 'Prelude.fail
 #endif
 
 -- | Desugar the contents of a parallel comprehension.
@@ -1669,6 +1684,16 @@ toposortTyVarsOf tys =
 dtvbName :: DTyVarBndr flag -> Name
 dtvbName (DPlainTV n _)    = n
 dtvbName (DKindedTV n _ _) = n
+
+-- @mk_qual_do_name mb_mod orig_name@ will simply return @orig_name@ if
+-- @mb_mod@ is Nothing. If @mb_mod@ is @Just mod_@, then a new 'Name' will be
+-- returned that uses @mod_@ as the new module prefix. This is useful for
+-- emulating the behavior of the @QualifiedDo@ extension, which adds module
+-- prefixes to functions such as ('>>=') and ('>>').
+mk_qual_do_name :: Maybe ModName -> Name -> Name
+mk_qual_do_name mb_mod orig_name = case mb_mod of
+  Nothing   -> orig_name
+  Just mod_ -> Name (OccName (nameBase orig_name)) (NameQ mod_)
 
 -- | Reconstruct an arrow 'DType' from its argument and result types.
 ravelDType :: DFunArgs -> DType -> DType

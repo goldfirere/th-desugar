@@ -40,6 +40,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE StandaloneKindSignatures #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 900
+{-# LANGUAGE QualifiedDo #-}
+#endif
+
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
@@ -311,6 +315,14 @@ test51_tuple_sections =
          f2 = (#,5,#)
      in case (#,#) (f1 "a" 'a') (f2 "b" 'b') of
           (#,#) ((,,) _ a _) ((#,,#) _ b _) -> a + b |]
+#endif
+
+#if __GLASGOW_HASKELL__ >= 900
+test52_qual_do =
+  [| P.do x <- [1, 2]
+          y@1 <- x
+          [1, 2]
+          P.return y |]
 #endif
 
 type family TFExpand x
@@ -748,5 +760,8 @@ test_exprs = [ test1_sections
 #endif
 #if __GLASGOW_HASKELL__ >= 809
              , test51_tuple_sections
+#endif
+#if __GLASGOW_HASKELL__ >= 900
+             , test52_qual_do
 #endif
              ]
