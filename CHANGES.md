@@ -36,6 +36,24 @@ Version 1.12 [????.??.??]
   especially in the presence of GADT constructors. Moreover, this function was
   used in the implementation of `getRecordSelectors` function, so bugs in
   `conExistentialTvbs` often affected the results of `getRecordSelectors`.
+* The types of `decToTH`, `letDecToTH`, and `pragmaToTH` have changed:
+
+  ```diff
+  -decToTH :: DDec -> [Dec]
+  +decToTH :: DDec -> Dec
+
+  -letDecToTH :: DLetDec -> Maybe Dec
+  +letDecToTH :: DLetDec -> Dec
+
+  -pragmaToTH :: DPragma -> Maybe Pragma
+  +pragmaToTH :: DPragma -> Pragma
+  ```
+
+  The semantics of `pragmaToTH` have changed accordingly. Previously,
+  `pragmaToTH` would return `Nothing` when the argument is a `DPragma` that is
+  not supported on an old version of GHC, but now an error will be thrown
+  instead. `decToTH` and `letDecToTH`, which transitively invoke `pragmaToTH`,
+  have had their types updated to accommodate `pragmaToTH`'s type change.
 * Make the test suite compile with GHC 8.12.
 
 Version 1.11 [2020.03.25]

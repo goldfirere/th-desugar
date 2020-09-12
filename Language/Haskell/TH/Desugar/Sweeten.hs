@@ -45,8 +45,6 @@ import Language.Haskell.TH.Desugar.AST
 import Language.Haskell.TH.Desugar.Core (DTypeArg(..))
 import Language.Haskell.TH.Desugar.Util
 
-import Data.Maybe ( maybeToList, mapMaybe )
-
 expToTH :: DExp -> Exp
 expToTH (DVarE n)            = VarE n
 expToTH (DConE n)            = ConE n
@@ -54,7 +52,7 @@ expToTH (DLitE l)            = LitE l
 expToTH (DAppE e1 e2)        = AppE (expToTH e1) (expToTH e2)
 expToTH (DLamE names exp)    = LamE (map VarP names) (expToTH exp)
 expToTH (DCaseE exp matches) = CaseE (expToTH exp) (map matchToTH matches)
-expToTH (DLetE decs exp)     = LetE (mapMaybe letDecToTH decs) (expToTH exp)
+expToTH (DLetE decs exp)     = LetE (map letDecToTH decs) (expToTH exp)
 expToTH (DSigE exp ty)       = SigE (expToTH exp) (typeToTH ty)
 #if __GLASGOW_HASKELL__ < 709
 expToTH (DStaticE _)         = error "Static expressions supported only in GHC 7.10+"
@@ -82,35 +80,35 @@ patToTH (DSigP pat ty) = SigP (patToTH pat) (typeToTH ty)
 patToTH DWildP         = WildP
 
 decsToTH :: [DDec] -> [Dec]
-decsToTH = concatMap decToTH
+decsToTH = map decToTH
 
 -- | This returns a list of @Dec@s because GHC 7.6.3 does not have
 -- a one-to-one mapping between 'DDec' and @Dec@.
-decToTH :: DDec -> [Dec]
-decToTH (DLetDec d) = maybeToList (letDecToTH d)
+decToTH :: DDec -> Dec
+decToTH (DLetDec d) = letDecToTH d
 decToTH (DDataD Data cxt n tvbs _mk cons derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap typeToTH _mk) (map conToTH cons)
-         (concatMap derivClauseToTH derivings)]
+  DataD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap typeToTH _mk) (map conToTH cons)
+        (concatMap derivClauseToTH derivings)
 #else
-  [DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons)
-         (map derivingToTH derivings)]
+  DataD (cxtToTH cxt) n (map tvbToTH tvbs) (map conToTH cons)
+        (map derivingToTH derivings)
 #endif
 decToTH (DDataD Newtype cxt n tvbs _mk [con] derivings) =
 #if __GLASGOW_HASKELL__ > 710
-  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap typeToTH _mk) (conToTH con)
-            (concatMap derivClauseToTH derivings)]
+  NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (fmap typeToTH _mk) (conToTH con)
+           (concatMap derivClauseToTH derivings)
 #else
-  [NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con)
-            (map derivingToTH derivings)]
+  NewtypeD (cxtToTH cxt) n (map tvbToTH tvbs) (conToTH con)
+           (map derivingToTH derivings)
 #endif
 decToTH (DDataD Newtype _cxt _n _tvbs _mk _cons _derivings) =
   error "Newtype declaration without exactly 1 constructor."
-decToTH (DTySynD n tvbs ty) = [TySynD n (map tvbToTH tvbs) (typeToTH ty)]
+decToTH (DTySynD n tvbs ty) = TySynD n (map tvbToTH tvbs) (typeToTH ty)
 decToTH (DClassD cxt n tvbs fds decs) =
-  [ClassD (cxtToTH cxt) n (map tvbToTH tvbs) fds (decsToTH decs)]
+  ClassD (cxtToTH cxt) n (map tvbToTH tvbs) fds (decsToTH decs)
 decToTH (DInstanceD over mtvbs _cxt _ty decs) =
-  [instanceDToTH over cxt' ty' decs]
+  instanceDToTH over cxt' ty' decs
   where
   (cxt', ty') = case mtvbs of
                   Nothing    -> (_cxt, _ty)
@@ -122,19 +120,19 @@ decToTH (DInstanceD over mtvbs _cxt _ty decs) =
                                 error $ "Explicit foralls in instance declarations "
                                      ++ "are broken on GHC 8.0."
 #endif
-decToTH (DForeignD f) = [ForeignD (foreignToTH f)]
+decToTH (DForeignD f) = ForeignD (foreignToTH f)
 #if __GLASGOW_HASKELL__ > 710
 decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs ann)) =
-  [OpenTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)]
+  OpenTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)
 #else
 decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs _ann)) =
-  [FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)]
+  FamilyD TypeFam n (map tvbToTH tvbs) (frsToTH frs)
 #endif
 decToTH (DDataFamilyD n tvbs mk) =
 #if __GLASGOW_HASKELL__ > 710
-  [DataFamilyD n (map tvbToTH tvbs) (fmap typeToTH mk)]
+  DataFamilyD n (map tvbToTH tvbs) (fmap typeToTH mk)
 #else
-  [FamilyD DataFam n (map tvbToTH tvbs) (fmap typeToTH mk)]
+  FamilyD DataFam n (map tvbToTH tvbs) (fmap typeToTH mk)
 #endif
 decToTH (DDataInstD nd cxt mtvbs lhs mk cons derivings) =
   let ndc = case (nd, cons) of
@@ -143,24 +141,23 @@ decToTH (DDataInstD nd cxt mtvbs lhs mk cons derivings) =
               (Data,    _)     -> DDataCons cons
   in dataInstDecToTH ndc cxt mtvbs lhs mk derivings
 #if __GLASGOW_HASKELL__ >= 807
-decToTH (DTySynInstD eqn) = [TySynInstD (snd $ tySynEqnToTH eqn)]
+decToTH (DTySynInstD eqn) = TySynInstD (snd $ tySynEqnToTH eqn)
 #else
 decToTH (DTySynInstD eqn) =
   let (n, eqn') = tySynEqnToTH eqn in
-  [TySynInstD n eqn']
+  TySynInstD n eqn'
 #endif
 #if __GLASGOW_HASKELL__ > 710
 decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs ann) eqns) =
-  [ClosedTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)
-                     (map (snd . tySynEqnToTH) eqns)
-  ]
+  ClosedTypeFamilyD (TypeFamilyHead n (map tvbToTH tvbs) (frsToTH frs) ann)
+                    (map (snd . tySynEqnToTH) eqns)
 #else
 decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
-  [ClosedTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) (map (snd . tySynEqnToTH) eqns)]
+  ClosedTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) (map (snd . tySynEqnToTH) eqns)
 #endif
-decToTH (DRoleAnnotD n roles) = [RoleAnnotD n roles]
+decToTH (DRoleAnnotD n roles) = RoleAnnotD n roles
 decToTH (DStandaloneDerivD mds mtvbs _cxt _ty) =
-  [standaloneDerivDToTH mds cxt' ty']
+  standaloneDerivDToTH mds cxt' ty'
   where
   (cxt', ty') = case mtvbs of
                   Nothing    -> (_cxt, _ty)
@@ -176,17 +173,17 @@ decToTH (DStandaloneDerivD mds mtvbs _cxt _ty) =
 decToTH (DDefaultSigD {})      =
   error "Default method signatures supported only in GHC 7.10+"
 #else
-decToTH (DDefaultSigD n ty)        = [DefaultSigD n (typeToTH ty)]
+decToTH (DDefaultSigD n ty)        = DefaultSigD n (typeToTH ty)
 #endif
 #if __GLASGOW_HASKELL__ >= 801
-decToTH (DPatSynD n args dir pat) = [PatSynD n args (patSynDirToTH dir) (patToTH pat)]
-decToTH (DPatSynSigD n ty)        = [PatSynSigD n (typeToTH ty)]
+decToTH (DPatSynD n args dir pat) = PatSynD n args (patSynDirToTH dir) (patToTH pat)
+decToTH (DPatSynSigD n ty)        = PatSynSigD n (typeToTH ty)
 #else
 decToTH DPatSynD{}    = patSynErr
 decToTH DPatSynSigD{} = patSynErr
 #endif
 #if __GLASGOW_HASKELL__ >= 809
-decToTH (DKiSigD n ki) = [KiSigD n (typeToTH ki)]
+decToTH (DKiSigD n ki) = KiSigD n (typeToTH ki)
 #else
 decToTH (DKiSigD {})   =
   error "Standalone kind signatures supported only in GHC 8.10+"
@@ -205,33 +202,33 @@ data DNewOrDataCons
 
 -- | Sweeten a 'DDataInstD'.
 dataInstDecToTH :: DNewOrDataCons -> DCxt -> Maybe [DTyVarBndr] -> DType
-                -> Maybe DKind -> [DDerivClause] -> [Dec]
+                -> Maybe DKind -> [DDerivClause] -> Dec
 dataInstDecToTH ndc cxt _mtvbs lhs _mk derivings =
   case ndc of
     DNewtypeCon con ->
 #if __GLASGOW_HASKELL__ >= 807
-      [NewtypeInstD (cxtToTH cxt) (fmap (fmap tvbToTH) _mtvbs) (typeToTH lhs)
-                    (fmap typeToTH _mk) (conToTH con)
-                    (concatMap derivClauseToTH derivings)]
+      NewtypeInstD (cxtToTH cxt) (fmap (fmap tvbToTH) _mtvbs) (typeToTH lhs)
+                   (fmap typeToTH _mk) (conToTH con)
+                   (concatMap derivClauseToTH derivings)
 #elif __GLASGOW_HASKELL__ > 710
-      [NewtypeInstD (cxtToTH cxt) _n _lhs_args (fmap typeToTH _mk) (conToTH con)
-                    (concatMap derivClauseToTH derivings)]
+      NewtypeInstD (cxtToTH cxt) _n _lhs_args (fmap typeToTH _mk) (conToTH con)
+                   (concatMap derivClauseToTH derivings)
 #else
-      [NewtypeInstD (cxtToTH cxt) _n _lhs_args (conToTH con)
-                    (map derivingToTH derivings)]
+      NewtypeInstD (cxtToTH cxt) _n _lhs_args (conToTH con)
+                   (map derivingToTH derivings)
 #endif
 
     DDataCons cons ->
 #if __GLASGOW_HASKELL__ >= 807
-      [DataInstD (cxtToTH cxt) (fmap (fmap tvbToTH) _mtvbs) (typeToTH lhs)
-                 (fmap typeToTH _mk) (map conToTH cons)
-                 (concatMap derivClauseToTH derivings)]
+      DataInstD (cxtToTH cxt) (fmap (fmap tvbToTH) _mtvbs) (typeToTH lhs)
+                (fmap typeToTH _mk) (map conToTH cons)
+                (concatMap derivClauseToTH derivings)
 #elif __GLASGOW_HASKELL__ > 710
-      [DataInstD (cxtToTH cxt) _n _lhs_args (fmap typeToTH _mk) (map conToTH cons)
-                 (concatMap derivClauseToTH derivings)]
+      DataInstD (cxtToTH cxt) _n _lhs_args (fmap typeToTH _mk) (map conToTH cons)
+                (concatMap derivClauseToTH derivings)
 #else
-      [DataInstD (cxtToTH cxt) _n _lhs_args (map conToTH cons)
-                 (map derivingToTH derivings)]
+      DataInstD (cxtToTH cxt) _n _lhs_args (map conToTH cons)
+                (map derivingToTH derivings)
 #endif
   where
     _lhs' = typeToTH lhs
@@ -260,14 +257,13 @@ derivingToTH p =
   error ("Template Haskell in GHC < 8.0 only allows simple derivings: " ++ show p)
 #endif
 
--- | Note: This can currently only return a 'Nothing' if the 'DLetDec' is a pragma which
--- is not supported by the GHC version being used.
-letDecToTH :: DLetDec -> Maybe Dec
-letDecToTH (DFunD name clauses) = Just $ FunD name (map clauseToTH clauses)
-letDecToTH (DValD pat exp)      = Just $ ValD (patToTH pat) (NormalB (expToTH exp)) []
-letDecToTH (DSigD name ty)      = Just $ SigD name (typeToTH ty)
-letDecToTH (DInfixD f name)     = Just $ InfixD f name
-letDecToTH (DPragmaD prag)      = fmap PragmaD (pragmaToTH prag)
+-- | Sweeten a 'DLetDec'.
+letDecToTH :: DLetDec -> Dec
+letDecToTH (DFunD name clauses) = FunD name (map clauseToTH clauses)
+letDecToTH (DValD pat exp)      = ValD (patToTH pat) (NormalB (expToTH exp)) []
+letDecToTH (DSigD name ty)      = SigD name (typeToTH ty)
+letDecToTH (DInfixD f name)     = InfixD f name
+letDecToTH (DPragmaD prag)      = PragmaD (pragmaToTH prag)
 
 conToTH :: DCon -> Con
 #if __GLASGOW_HASKELL__ > 710
@@ -363,29 +359,29 @@ foreignToTH (DImportF cc safety str n ty) =
   ImportF cc safety str n (typeToTH ty)
 foreignToTH (DExportF cc str n ty) = ExportF cc str n (typeToTH ty)
 
-pragmaToTH :: DPragma -> Maybe Pragma
-pragmaToTH (DInlineP n inl rm phases) = Just $ InlineP n inl rm phases
+pragmaToTH :: DPragma -> Pragma
+pragmaToTH (DInlineP n inl rm phases) = InlineP n inl rm phases
 pragmaToTH (DSpecialiseP n ty m_inl phases) =
-  Just $ SpecialiseP n (typeToTH ty) m_inl phases
-pragmaToTH (DSpecialiseInstP ty) = Just $ SpecialiseInstP (typeToTH ty)
+  SpecialiseP n (typeToTH ty) m_inl phases
+pragmaToTH (DSpecialiseInstP ty) = SpecialiseInstP (typeToTH ty)
 #if __GLASGOW_HASKELL__ >= 807
 pragmaToTH (DRuleP str mtvbs rbs lhs rhs phases) =
-  Just $ RuleP str (fmap (fmap tvbToTH) mtvbs) (map ruleBndrToTH rbs)
-               (expToTH lhs) (expToTH rhs) phases
+  RuleP str (fmap (fmap tvbToTH) mtvbs) (map ruleBndrToTH rbs)
+        (expToTH lhs) (expToTH rhs) phases
 #else
 pragmaToTH (DRuleP str _ rbs lhs rhs phases) =
-  Just $ RuleP str (map ruleBndrToTH rbs) (expToTH lhs) (expToTH rhs) phases
+  RuleP str (map ruleBndrToTH rbs) (expToTH lhs) (expToTH rhs) phases
 #endif
-pragmaToTH (DAnnP target exp) = Just $ AnnP target (expToTH exp)
+pragmaToTH (DAnnP target exp) = AnnP target (expToTH exp)
 #if __GLASGOW_HASKELL__ < 709
-pragmaToTH (DLineP {}) = Nothing
+pragmaToTH (DLineP {}) = error "LINE pragmas only supported in GHC 7.10+"
 #else
-pragmaToTH (DLineP n str) = Just $ LineP n str
+pragmaToTH (DLineP n str) = LineP n str
 #endif
 #if __GLASGOW_HASKELL__ < 801
-pragmaToTH (DCompleteP {}) = Nothing
+pragmaToTH (DCompleteP {}) = error "COMPLETE pragmas only supported in GHC 8.2+"
 #else
-pragmaToTH (DCompleteP cls mty) = Just $ CompleteP cls mty
+pragmaToTH (DCompleteP cls mty) = CompleteP cls mty
 #endif
 
 ruleBndrToTH :: DRuleBndr -> RuleBndr

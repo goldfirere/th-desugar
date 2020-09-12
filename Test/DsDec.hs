@@ -32,7 +32,6 @@ import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Syntax ( qReport )
 
 import Control.Monad
-import Data.Maybe( mapMaybe )
 
 $(dsDecSplice S.dectest1)
 $(dsDecSplice S.dectest2)
@@ -97,4 +96,4 @@ $(do decs <- S.rec_sel_test
              in
              DCon tvbs cxt con_name (DNormalC False fields') rty
            plaindata = [DDataD nd [] name [DPlainTV tvbName] k (map unrecord cons) []]
-       return (decsToTH plaindata ++ mapMaybe letDecToTH recsels))
+       return (decsToTH plaindata ++ map letDecToTH recsels))
