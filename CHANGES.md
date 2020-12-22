@@ -104,6 +104,11 @@ Version 1.12 [????.??.??]
   -substTyVarBndrs :: Quasi q => DSubst -> [DTyVarBndr flag] -> (DSubst -> [DTyVarBndr flag] -> q a) -> q a
   +substTyVarBndrs :: Quasi q => DSubst -> [DTyVarBndr flag] -> q (DSubst, [DTyVarBndr flag])
   ```
+* `mkDLamEFromDPats` has now generates slightly more direct code for certain
+  lambda expressions with `@`-patterns. For example, `\x@y -> f x y` would
+  previously desugar to `\arg -> case arg of { y -> let x = y in f x y }`, but
+  it now desugars to `\y -> let x = y in f x y`.
+* `mkDLamEFromDPats` now requires only a `Quasi` context instead of `DsMonad`.
 
 Version 1.11 [2020.03.25]
 -------------------------

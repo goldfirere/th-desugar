@@ -78,7 +78,10 @@ dsExp (InfixE (Just lhs) op (Just rhs)) =
 dsExp (UInfixE _ _ _) =
   fail "Cannot desugar unresolved infix operators."
 dsExp (ParensE exp) = dsExp exp
-dsExp (LamE pats exp) = dsLam pats =<< dsExp exp
+dsExp (LamE pats exp) = do
+  exp' <- dsExp exp
+  (pats', exp'') <- dsPatsOverExp pats exp'
+  mkDLamEFromDPats pats' exp''
 dsExp (LamCaseE matches) = do
   x <- newUniqueName "x"
   matches' <- dsMatches x matches
@@ -269,7 +272,7 @@ ds_tup tuple_data_name mb_exps = do
   if null section_vars
      then return tup_body -- If this isn't a tuple section,
                           -- don't create a lambda.
-     else dsLam (map VarP section_vars) tup_body
+     else mkDLamEFromDPats (map DVarP section_vars) tup_body
   where
     -- If dealing with an empty field in a tuple section (Nothing), create a
     -- unique name and return Left. These names will be used to construct the
@@ -290,40 +293,22 @@ ds_tup tuple_data_name mb_exps = do
     apply_tup_body f (Left n)  = f `DAppE` DVarE n
     apply_tup_body f (Right e) = f `DAppE` e
 
--- | Desugar a lambda expression, where the body has already been desugared
-dsLam :: DsMonad q => [Pat] -> DExp -> q DExp
-dsLam = mkLam stripVarP_maybe dsPatsOverExp
-
 -- | Convert a list of 'DPat' arguments and a 'DExp' body into a 'DLamE'. This
 -- is needed since 'DLamE' takes a list of 'Name's for its bound variables
 -- instead of 'DPat's, so some reorganization is needed.
-mkDLamEFromDPats :: DsMonad q => [DPat] -> DExp -> q DExp
-mkDLamEFromDPats = mkLam stripDVarP_maybe (\pats exp -> return (pats, exp))
-  where
-    stripDVarP_maybe :: DPat -> Maybe Name
-    stripDVarP_maybe (DVarP n) = Just n
-    stripDVarP_maybe _          = Nothing
-
--- | Generalizes 'dsLam' and 'mkDLamEFromDPats' to work over an arbitrary
--- pattern type.
-mkLam :: DsMonad q
-      => (pat -> Maybe Name) -- ^ Should return @'Just' n@ if the argument is a
-                             --   variable pattern, and 'Nothing' otherwise.
-      -> ([pat] -> DExp -> q ([DPat], DExp))
-                             -- ^ Should process a list of @pat@ arguments and
-                             --   a 'DExp' body. (This might do some internal
-                             --   reorganization if there are as-patterns, as
-                             --   in the case of 'dsPatsOverExp'.)
-      -> [pat] -> DExp -> q DExp
-mkLam mb_strip_var_pat process_pats_over_exp pats exp
-  | Just names <- mapM mb_strip_var_pat pats
+mkDLamEFromDPats :: Quasi q => [DPat] -> DExp -> q DExp
+mkDLamEFromDPats pats exp
+  | Just names <- mapM stripDVarP_maybe pats
   = return $ DLamE names exp
   | otherwise
   = do arg_names <- replicateM (length pats) (newUniqueName "arg")
        let scrutinee = mkTupleDExp (map DVarE arg_names)
-       (pats', exp') <- process_pats_over_exp pats exp
-       let match = DMatch (mkTupleDPat pats') exp'
+           match     = DMatch (mkTupleDPat pats) exp
        return $ DLamE arg_names (DCaseE scrutinee [match])
+  where
+    stripDVarP_maybe :: DPat -> Maybe Name
+    stripDVarP_maybe (DVarP n) = Just n
+    stripDVarP_maybe _          = Nothing
 
 -- | Desugar a list of matches for a @case@ statement
 dsMatches :: DsMonad q
@@ -460,7 +445,7 @@ dsComp (NoBindS exp : rest) = do
 dsComp (ParS stmtss : rest) = do
   (pat, exp) <- dsParComp stmtss
   rest' <- dsComp rest
-  DAppE (DAppE (DVarE '(>>=)) exp) <$> dsLam [pat] rest'
+  DAppE (DAppE (DVarE '(>>=)) exp) <$> mkDLamEFromDPats [pat] rest'
 #if __GLASGOW_HASKELL__ >= 807
 dsComp (RecS {} : _) = fail "th-desugar currently does not support RecursiveDo"
 #endif
@@ -518,18 +503,18 @@ dsBindS mb_mod bind_arg_exp success_pat success_exp ctxt = do
 -- | Desugar the contents of a parallel comprehension.
 --   Returns a @Pat@ containing a tuple of all bound variables and an expression
 --   to produce the values for those variables
-dsParComp :: DsMonad q => [[Stmt]] -> q (Pat, DExp)
+dsParComp :: DsMonad q => [[Stmt]] -> q (DPat, DExp)
 dsParComp [] = impossible "Empty list of parallel comprehension statements."
 dsParComp [r] = do
   let rv = foldMap extractBoundNamesStmt r
   dsR <- dsComp (r ++ [mk_tuple_stmt rv])
-  return (mk_tuple_pat rv, dsR)
+  return (mk_tuple_dpat rv, dsR)
 dsParComp (q : rest) = do
   let qv = foldMap extractBoundNamesStmt q
   (rest_pat, rest_exp) <- dsParComp rest
   dsQ <- dsComp (q ++ [mk_tuple_stmt qv])
   let zipped = DAppE (DAppE (DVarE 'mzip) dsQ) rest_exp
-  return (ConP (tupleDataName 2) [mk_tuple_pat qv, rest_pat], zipped)
+  return (DConP (tupleDataName 2) [mk_tuple_dpat qv, rest_pat], zipped)
 
 -- helper function for dsParComp
 mk_tuple_stmt :: OSet Name -> Stmt
@@ -537,23 +522,23 @@ mk_tuple_stmt name_set =
   NoBindS (mkTupleExp (F.foldr ((:) . VarE) [] name_set))
 
 -- helper function for dsParComp
-mk_tuple_pat :: OSet Name -> Pat
-mk_tuple_pat name_set =
-  mkTuplePat (F.foldr ((:) . VarP) [] name_set)
+mk_tuple_dpat :: OSet Name -> DPat
+mk_tuple_dpat name_set =
+  mkTupleDPat (F.foldr ((:) . DVarP) [] name_set)
 
 -- | Desugar a pattern, along with processing a (desugared) expression that
 -- is the entire scope of the variables bound in the pattern.
 dsPatOverExp :: DsMonad q => Pat -> DExp -> q (DPat, DExp)
 dsPatOverExp pat exp = do
   (pat', vars) <- runWriterT $ dsPat pat
-  let name_decs = uncurry (zipWith (DValD . DVarP)) $ unzip vars
+  let name_decs = map (uncurry (DValD . DVarP)) vars
   return (pat', maybeDLetE name_decs exp)
 
 -- | Desugar multiple patterns. Like 'dsPatOverExp'.
 dsPatsOverExp :: DsMonad q => [Pat] -> DExp -> q ([DPat], DExp)
 dsPatsOverExp pats exp = do
   (pats', vars) <- runWriterT $ mapM dsPat pats
-  let name_decs = uncurry (zipWith (DValD . DVarP)) $ unzip vars
+  let name_decs = map (uncurry (DValD . DVarP)) vars
   return (pats', maybeDLetE name_decs exp)
 
 -- | Desugar a pattern, returning a list of (Name, DExp) pairs of extra
@@ -1460,11 +1445,6 @@ mkTupleExp exps = foldl AppE (ConE $ tupleDataName (length exps)) exps
 mkTupleDPat :: [DPat] -> DPat
 mkTupleDPat [pat] = pat
 mkTupleDPat pats = DConP (tupleDataName (length pats)) pats
-
--- | Make a tuple 'Pat' from a list of 'Pat's. Avoids using a 1-tuple.
-mkTuplePat :: [Pat] -> Pat
-mkTuplePat [pat] = pat
-mkTuplePat pats = ConP (tupleDataName (length pats)) pats
 
 -- | Is this pattern guaranteed to match?
 isUniversalPattern :: DsMonad q => DPat -> q Bool
