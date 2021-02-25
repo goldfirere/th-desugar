@@ -236,10 +236,10 @@ test_bug8884 = $(do info <- reify ''Poly
 
 flatten_dvald :: Bool
 flatten_dvald = let s1 = $(flatten_dvald_test)
-                    s2 = $(do exp <- flatten_dvald_test
-                              DLetE ddecs dexp <- dsExp exp
+                    s2 = $(do expr <- flatten_dvald_test
+                              DLetE ddecs dexpr <- dsExp expr
                               flattened <- fmap concat $ mapM flattenDValD ddecs
-                              return $ expToTH $ DLetE flattened dexp ) in
+                              return $ expToTH $ DLetE flattened dexpr ) in
                 s1 == s2
 
 test_rec_sels :: Bool
