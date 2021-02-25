@@ -150,7 +150,7 @@ tidy1 v (DBangP pat) =
   case pat of
     DLitP _   -> tidy1 v pat   -- already strict
     DVarP _   -> return (id, DBangP pat)  -- no change
-    DConP _ _ -> tidy1 v pat   -- already strict
+    DConP{}   -> tidy1 v pat   -- already strict
     DTildeP p -> tidy1 v (DBangP p) -- discard ~ under !
     DBangP p  -> tidy1 v (DBangP p) -- discard ! under !
     DSigP p _ -> tidy1 v (DBangP p) -- discard sig under !
@@ -215,7 +215,7 @@ mkSelectorDecs pat name
                   -> q DExp
     mk_projection tup_name i = do
       var_name <- newUniqueName "proj"
-      return $ DCaseE (DVarE tup_name) [DMatch (DConP (tupleDataName tuple_size) (mk_tuple_pats var_name i))
+      return $ DCaseE (DVarE tup_name) [DMatch (DConP (tupleDataName tuple_size) [] (mk_tuple_pats var_name i))
                                                (DVarE var_name)]
 
     mk_tuple_pats :: Name   -- of the projected element
@@ -242,13 +242,13 @@ groupClauses clauses
     (pg1,_) `same_gp` (pg2,_) = pg1 `sameGroup` pg2
 
 patGroup :: DPat -> PatGroup
-patGroup (DLitP l)     = PgLit l
-patGroup (DVarP {})    = error "Internal error in th-desugar (patGroup DVarP)"
-patGroup (DConP con _) = PgCon con
-patGroup (DTildeP {})  = error "Internal error in th-desugar (patGroup DTildeP)"
-patGroup (DBangP {})   = PgBang
-patGroup (DSigP{})     = error "Internal error in th-desugar (patGroup DSigP)"
-patGroup DWildP        = PgAny
+patGroup (DLitP l)       = PgLit l
+patGroup (DVarP {})      = error "Internal error in th-desugar (patGroup DVarP)"
+patGroup (DConP con _ _) = PgCon con
+patGroup (DTildeP {})    = error "Internal error in th-desugar (patGroup DTildeP)"
+patGroup (DBangP {})     = PgBang
+patGroup (DSigP{})       = error "Internal error in th-desugar (patGroup DSigP)"
+patGroup DWildP          = PgAny
 
 sameGroup :: PatGroup -> PatGroup -> Bool
 sameGroup PgAny     PgAny     = True
@@ -292,17 +292,17 @@ matchOneCon vars eqns@(eqn1 : _)
   where
     pat1 = firstPat eqn1
 
-    pat_args (DConP _ pats) = pats
-    pat_args _              = error "Internal error in th-desugar (pat_args)"
+    pat_args (DConP _ _ pats) = pats
+    pat_args _                = error "Internal error in th-desugar (pat_args)"
 
-    pat_con (DConP con _) = con
-    pat_con _             = error "Internal error in th-desugar (pat_con)"
+    pat_con (DConP con _ _) = con
+    pat_con _               = error "Internal error in th-desugar (pat_con)"
 
     match_group :: DsMonad q => [Name] -> q MatchResult
     match_group arg_vars
       = simplCase (arg_vars ++ vars) (map shift eqns)
 
-    shift (EquationInfo (DConP _ args : pats) exp) = EquationInfo (args ++ pats) exp
+    shift (EquationInfo (DConP _ _ args : pats) exp) = EquationInfo (args ++ pats) exp
     shift _ = error "Internal error in th-desugar (shift)"
 matchOneCon _ _ = error "Internal error in th-desugar (matchOneCon)"
 
@@ -315,7 +315,7 @@ mkDataConCase var case_alts = do
   where
     mk_alt fail (CaseAlt con args body_fn)
       = let body = body_fn fail in
-        DMatch (DConP con (map DVarP args)) body
+        DMatch (DConP con [] (map DVarP args)) body
 
     mk_default all_ctors fail | exhaustive_case all_ctors = []
                               | otherwise       = [DMatch DWildP fail]

@@ -1,6 +1,21 @@
 `th-desugar` release notes
 ==========================
 
+Version 1.13 [????.??.??]
+-------------------------
+* Support GHC 9.2.
+* Add support for visible type application in data constructor patterns. As a
+  result of these changes, the `DConP` constructor now has an extra field to
+  represent type arguments:
+
+  ```diff
+   data DPat
+     = ...
+  -  | DConP Name         [DPat] -- fun (Just    x) = ...
+  +  | DConP Name [DType] [DPat] -- fun (Just @t x) = ...
+     | ...
+  ```
+
 Version 1.12 [2021.03.12]
 -------------------------
 * Support GHC 9.0.

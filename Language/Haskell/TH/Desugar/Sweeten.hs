@@ -72,13 +72,17 @@ matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
 
 patToTH :: DPat -> Pat
-patToTH (DLitP lit)    = LitP lit
-patToTH (DVarP n)      = VarP n
-patToTH (DConP n pats) = ConP n (map patToTH pats)
-patToTH (DTildeP pat)  = TildeP (patToTH pat)
-patToTH (DBangP pat)   = BangP (patToTH pat)
-patToTH (DSigP pat ty) = SigP (patToTH pat) (typeToTH ty)
-patToTH DWildP         = WildP
+patToTH (DLitP lit)         = LitP lit
+patToTH (DVarP n)           = VarP n
+patToTH (DConP n _tys pats) = ConP n
+#if __GLASGOW_HASKELL__ >= 901
+                                   (map typeToTH _tys)
+#endif
+                                   (map patToTH pats)
+patToTH (DTildeP pat)       = TildeP (patToTH pat)
+patToTH (DBangP pat)        = BangP (patToTH pat)
+patToTH (DSigP pat ty)      = SigP (patToTH pat) (typeToTH ty)
+patToTH DWildP              = WildP
 
 decsToTH :: [DDec] -> [Dec]
 decsToTH = map decToTH

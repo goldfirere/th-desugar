@@ -417,7 +417,11 @@ extractBoundNamesPat (LitP _)              = OS.empty
 extractBoundNamesPat (VarP name)           = OS.singleton name
 extractBoundNamesPat (TupP pats)           = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (UnboxedTupP pats)    = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (ConP _ pats)         = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (ConP _
+#if __GLASGOW_HASKELL__ >= 901
+                             _
+#endif
+                               pats)       = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (InfixP p1 _ p2)      = extractBoundNamesPat p1 `OS.union`
                                              extractBoundNamesPat p2
 extractBoundNamesPat (UInfixP p1 _ p2)     = extractBoundNamesPat p1 `OS.union`
