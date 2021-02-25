@@ -325,6 +325,14 @@ test52_qual_do =
           P.return y |]
 #endif
 
+#if __GLASGOW_HASKELL__ >= 901
+test53_vta_in_con_pats =
+  [| let f :: Maybe Int -> Int
+         f (Just @Int x)  = x
+         f (Nothing @Int) = 42
+     in f (Just @Int 27) |]
+#endif
+
 type family TFExpand x
 type instance TFExpand Int = Bool
 type instance TFExpand (Maybe a) = [a]

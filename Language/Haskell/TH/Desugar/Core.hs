@@ -89,8 +89,15 @@ dsExp (LamCaseE matches) = do
 dsExp (TupE exps) = dsTup tupleDataName exps
 dsExp (UnboxedTupE exps) = dsTup unboxedTupleDataName exps
 dsExp (CondE e1 e2 e3) =
-  dsExp (CaseE e1 [ Match (ConP 'True [])  (NormalB e2) []
-                  , Match (ConP 'False []) (NormalB e3) [] ])
+  dsExp (CaseE e1 [mkBoolMatch 'True e2, mkBoolMatch 'False e3])
+  where
+    mkBoolMatch :: Name -> Exp -> Match
+    mkBoolMatch boolDataCon rhs =
+      Match (ConP boolDataCon
+#if __GLASGOW_HASKELL__ >= 901
+                  []
+#endif
+                  []) (NormalB rhs) []
 dsExp (MultiIfE guarded_exps) =
   let failure = DAppE (DVarE 'error) (DLitE (StringL "Non-exhaustive guards in multi-way if")) in
   dsGuards guarded_exps failure
@@ -213,7 +220,7 @@ dsExp (RecUpdE exp field_exps) = do
     rec_con_to_dmatch con_name args = do
       let con_field_names = map fst_of_3 args
       field_var_names <- mapM (newUniqueName . nameBase) con_field_names
-      DMatch (DConP con_name (map DVarP field_var_names)) <$>
+      DMatch (DConP con_name [] (map DVarP field_var_names)) <$>
              (foldl DAppE (DConE con_name) <$>
                     (reorderFields con_name args field_exps (map DVarE field_var_names)))
 
@@ -396,8 +403,8 @@ dsGuardStmts [NoBindS exp] success _failure
 dsGuardStmts (NoBindS exp : rest) success failure = do
   exp' <- dsExp exp
   success' <- dsGuardStmts rest success failure
-  return $ DCaseE exp' [ DMatch (DConP 'True []) success'
-                       , DMatch (DConP 'False []) failure ]
+  return $ DCaseE exp' [ DMatch (DConP 'True  [] []) success'
+                       , DMatch (DConP 'False [] []) failure ]
 dsGuardStmts (ParS _ : _) _ _ = impossible "Parallel comprehension in a pattern guard."
 #if __GLASGOW_HASKELL__ >= 807
 dsGuardStmts (RecS {} : _) _ _ = fail "th-desugar currently does not support RecursiveDo"
@@ -514,7 +521,7 @@ dsParComp (q : rest) = do
   (rest_pat, rest_exp) <- dsParComp rest
   dsQ <- dsComp (q ++ [mk_tuple_stmt qv])
   let zipped = DAppE (DAppE (DVarE 'mzip) dsQ) rest_exp
-  return (DConP (tupleDataName 2) [mk_tuple_dpat qv, rest_pat], zipped)
+  return (DConP (tupleDataName 2) [] [mk_tuple_dpat qv, rest_pat], zipped)
 
 -- helper function for dsParComp
 mk_tuple_stmt :: OSet Name -> Stmt
@@ -555,11 +562,15 @@ type PatM q = WriterT [(Name, DExp)] q
 dsPat :: DsMonad q => Pat -> PatM q DPat
 dsPat (LitP lit) = return $ DLitP lit
 dsPat (VarP n) = return $ DVarP n
-dsPat (TupP pats) = DConP (tupleDataName (length pats)) <$> mapM dsPat pats
-dsPat (UnboxedTupP pats) = DConP (unboxedTupleDataName (length pats)) <$>
+dsPat (TupP pats) = DConP (tupleDataName (length pats)) [] <$> mapM dsPat pats
+dsPat (UnboxedTupP pats) = DConP (unboxedTupleDataName (length pats)) [] <$>
                            mapM dsPat pats
-dsPat (ConP name pats) = DConP name <$> mapM dsPat pats
-dsPat (InfixP p1 name p2) = DConP name <$> mapM dsPat [p1, p2]
+#if __GLASGOW_HASKELL__ >= 901
+dsPat (ConP name tys pats) = DConP name <$> mapM dsType tys <*> mapM dsPat pats
+#else
+dsPat (ConP name     pats) = DConP name [] <$> mapM dsPat pats
+#endif
+dsPat (InfixP p1 name p2) = DConP name [] <$> mapM dsPat [p1, p2]
 dsPat (UInfixP _ _ _) =
   fail "Cannot desugar unresolved infix operators."
 dsPat (ParensP pat) = dsPat pat
@@ -574,7 +585,7 @@ dsPat WildP = return DWildP
 dsPat (RecP con_name field_pats) = do
   con <- lift $ dataConNameToCon con_name
   reordered <- reorder con
-  return $ DConP con_name reordered
+  return $ DConP con_name [] reordered
   where
     reorder con = case con of
                      NormalC _name fields -> non_record fields
@@ -601,15 +612,15 @@ dsPat (RecP con_name field_pats) = do
                                            ++ (show con_name) ++ "."
 
 dsPat (ListP pats) = go pats
-  where go [] = return $ DConP '[] []
+  where go [] = return $ DConP '[] [] []
         go (h : t) = do
           h' <- dsPat h
           t' <- go t
-          return $ DConP '(:) [h', t']
+          return $ DConP '(:) [] [h', t']
 dsPat (SigP pat ty) = DSigP <$> dsPat pat <*> dsType ty
 #if __GLASGOW_HASKELL__ >= 801
 dsPat (UnboxedSumP pat alt arity) =
-  DConP (unboxedSumDataName alt arity) <$> ((:[]) <$> dsPat pat)
+  DConP (unboxedSumDataName alt arity) [] <$> ((:[]) <$> dsPat pat)
 #endif
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
@@ -618,7 +629,7 @@ dsPat (ViewP _ _) =
 dPatToDExp :: DPat -> DExp
 dPatToDExp (DLitP lit) = DLitE lit
 dPatToDExp (DVarP name) = DVarE name
-dPatToDExp (DConP name pats) = foldl DAppE (DConE name) (map dPatToDExp pats)
+dPatToDExp (DConP name tys pats) = foldl DAppE (foldl DAppTypeE (DConE name) tys) (map dPatToDExp pats)
 dPatToDExp (DTildeP pat) = dPatToDExp pat
 dPatToDExp (DBangP pat) = dPatToDExp pat
 dPatToDExp (DSigP pat ty) = DSigE (dPatToDExp pat) ty
@@ -629,7 +640,7 @@ dPatToDExp DWildP = error "Internal error in th-desugar: wildcard in rhs of as-p
 removeWilds :: DsMonad q => DPat -> q DPat
 removeWilds p@(DLitP _) = return p
 removeWilds p@(DVarP _) = return p
-removeWilds (DConP con_name pats) = DConP con_name <$> mapM removeWilds pats
+removeWilds (DConP con_name tys pats) = DConP con_name tys <$> mapM removeWilds pats
 removeWilds (DTildeP pat) = DTildeP <$> removeWilds pat
 removeWilds (DBangP pat) = DBangP <$> removeWilds pat
 removeWilds (DSigP pat ty) = DSigP <$> removeWilds pat <*> pure ty
@@ -1444,13 +1455,13 @@ mkTupleExp exps = foldl AppE (ConE $ tupleDataName (length exps)) exps
 -- | Make a tuple 'DPat' from a list of 'DPat's. Avoids using a 1-tuple.
 mkTupleDPat :: [DPat] -> DPat
 mkTupleDPat [pat] = pat
-mkTupleDPat pats = DConP (tupleDataName (length pats)) pats
+mkTupleDPat pats = DConP (tupleDataName (length pats)) [] pats
 
 -- | Is this pattern guaranteed to match?
 isUniversalPattern :: DsMonad q => DPat -> q Bool
 isUniversalPattern (DLitP {}) = return False
 isUniversalPattern (DVarP {}) = return True
-isUniversalPattern (DConP con_name pats) = do
+isUniversalPattern (DConP con_name _ pats) = do
   data_name <- dataConNameToDataName con_name
   (_tvbs, cons) <- getDataD "Internal error." data_name
   if length cons == 1

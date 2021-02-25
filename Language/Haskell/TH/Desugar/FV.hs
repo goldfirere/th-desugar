@@ -49,13 +49,13 @@ extractBoundNamesDPat :: DPat -> OSet Name
 extractBoundNamesDPat = go
   where
     go :: DPat -> OSet Name
-    go (DLitP _)      = OS.empty
-    go (DVarP n)      = OS.singleton n
-    go (DConP _ pats) = foldMap go pats
-    go (DTildeP p)    = go p
-    go (DBangP p)     = go p
-    go (DSigP p _)    = go p
-    go DWildP         = OS.empty
+    go (DLitP _)          = OS.empty
+    go (DVarP n)          = OS.singleton n
+    go (DConP _ tys pats) = foldMap fvDType tys <> foldMap go pats
+    go (DTildeP p)        = go p
+    go (DBangP p)         = go p
+    go (DSigP p _)        = go p
+    go DWildP             = OS.empty
 
 -----
 -- Binding forms

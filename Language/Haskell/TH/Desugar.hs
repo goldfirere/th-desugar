@@ -240,7 +240,7 @@ flattenDValD (DValD pat exp) = do
         DVarP n
           | n == name -> DVarP y
           | otherwise -> DWildP
-        DConP con ps -> DConP con (map (wildify name y) ps)
+        DConP con ts ps -> DConP con ts (map (wildify name y) ps)
         DTildeP pa -> DTildeP (wildify name y pa)
         DBangP pa -> DBangP (wildify name y pa)
         DSigP pa ty -> DSigP (wildify name y pa) ty
@@ -297,7 +297,7 @@ getRecordSelectors cons = merge_let_decs `fmap` concatMapM get_record_sels cons
             return $ concat
               [ [ DSigD name $ DForallT (DForallInvis con_tvbs)
                              $ DArrowT `DAppT` con_ret_ty `DAppT` field_ty
-                , DFunD name [DClause [DConP con_name
+                , DFunD name [DClause [DConP con_name []
                                          (mk_field_pats n (length fields) varName)]
                                       (DVarE varName)] ]
               | ((name, _strict, field_ty), n) <- zip fields [0..]

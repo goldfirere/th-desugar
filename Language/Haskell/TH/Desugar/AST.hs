@@ -34,7 +34,7 @@ data DExp = DVarE Name
 -- | Corresponds to TH's @Pat@ type.
 data DPat = DLitP Lit
           | DVarP Name
-          | DConP Name [DPat]
+          | DConP Name [DType] [DPat]
           | DTildeP DPat
           | DBangP DPat
           | DSigP DPat DType
