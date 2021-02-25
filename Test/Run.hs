@@ -59,6 +59,10 @@ import Control.Applicative
 import qualified Data.Map as M
 import Data.Proxy
 
+#if __GLASGOW_HASKELL__ >= 900
+import Prelude as P
+#endif
+
 -- |
 -- Convert a HUnit test suite to a spec.  This can be used to run existing
 -- HUnit tests with Hspec.
@@ -143,6 +147,9 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #endif
 #if __GLASGOW_HASKELL__ >= 809
              , "tuple_sections"  ~: $test51_tuple_sections  @=? $(dsSplice test51_tuple_sections)
+#endif
+#if __GLASGOW_HASKELL__ >= 900
+             , "qual_do"         ~: $test52_qual_do         @=? $(dsSplice test52_qual_do)
 #endif
              ]
 

@@ -320,7 +320,7 @@ test51_tuple_sections =
 #if __GLASGOW_HASKELL__ >= 900
 test52_qual_do =
   [| P.do x <- [1, 2]
-          y@1 <- x
+          y@1 <- [x]
           [1, 2]
           P.return y |]
 #endif
