@@ -89,8 +89,18 @@ dsExp (LamCaseE matches) = do
 dsExp (TupE exps) = dsTup tupleDataName exps
 dsExp (UnboxedTupE exps) = dsTup unboxedTupleDataName exps
 dsExp (CondE e1 e2 e3) =
-  dsExp (CaseE e1 [ Match (ConP 'True [])  (NormalB e2) []
-                  , Match (ConP 'False []) (NormalB e3) [] ])
+  dsExp (CaseE e1 [ Match (ConP 'True
+-- TODO: Use MIN_VERSION_template_haskell(2,18,0) here (see https://gitlab.haskell.org/ghc/ghc/-/issues/19083)
+#if __GLASGOW_HASKELL__ >= 901
+                                 []
+#endif
+                                 [])  (NormalB e2) []
+                  , Match (ConP 'False
+-- TODO: Use MIN_VERSION_template_haskell(2,18,0) here (see https://gitlab.haskell.org/ghc/ghc/-/issues/19083)
+#if __GLASGOW_HASKELL__ >= 901
+                                 []
+#endif
+                                 []) (NormalB e3) [] ])
 dsExp (MultiIfE guarded_exps) =
   let failure = DAppE (DVarE 'error) (DLitE (StringL "Non-exhaustive guards in multi-way if")) in
   dsGuards guarded_exps failure
@@ -558,7 +568,12 @@ dsPat (VarP n) = return $ DVarP n
 dsPat (TupP pats) = DConP (tupleDataName (length pats)) <$> mapM dsPat pats
 dsPat (UnboxedTupP pats) = DConP (unboxedTupleDataName (length pats)) <$>
                            mapM dsPat pats
-dsPat (ConP name pats) = DConP name <$> mapM dsPat pats
+dsPat (ConP name
+-- TODO: Use MIN_VERSION_template_haskell(2,18,0) here (see https://gitlab.haskell.org/ghc/ghc/-/issues/19083)
+#if __GLASGOW_HASKELL__ >= 901
+            _
+#endif
+            pats) = DConP name <$> mapM dsPat pats
 dsPat (InfixP p1 name p2) = DConP name <$> mapM dsPat [p1, p2]
 dsPat (UInfixP _ _ _) =
   fail "Cannot desugar unresolved infix operators."

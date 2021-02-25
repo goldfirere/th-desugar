@@ -417,7 +417,12 @@ extractBoundNamesPat (LitP _)              = OS.empty
 extractBoundNamesPat (VarP name)           = OS.singleton name
 extractBoundNamesPat (TupP pats)           = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (UnboxedTupP pats)    = foldMap extractBoundNamesPat pats
-extractBoundNamesPat (ConP _ pats)         = foldMap extractBoundNamesPat pats
+extractBoundNamesPat (ConP _
+-- TODO: Use MIN_VERSION_template_haskell(2,18,0) here (see https://gitlab.haskell.org/ghc/ghc/-/issues/19083)
+#if __GLASGOW_HASKELL__ >= 901
+                           _
+#endif
+                             pats)         = foldMap extractBoundNamesPat pats
 extractBoundNamesPat (InfixP p1 _ p2)      = extractBoundNamesPat p1 `OS.union`
                                              extractBoundNamesPat p2
 extractBoundNamesPat (UInfixP p1 _ p2)     = extractBoundNamesPat p1 `OS.union`
