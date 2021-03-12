@@ -1,7 +1,7 @@
 `th-desugar` release notes
 ==========================
 
-Version 1.12 [????.??.??]
+Version 1.12 [2021.03.12]
 -------------------------
 * Support GHC 9.0.
 * Add support for explicit specificity. As part of this change,
