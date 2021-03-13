@@ -45,12 +45,16 @@ $(S.dectest14)
 $(S.dectest15)
 #endif
 
+{-
+Temporarily disabled until #151 is addressed
+
 #if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
 $(S.dectest16)
 #endif
 #if __GLASGOW_HASKELL__ >= 802
 $(S.dectest17)
 #endif
+-}
 
 #if __GLASGOW_HASKELL__ >= 809
 $(S.dectest18)
