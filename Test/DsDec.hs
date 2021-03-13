@@ -69,12 +69,16 @@ $(dsDecSplice S.dectest14)
 $(dsDecSplice S.dectest15)
 #endif
 
+{-
+Temporarily disabled until #151 is addressed
+
 #if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
 $(return $ decsToTH [S.ds_dectest16])
 #endif
 #if __GLASGOW_HASKELL__ >= 802
 $(return $ decsToTH [S.ds_dectest17])
 #endif
+-}
 
 #if __GLASGOW_HASKELL__ >= 809
 $(dsDecSplice S.dectest18)
