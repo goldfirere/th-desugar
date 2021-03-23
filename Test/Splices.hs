@@ -453,6 +453,14 @@ class ExCls a
 data ExData1 a
 data ExData2 a
 
+-- ds_dectest{16,17} demonstrate instance declarations with outermost foralls,
+-- a feature which Template Haskell itself does not yet support (see #151).
+-- For this reason, the closest we can get to this in TH is to construct
+-- equivalent Decs, dectest{16,17}, that drop the outermost foralls. The test
+-- suite ensures that this process happens automatically during sweetening by
+-- checking that the sweetened versions of ds_dectest{16,17} equal
+-- dectest{16,17}.
+
 ds_dectest16 = DInstanceD Nothing (Just [DPlainTV (mkName "a") ()]) []
                 (DConT ''ExCls `DAppT`
                   (DConT ''ExData1 `DAppT` DVarT (mkName "a"))) []
@@ -461,9 +469,8 @@ dectest16 = return [ InstanceD
 #if __GLASGOW_HASKELL__ >= 800
                        Nothing
 #endif
-                       [] (ForallT [plainTVSpecified (mkName "a")] []
-                                   (ConT ''ExCls `AppT`
-                                     (ConT ''ExData1 `AppT` VarT (mkName "a")))) [] ]
+                       [] (ConT ''ExCls `AppT`
+                            (ConT ''ExData1 `AppT` VarT (mkName "a"))) [] ]
 ds_dectest17 = DStandaloneDerivD Nothing (Just [DPlainTV (mkName "a") ()]) []
                 (DConT ''ExCls `DAppT`
                   (DConT ''ExData2 `DAppT` DVarT (mkName "a")))
@@ -473,9 +480,8 @@ dectest17 = return [ StandaloneDerivD
 #if __GLASGOW_HASKELL__ >= 802
                        Nothing
 #endif
-                       [] (ForallT [plainTVSpecified (mkName "a")] []
-                                   (ConT ''ExCls `AppT`
-                                     (ConT ''ExData2 `AppT` VarT (mkName "a")))) ]
+                       [] (ConT ''ExCls `AppT`
+                            (ConT ''ExData2 `AppT` VarT (mkName "a"))) ]
 #endif
 
 #if __GLASGOW_HASKELL__ >= 809

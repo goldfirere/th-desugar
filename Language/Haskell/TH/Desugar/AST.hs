@@ -113,6 +113,9 @@ data DDec = DLetDec DLetDec
           | DDataD NewOrData DCxt Name [DTyVarBndrUnit] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynD Name [DTyVarBndrUnit] DType
           | DClassD DCxt Name [DTyVarBndrUnit] [FunDep] [DDec]
+            -- | Note that the @Maybe [DTyVarBndrUnit]@ field is dropped
+            -- entirely when sweetened, so it is only useful for functions
+            -- that directly consume @DDec@s.
           | DInstanceD (Maybe Overlap) (Maybe [DTyVarBndrUnit]) DCxt DType [DDec]
           | DForeignD DForeign
           | DOpenTypeFamilyD DTypeFamilyHead
@@ -122,6 +125,9 @@ data DDec = DLetDec DLetDec
                        [DCon] [DDerivClause]
           | DTySynInstD DTySynEqn
           | DRoleAnnotD Name [Role]
+            -- | Note that the @Maybe [DTyVarBndrUnit]@ field is dropped
+            -- entirely when sweetened, so it is only useful for functions
+            -- that directly consume @DDec@s.
           | DStandaloneDerivD (Maybe DDerivStrategy) (Maybe [DTyVarBndrUnit]) DCxt DType
           | DDefaultSigD Name DType
           | DPatSynD Name PatSynArgs DPatSynDir DPat

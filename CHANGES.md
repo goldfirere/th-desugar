@@ -15,6 +15,12 @@ Version 1.13 [????.??.??]
   +  | DConP Name [DType] [DPat] -- fun (Just @t x) = ...
      | ...
   ```
+* The `Maybe [DTyVarBndrUnit]` fields in `DInstanceD` and `DStandaloneDerivD`
+  are no longer used when sweetening. Previously, `th-desugar` would attempt to
+  sweeten these `DTyVarBndrUnit`s by turning them into a nested `ForallT`, but
+  GHC 9.2 or later no longer allow this, as they forbid nested `forall`s in
+  instance heads entirely. As a result, the `Maybe [DTyVarBndrUnit]` fields are
+  now only useful for functions that consume `DDec`s directly.
 
 Version 1.12 [2021.03.12]
 -------------------------
