@@ -43,7 +43,7 @@ import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Datatype.TyVarBndr
 
 import Language.Haskell.TH.Desugar.AST
-import Language.Haskell.TH.Desugar.Core (DTypeArg(..), changeDTVFlags)
+import Language.Haskell.TH.Desugar.Core (DTypeArg(..))
 import Language.Haskell.TH.Desugar.Util
 
 expToTH :: DExp -> Exp
@@ -112,19 +112,9 @@ decToTH (DDataD Newtype _cxt _n _tvbs _mk _cons _derivings) =
 decToTH (DTySynD n tvbs ty) = TySynD n (map tvbToTH tvbs) (typeToTH ty)
 decToTH (DClassD cxt n tvbs fds decs) =
   ClassD (cxtToTH cxt) n (map tvbToTH tvbs) fds (decsToTH decs)
-decToTH (DInstanceD over mtvbs _cxt _ty decs) =
-  instanceDToTH over cxt' ty' decs
-  where
-  (cxt', ty') = case fmap (changeDTVFlags SpecifiedSpec) mtvbs of
-                  Nothing    -> (_cxt, _ty)
-                  Just _tvbs ->
-#if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
-                                ([], DForallT (DForallInvis _tvbs) $ DConstrainedT _cxt _ty)
-#else
-                                -- See #117
-                                error $ "Explicit foralls in instance declarations "
-                                     ++ "are broken on GHC 8.0."
-#endif
+decToTH (DInstanceD over _mtvbs cxt ty decs) =
+  -- We deliberately avoid sweetening _mtvbs. See #151.
+  instanceDToTH over cxt ty decs
 decToTH (DForeignD f) = ForeignD (foreignToTH f)
 #if __GLASGOW_HASKELL__ > 710
 decToTH (DOpenTypeFamilyD (DTypeFamilyHead n tvbs frs ann)) =
@@ -161,19 +151,9 @@ decToTH (DClosedTypeFamilyD (DTypeFamilyHead n tvbs frs _ann) eqns) =
   ClosedTypeFamilyD n (map tvbToTH tvbs) (frsToTH frs) (map (snd . tySynEqnToTH) eqns)
 #endif
 decToTH (DRoleAnnotD n roles) = RoleAnnotD n roles
-decToTH (DStandaloneDerivD mds mtvbs _cxt _ty) =
-  standaloneDerivDToTH mds cxt' ty'
-  where
-  (cxt', ty') = case fmap (changeDTVFlags SpecifiedSpec) mtvbs of
-                  Nothing    -> (_cxt, _ty)
-                  Just _tvbs ->
-#if __GLASGOW_HASKELL__ < 710 || __GLASGOW_HASKELL__ >= 802
-                                ([], DForallT (DForallInvis _tvbs) $ DConstrainedT _cxt _ty)
-#else
-                                -- See #117
-                                error $ "Explicit foralls in standalone deriving declarations "
-                                     ++ "are broken on GHC 7.10 and 8.0."
-#endif
+decToTH (DStandaloneDerivD mds _mtvbs cxt ty) =
+  -- We deliberately avoid sweetening _mtvbs. See #151.
+  standaloneDerivDToTH mds cxt ty
 #if __GLASGOW_HASKELL__ < 709
 decToTH (DDefaultSigD {})      =
   error "Default method signatures supported only in GHC 7.10+"
