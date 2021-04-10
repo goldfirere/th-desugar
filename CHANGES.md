@@ -21,6 +21,8 @@ Version 1.13 [????.??.??]
   GHC 9.2 or later no longer allow this, as they forbid nested `forall`s in
   instance heads entirely. As a result, the `Maybe [DTyVarBndrUnit]` fields are
   now only useful for functions that consume `DDec`s directly.
+* Fix a bug in which desugared GADT constructors would sometimes incorrectly
+  claim that they were declared infix, despite this not being the case.
 
 Version 1.12 [2021.03.12]
 -------------------------
