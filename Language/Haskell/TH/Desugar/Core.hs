@@ -1032,8 +1032,8 @@ dsCon' (GadtC nms btys rty) = do
     -- properties hold:
     let decInfix = isInfixDataCon (nameBase nm) -- 1. Its name uses operator syntax
                                                 --    (e.g., (:*:))
-                || length dbtys == 2            -- 2. It has exactly two fields
-                || isJust mbFi                  -- 3. It has a programmer-specified
+                && length dbtys == 2            -- 2. It has exactly two fields
+                && isJust mbFi                  -- 3. It has a programmer-specified
                                                 --    fixity declaration
     return (nm, [], [], DNormalC decInfix dbtys, Just drty)
 dsCon' (RecGadtC nms vbtys rty) = do

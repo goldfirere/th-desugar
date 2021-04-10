@@ -361,7 +361,7 @@ test_t100 =
          Just (DVarI _ actual_ty _) -> exp_ty `eqTHSplice` actual_ty
          _                          -> [| False |])
 #else
-  True -- RecGadtC didn't exist prior to GHC 8.0, do the quote above will
+  True -- RecGadtC didn't exist prior to GHC 8.0, so the quote above will
        -- normalize to `data T b = MkT { unT :: b }`. This defeats the point of
        -- this test, and to make things worse, this will cause `dsReify` to
        -- return a different type for unT (forall b. T b -> b). Let's just not
@@ -441,6 +441,24 @@ test_t132 =
            expected = Just fixity
        actual <- withLocalDeclarations decs (reifyFixityWithLocals m)
        expected `eqTHSplice` actual)
+
+test_t154 :: Bool
+test_t154 =
+#if __GLASGOW_HASKELL__ >= 800
+  $(do decs  <- [d| data T where
+                     (:$$:) :: Int -> Int -> T
+                  |]
+       ddecs <- dsDecs decs
+       let mb_is_infix = case ddecs of
+                           [DDataD _ _ _ _ _ [DCon _ _ _ (DNormalC is_infix _) _] _]
+                             -> Just is_infix
+                           _ -> Nothing
+       mb_is_infix `eqTHSplice` Just False)
+#else
+  True -- GadtC didn't exist prior to GHC 8.0, so the quote above will
+       -- normalize to `data T = (:$$:) Int Int`. This defeats the point of
+       -- this test, so let's just not bother testing this on pre-8.0 GHCs.
+#endif
 
 -- Unit tests for functions that compute free variables (e.g., fvDType)
 test_fvs :: [Bool]
@@ -648,6 +666,8 @@ main = hspec $ do
 
     zipWithM (\b n -> it ("computes free variables correctly " ++ show n) b)
       test_fvs [1..]
+
+    it "desugars non-infix GADT constructors with symbolic names correctly" $ test_t154
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')
