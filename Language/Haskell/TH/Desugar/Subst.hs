@@ -24,7 +24,7 @@ module Language.Haskell.TH.Desugar.Subst (
   IgnoreKinds(..), matchTy
   ) where
 
-import Data.List
+import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -140,7 +140,7 @@ matchTy _   (DLitT pat_lit) (DLitT arg_lit)
 matchTy _ _ _ = Nothing
 
 unionMaybeSubsts :: [Maybe DSubst] -> Maybe DSubst
-unionMaybeSubsts = foldl' union_subst1 (Just M.empty)
+unionMaybeSubsts = L.foldl' union_subst1 (Just M.empty)
   where
     union_subst1 :: Maybe DSubst -> Maybe DSubst -> Maybe DSubst
     union_subst1 ma mb = do

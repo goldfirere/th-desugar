@@ -49,7 +49,7 @@ rae@cs.brynmawr.edu
 
 module Splices where
 
-import Data.List
+import qualified Data.List as L
 import Data.Char
 import GHC.Exts
 import GHC.TypeLits
@@ -116,7 +116,7 @@ dropTrailing0s = everywhere (mkT (mkName . frob . nameBase))
     frob str
       | head str == 'r' = str
       | head str == 'R' = str
-      | otherwise       = dropWhileEnd isDigit str
+      | otherwise       = L.dropWhileEnd isDigit str
 
 -- Because th-desugar does not support linear types, we must pretend like
 -- MulArrowT does not exist for testing purposes.
@@ -149,8 +149,8 @@ test7_let = [| let { x :: Double; x = 5; f :: Double -> Double; f x = x + 1 } in
 test8_case = [| case Just False of { Just True -> 1 ; Just _ -> 2 ; Nothing -> 3 } |]
 test9_do = [| show $ do { foo <- Just "foo"
                         ; let fool = foo ++ "l"
-                        ; elemIndex 'o' fool
-                        ; x <- elemIndex 'l' fool
+                        ; L.elemIndex 'o' fool
+                        ; x <- L.elemIndex 'l' fool
                         ; return (x + 10) } |]
 test10_comp = [| [ (x, x+1) | x <- [1..10], x `mod` 2 == 0 ] |]
 test11_parcomp = [| [ (x,y) | x <- [1..10], x `mod` 2 == 0 | y <- [2,5..20] ] |]

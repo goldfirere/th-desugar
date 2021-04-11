@@ -44,7 +44,7 @@ import qualified Data.Foldable as F
 import Data.Foldable (foldMap)
 #endif
 import Data.Function (on)
-import Data.List
+import qualified Data.List as List
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Maybe
@@ -172,7 +172,7 @@ dataConNameToCon con_name = do
   -- the constructor to get the tycon, and then reify the tycon to get the `Con`s
   type_name <- dataConNameToDataName con_name
   (_, cons) <- getDataD "This seems to be an error in GHC." type_name
-  let m_con = find (any (con_name ==) . get_con_name) cons
+  let m_con = List.find (any (con_name ==) . get_con_name) cons
   case m_con of
     Just con -> return con
     Nothing -> impossible "Datatype does not contain one of its own constructors."
@@ -256,7 +256,8 @@ type Named a = (Name, a)
 reifyInDec :: Name -> [Dec] -> Dec -> Maybe (Named Info)
 reifyInDec n decs (FunD n' _) | n `nameMatches` n' = Just (n', mkVarI n decs)
 reifyInDec n decs (ValD pat _ _)
-  | Just n' <- find (nameMatches n) (F.toList (extractBoundNamesPat pat)) = Just (n', mkVarI n decs)
+  | Just n' <- List.find (nameMatches n) (F.toList (extractBoundNamesPat pat))
+  = Just (n', mkVarI n decs)
 #if __GLASGOW_HASKELL__ > 710
 reifyInDec n _    dec@(DataD    _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
 reifyInDec n _    dec@(NewtypeD _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
@@ -671,7 +672,7 @@ quantifyClassMethodType cls_name cls_tvbs prepend meth_ty =
 
     meth_tvbs :: [TyVarBndrSpec]
     meth_tvbs = changeTVFlags SpecifiedSpec $
-                deleteFirstsBy ((==) `on` tvName)
+                List.deleteFirstsBy ((==) `on` tvName)
                   (freeVariablesWellScoped [meth_ty]) all_cls_tvbs
 
     -- Explicitly quantify any kind variables bound by the class, if any.
@@ -718,7 +719,7 @@ findCon n = firstMatch match_con
 
 #if __GLASGOW_HASKELL__ > 710
     gadt_case :: Con -> [Name] -> Maybe (Named Con)
-    gadt_case con nms = case find (n `nameMatches`) nms of
+    gadt_case con nms = case List.find (n `nameMatches`) nms of
                           Just n' -> Just (n', con)
                           Nothing -> Nothing
 #endif

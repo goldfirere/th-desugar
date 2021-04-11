@@ -136,7 +136,6 @@ import Language.Haskell.TH.Syntax
 import Control.Monad
 import qualified Data.Foldable as F
 import Data.Function
-import Data.List
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Prelude hiding ( exp )
