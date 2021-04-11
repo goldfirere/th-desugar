@@ -13,7 +13,7 @@ rae@cs.brynmawr.edu
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind
-            -fno-warn-missing-fields #-}
+            -fno-warn-missing-fields -fno-warn-incomplete-record-updates #-}
 
 #if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE PartialTypeSignatures #-}
