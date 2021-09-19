@@ -44,6 +44,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE QualifiedDo #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 902
+{-# LANGUAGE OverloadedRecordDot #-}
+#endif
+
 {-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
                 -fno-warn-name-shadowing #-}
 
@@ -331,6 +335,20 @@ test53_vta_in_con_pats =
          f (Just @Int x)  = x
          f (Nothing @Int) = 42
      in f (Just @Int 27) |]
+#endif
+
+#if __GLASGOW_HASKELL__ >= 902
+data ORD1 = MkORD1 { unORD1 :: Int }
+data ORD2 = MkORD2 { unORD2 :: ORD1 }
+
+test54_overloaded_record_dot =
+  [| let ord1 :: ORD1
+         ord1 = MkORD1 1
+
+         ord2 :: ORD2
+         ord2 = MkORD2 ord1
+
+     in (ord2.unORD2.unORD1, (.unORD2.unORD1) ord2) |]
 #endif
 
 type family TFExpand x
@@ -777,5 +795,11 @@ test_exprs = [ test1_sections
 #endif
 #if __GLASGOW_HASKELL__ >= 900
              , test52_qual_do
+#endif
+#if __GLASGOW_HASKELL__ >= 901
+             , test53_vta_in_con_pats
+#endif
+#if __GLASGOW_HASKELL__ >= 902
+             , test54_overloaded_record_dot
 #endif
              ]

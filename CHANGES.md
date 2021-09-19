@@ -15,6 +15,8 @@ Version 1.13 [????.??.??]
   +  | DConP Name [DType] [DPat] -- fun (Just @t x) = ...
      | ...
   ```
+* Add support for the `e.field` and `(.field)` syntax from the
+  `OverloadedRecordDot` language extension.
 * The `Maybe [DTyVarBndrUnit]` fields in `DInstanceD` and `DStandaloneDerivD`
   are no longer used when sweetening. Previously, `th-desugar` would attempt to
   sweeten these `DTyVarBndrUnit`s by turning them into a nested `ForallT`, but
