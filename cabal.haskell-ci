@@ -1,0 +1,2 @@
+distribution: bionic
+ghcup-jobs: >=8.10

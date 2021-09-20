@@ -154,6 +154,9 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #if __GLASGOW_HASKELL__ >= 901
              , "vta_in_con_pats" ~: $test53_vta_in_con_pats @=? $(dsSplice test53_vta_in_con_pats)
 #endif
+#if __GLASGOW_HASKELL__ >= 902
+             , "overloaded_record_dot" ~: $test54_overloaded_record_dot @=? $(dsSplice test54_overloaded_record_dot)
+#endif
              ]
 
 test35a = $test35_expand

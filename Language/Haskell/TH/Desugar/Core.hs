@@ -50,6 +50,10 @@ import GHC.OverloadedLabels ( fromLabel )
 import GHC.Classes (IP(..))
 #endif
 
+#if __GLASGOW_HASKELL__ >= 902
+import GHC.Records (HasField(..))
+#endif
+
 import GHC.Exts
 import GHC.Generics (Generic)
 
@@ -256,6 +260,16 @@ dsExp (LabelE str) = return $ DVarE 'fromLabel `DAppTypeE` DLitT (StrTyLit str)
 dsExp (ImplicitParamVarE n) = return $ DVarE 'ip `DAppTypeE` DLitT (StrTyLit n)
 dsExp (MDoE {}) = fail "th-desugar currently does not support RecursiveDo"
 #endif
+#if __GLASGOW_HASKELL__ >= 902
+dsExp (GetFieldE arg field) = DAppE (mkGetFieldProj field) <$> dsExp arg
+dsExp (ProjectionE fields) =
+  case fields of
+    []   -> fail "Cannot desugar overloaded record projection with zero fields"
+    f:fs -> return $ foldl' comp (mkGetFieldProj f) fs
+  where
+    comp :: DExp -> String -> DExp
+    comp acc f = DVarE '(.) `DAppE` mkGetFieldProj f `DAppE` acc
+#endif
 
 #if __GLASGOW_HASKELL__ >= 809
 dsTup :: DsMonad q => (Int -> Name) -> [Maybe Exp] -> q DExp
@@ -316,6 +330,11 @@ mkDLamEFromDPats pats exp
     stripDVarP_maybe :: DPat -> Maybe Name
     stripDVarP_maybe (DVarP n) = Just n
     stripDVarP_maybe _          = Nothing
+
+#if __GLASGOW_HASKELL__ >= 902
+mkGetFieldProj :: String -> DExp
+mkGetFieldProj field = DVarE 'getField `DAppTypeE` DLitT (StrTyLit field)
+#endif
 
 -- | Desugar a list of matches for a @case@ statement
 dsMatches :: DsMonad q
