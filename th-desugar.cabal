@@ -21,7 +21,7 @@ tested-with:    GHC == 7.8.4
               , GHC == 8.8.4
               , GHC == 8.10.7
               , GHC == 9.0.1
-              , GHC == 9.2.*
+              , GHC == 9.2.1
 description:
     This package provides the Language.Haskell.TH.Desugar module, which desugars
     Template Haskell's rich encoding of Haskell syntax into a simpler encoding.

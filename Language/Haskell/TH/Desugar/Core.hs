@@ -28,6 +28,7 @@ import Control.Monad.Writer hiding (forM_, mapM)
 import Data.Data (Data, Typeable)
 import Data.Either (lefts)
 import Data.Foldable as F hiding (concat, notElem)
+import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
@@ -264,8 +265,7 @@ dsExp (MDoE {}) = fail "th-desugar currently does not support RecursiveDo"
 dsExp (GetFieldE arg field) = DAppE (mkGetFieldProj field) <$> dsExp arg
 dsExp (ProjectionE fields) =
   case fields of
-    []   -> fail "Cannot desugar overloaded record projection with zero fields"
-    f:fs -> return $ foldl' comp (mkGetFieldProj f) fs
+    f :| fs -> return $ foldl' comp (mkGetFieldProj f) fs
   where
     comp :: DExp -> String -> DExp
     comp acc f = DVarE '(.) `DAppE` mkGetFieldProj f `DAppE` acc
