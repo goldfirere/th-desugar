@@ -1,7 +1,7 @@
 `th-desugar` release notes
 ==========================
 
-Version 1.13 [????.??.??]
+Version 1.13 [2021.10.30]
 -------------------------
 * Support GHC 9.2.
 * Add support for visible type application in data constructor patterns. As a
