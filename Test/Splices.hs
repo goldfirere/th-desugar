@@ -10,7 +10,7 @@ rae@cs.brynmawr.edu
              DataKinds, PolyKinds, GADTs, MultiParamTypeClasses,
              FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
              DefaultSignatures, ConstraintKinds, GADTs, ViewPatterns,
-             TupleSections, NoMonomorphismRestriction #-}
+             TupleSections, NoMonomorphismRestriction, TypeOperators #-}
 
 #if __GLASGOW_HASKELL__ >= 711
 {-# LANGUAGE TypeApplications #-}
