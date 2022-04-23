@@ -140,6 +140,12 @@ decToTH (DKiSigD n ki) = KiSigD n (typeToTH ki)
 decToTH (DKiSigD {})   =
   error "Standalone kind signatures supported only in GHC 8.10+"
 #endif
+#if __GLASGOW_HASKELL__ >= 903
+decToTH (DDefaultD tys) = DefaultD (map typeToTH tys)
+#else
+decToTH (DDefaultD{})   =
+  error "Default declarations supported only in GHC 9.4+"
+#endif
 
 #if __GLASGOW_HASKELL__ < 801
 patSynErr :: a

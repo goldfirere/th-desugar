@@ -135,6 +135,7 @@ data DDec = DLetDec DLetDec
           | DKiSigD Name DKind
               -- DKiSigD is part of DDec, not DLetDec, because standalone kind
               -- signatures can only appear on the top level.
+          | DDefaultD [DType]
           deriving (Eq, Show, Data, Generic)
 
 -- | Corresponds to TH's 'PatSynDir' type
