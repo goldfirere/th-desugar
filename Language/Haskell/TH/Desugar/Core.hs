@@ -737,6 +737,9 @@ dsDec (ImplicitParamBindD {}) = impossible "Non-`let`-bound implicit param bindi
 #if __GLASGOW_HASKELL__ >= 809
 dsDec (KiSigD n ki) = (:[]) <$> (DKiSigD n <$> dsType ki)
 #endif
+#if __GLASGOW_HASKELL__ >= 903
+dsDec (DefaultD tys) = (:[]) <$> (DDefaultD <$> mapM dsType tys)
+#endif
 
 -- | Desugar a 'DataD' or 'NewtypeD'.
 dsDataDec :: DsMonad q
