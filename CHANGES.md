@@ -3,12 +3,19 @@
 
 Version 1.14 [????.??.??]
 -------------------------
+* Support GHC 9.4.
 * Drop support for GHC 7.8 and 7.10. As a consequence of this, the
   `strictToBang` was removed as it no longer serves a useful purpose.
 * Desugared lambda expressions and guards that bind multiple patterns can now
   have patterns with unlifted types. The desugared code uses `UnboxedTuples` to
   make this possible, so if you load the desugared code into GHCi on prior to
   GHC 9.2, you will need to enable `-fobject-code`.
+* `th-desugar` now desugars `PromotedInfixT` and `PromotedUInfixT`, which were
+  added in GHC 9.4. Mirroring the existing treatment of other `Promoted*`
+  `Type`s, `PromotedInfixT` is desugared to an application of a `DConT` applied
+  to two arguments, just like `InfixT` is desugared. Similarly, attempting to
+  desugar a `PromotedUInfixT` results in an error, just like attempting to
+  desugar a `UInfixT` would be.
 * Fix an inconsistency which caused non-exhaustive `case` expressions to be
   desugared into uses of `EmptyCase`. Non-exhaustive `case` expressions are now
   desugared into code that throws a "`Non-exhaustive patterns in...`" error at

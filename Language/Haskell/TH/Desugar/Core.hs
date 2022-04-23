@@ -1128,8 +1128,8 @@ dsType StarT = return $ DConT typeKindName
 dsType ConstraintT = return $ DConT ''Constraint
 dsType (LitT lit) = return $ DLitT lit
 dsType EqualityT = return $ DConT ''(~)
-dsType (InfixT t1 n t2) = DAppT <$> (DAppT (DConT n) <$> dsType t1) <*> dsType t2
-dsType (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
+dsType (InfixT t1 n t2) = dsInfixT t1 n t2
+dsType (UInfixT{}) = dsUInfixT
 dsType (ParensT t) = dsType t
 dsType WildCardT = return DWildCardT
 #if __GLASGOW_HASKELL__ >= 801
@@ -1144,6 +1144,10 @@ dsType (ImplicitParamT n t) = do
 #if __GLASGOW_HASKELL__ >= 809
 dsType (ForallVisT tvbs ty) =
   DForallT <$> (DForallVis <$> mapM dsTvbUnit tvbs) <*> dsType ty
+#endif
+#if __GLASGOW_HASKELL__ >= 903
+dsType (PromotedInfixT t1 n t2) = dsInfixT t1 n t2
+dsType PromotedUInfixT{} = dsUInfixT
 #endif
 
 #if __GLASGOW_HASKELL__ >= 900
@@ -1191,6 +1195,14 @@ types of data constructors: since th-desugar doesn't currently support linear
 types, we pretend as if MulArrowT does not exist. As a result, the type of
 `Just` would be locally reified as `a -> Maybe a`, not `a #-> Maybe a`.
 -}
+
+-- | Desugar an infix 'Type'.
+dsInfixT :: DsMonad q => Type -> Name -> Type -> q DType
+dsInfixT t1 n t2 = DAppT <$> (DAppT (DConT n) <$> dsType t1) <*> dsType t2
+
+-- | We cannot desugar unresolved infix operators, so fail if we encounter one.
+dsUInfixT :: Fail.MonadFail m => m a
+dsUInfixT = fail "Cannot desugar unresolved infix operators."
 
 -- | Desugar a 'TyVarBndrSpec'.
 dsTvbSpec :: DsMonad q => TyVarBndrSpec -> q DTyVarBndrSpec
@@ -1283,8 +1295,8 @@ dsPred ConstraintT =
 dsPred t@(LitT _) =
   impossible $ "Type literal seen as head of constraint: " ++ show t
 dsPred EqualityT = return [DConT ''(~)]
-dsPred (InfixT t1 n t2) = (:[]) <$> (DAppT <$> (DAppT (DConT n) <$> dsType t1) <*> dsType t2)
-dsPred (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
+dsPred (InfixT t1 n t2) = (:[]) <$> dsInfixT t1 n t2
+dsPred (UInfixT{}) = dsUInfixT
 dsPred (ParensT t) = dsPred t
 dsPred WildCardT = return [DWildCardT]
 #if __GLASGOW_HASKELL__ >= 801
@@ -1305,6 +1317,10 @@ dsPred t@(ForallVisT {}) =
 #endif
 #if __GLASGOW_HASKELL__ >= 900
 dsPred MulArrowT = impossible "Linear arrow seen as head of constraint."
+#endif
+#if __GLASGOW_HASKELL__ >= 903
+dsPred (PromotedInfixT t1 n t2) = (:[]) <$> dsInfixT t1 n t2
+dsPred PromotedUInfixT{} = dsUInfixT
 #endif
 
 -- | Desugar a quantified constraint.
