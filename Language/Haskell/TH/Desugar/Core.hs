@@ -28,7 +28,6 @@ import Control.Monad.Writer hiding (forM_, mapM)
 import Data.Data (Data, Typeable)
 import Data.Either (lefts)
 import Data.Foldable as F hiding (concat, notElem)
-import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
@@ -52,6 +51,7 @@ import GHC.Classes (IP(..))
 #endif
 
 #if __GLASGOW_HASKELL__ >= 902
+import Data.List.NonEmpty (NonEmpty(..))
 import GHC.Records (HasField(..))
 #endif
 
