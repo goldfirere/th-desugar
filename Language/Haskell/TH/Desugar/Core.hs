@@ -104,7 +104,7 @@ dsExp (CondE e1 e2 e3) =
 #endif
                   []) (NormalB rhs) []
 dsExp (MultiIfE guarded_exps) =
-  let failure = DAppE (DVarE 'error) (DLitE (StringL "Non-exhaustive guards in multi-way if")) in
+  let failure = mkErrorMatchExpr MultiWayIfAlt in
   dsGuards guarded_exps failure
 dsExp (LetE decs exp) = do
   (decs', ip_binder) <- dsLetDecs decs
@@ -239,8 +239,7 @@ dsExp (RecUpdE exp field_exps) = do
     con_to_dmatch (ForallC _ _ c) = con_to_dmatch c
     con_to_dmatch _ = impossible "Internal error within th-desugar."
 
-    error_match = DMatch DWildP (DAppE (DVarE 'error)
-                   (DLitE (StringL "Non-exhaustive patterns in record update")))
+    error_match = DMatch DWildP (mkErrorMatchExpr RecUpd)
 
     fst_of_3 (x, _, _) = x
 #if __GLASGOW_HASKELL__ >= 709
@@ -376,9 +375,9 @@ maybeDLetE [] exp   = exp
 maybeDLetE decs exp = DLetE decs exp
 
 -- | If matches is non-empty, make a case statement; otherwise make an error statement
-maybeDCaseE :: String -> DExp -> [DMatch] -> DExp
-maybeDCaseE err _     []      = DAppE (DVarE 'error) (DLitE (StringL err))
-maybeDCaseE _   scrut matches = DCaseE scrut matches
+maybeDCaseE :: MatchContext -> DExp -> [DMatch] -> DExp
+maybeDCaseE mc _     []      = mkErrorMatchExpr mc
+maybeDCaseE _  scrut matches = DCaseE scrut matches
 
 -- | Desugar guarded expressions
 dsGuards :: DsMonad q
@@ -936,8 +935,7 @@ dsLetDec (ValD pat body where_decs) = do
   let extras = uncurry (zipWith (DValD . DVarP)) $ unzip vars
   return (DValD pat' body' : extras, id)
   where
-    error_exp = DAppE (DVarE 'error) (DLitE
-                       (StringL $ "Non-exhaustive patterns for " ++ pprint pat))
+    error_exp = mkErrorMatchExpr (LetDecRhs pat)
 dsLetDec (SigD name ty) = do
   ty' <- dsType ty
   return ([DSigD name ty'], id)
@@ -1159,7 +1157,7 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
   where
     clause_to_dmatch :: DsMonad q => DExp -> Clause -> [DMatch] -> q [DMatch]
     clause_to_dmatch scrutinee (Clause pats body where_decs) failure_matches = do
-      let failure_exp = maybeDCaseE ("Non-exhaustive patterns in " ++ (show n))
+      let failure_exp = maybeDCaseE (FunRhs n)
                                     scrutinee failure_matches
       exp <- dsBody body where_decs failure_exp
       (pats', exp') <- dsPatsOverExp pats exp
@@ -1168,6 +1166,34 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
       if uni_pats
       then return [match]
       else return (match : failure_matches)
+
+-- | The context of a pattern match. This is used to produce
+-- @Non-exhaustive patterns in...@ messages that are tailored to specific
+-- situations. Compare this to GHC's @HsMatchContext@ data type
+-- (https://gitlab.haskell.org/ghc/ghc/-/blob/81cf52bb301592ff3d043d03eb9a0d547891a3e1/compiler/Language/Haskell/Syntax/Expr.hs#L1662-1695),
+-- from which the @MatchContext@ data type takes inspiration.
+data MatchContext
+  = FunRhs Name
+    -- ^ A pattern matching on an argument of a function binding
+  | LetDecRhs Pat
+    -- ^ A pattern in a @let@ declaration
+  | RecUpd
+    -- ^ A record update
+  | MultiWayIfAlt
+    -- ^ Guards in a multi-way if alternative
+
+-- | Construct an expression that throws an error when encountering a pattern
+-- at runtime that is not covered by pattern matching.
+mkErrorMatchExpr :: MatchContext -> DExp
+mkErrorMatchExpr mc =
+  DAppE (DVarE 'error) (DLitE (StringL ("Non-exhaustive patterns in " ++ pp_context)))
+  where
+    pp_context =
+      case mc of
+        FunRhs n      -> show n
+        LetDecRhs pat -> pprint pat
+        RecUpd        -> "record update"
+        MultiWayIfAlt -> "multi-way if"
 
 -- | Desugar a type
 dsType :: DsMonad q => Type -> q DType
