@@ -29,7 +29,7 @@ import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax
 
 import Language.Haskell.TH.Desugar.AST
-import Language.Haskell.TH.Desugar.Core
+import Language.Haskell.TH.Desugar.Core (dsReify, maybeDLetE, mkTupleDExp)
 import Language.Haskell.TH.Desugar.FV
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.Util

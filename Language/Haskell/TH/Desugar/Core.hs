@@ -346,7 +346,7 @@ dsMatches scr = go
     go [] = return []
     go (Match pat body where_decs : rest) = do
       rest' <- go rest
-      let failure = DCaseE (DVarE scr) rest'  -- this might be an empty case.
+      let failure = maybeDCaseE CaseAlt (DVarE scr) rest'
       exp' <- dsBody body where_decs failure
       (pat', exp'') <- dsPatOverExp pat exp'
       uni_pattern <- isUniversalPattern pat' -- incomplete attempt at #6
@@ -1181,6 +1181,8 @@ data MatchContext
     -- ^ A record update
   | MultiWayIfAlt
     -- ^ Guards in a multi-way if alternative
+  | CaseAlt
+    -- ^ Patterns and guards in a case alternative
 
 -- | Construct an expression that throws an error when encountering a pattern
 -- at runtime that is not covered by pattern matching.
@@ -1194,6 +1196,7 @@ mkErrorMatchExpr mc =
         LetDecRhs pat -> pprint pat
         RecUpd        -> "record update"
         MultiWayIfAlt -> "multi-way if"
+        CaseAlt       -> "case"
 
 -- | Desugar a type
 dsType :: DsMonad q => Type -> q DType

@@ -45,12 +45,14 @@ import qualified Dec
 import Dec ( RecordSel )
 import ReifyTypeCUSKs
 import ReifyTypeSigs
+import T159Decs ( t159A, t159B )
 import Language.Haskell.TH.Desugar
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.Expand  ( expandUnsoundly )
 import Language.Haskell.TH
 import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 
+import Control.Exception ( ErrorCall )
 import Control.Monad
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
@@ -463,6 +465,16 @@ test_t154 =
        -- this test, so let's just not bother testing this on pre-8.0 GHCs.
 #endif
 
+-- Regression test for #159 which ensures that non-exhaustive functions throw
+-- a runtime error before forcing their arguments.
+test_t159 :: Expectation
+test_t159 = do
+  -- NB: Catch ErrorCall here, not PatternMatchFail. This is because we desugar
+  -- non-exhaustive patterns into a custom `error` expression.
+  let testOne f = f (let x = x in x) `shouldThrow` \(_ :: ErrorCall) -> True
+  testOne t159A
+  testOne t159B
+
 -- Unit tests for functions that compute free variables (e.g., fvDType)
 test_fvs :: [Bool]
 test_fvs =
@@ -671,6 +683,8 @@ main = hspec $ do
       test_fvs [1..]
 
     it "desugars non-infix GADT constructors with symbolic names correctly" $ test_t154
+
+    it "desugars non-exhaustive expressions into code that errors at runtime" $ test_t159
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')
