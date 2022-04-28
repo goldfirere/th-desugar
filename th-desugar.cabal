@@ -92,6 +92,7 @@ test-suite spec
                       ReifyTypeCUSKs
                       ReifyTypeSigs
                       Splices
+                      T159Decs
 
   build-depends:
       base >= 4 && < 5,

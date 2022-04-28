@@ -1,6 +1,13 @@
 `th-desugar` release notes
 ==========================
 
+Version next [????.??.??]
+-------------------------
+* Fix an inconsistency which caused non-exhaustive `case` expressions to be
+  desugared into uses of `EmptyCase`. Non-exhaustive `case` expressions are now
+  desugared into code that throws a "`Non-exhaustive patterns in...`" error at
+  runtime, just as all other forms of non-exhaustive expressions are desugared.
+
 Version 1.13 [2021.10.30]
 -------------------------
 * Support GHC 9.2.
