@@ -85,6 +85,7 @@ test-suite spec
                       ReifyTypeCUSKs
                       ReifyTypeSigs
                       Splices
+                      T158Exp
                       T159Decs
 
   build-depends:
