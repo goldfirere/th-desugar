@@ -298,8 +298,8 @@ mkDLamEFromDPats pats exp
   = return $ DLamE names exp
   | otherwise
   = do arg_names <- replicateM (length pats) (newUniqueName "arg")
-       let scrutinee = mkTupleDExp (map DVarE arg_names)
-           match     = DMatch (mkTupleDPat pats) exp
+       let scrutinee = mkUnboxedTupleDExp (map DVarE arg_names)
+           match     = DMatch (mkUnboxedTupleDPat pats) exp
        return $ DLamE arg_names (DCaseE scrutinee [match])
   where
     stripDVarP_maybe :: DPat -> Maybe Name
@@ -1048,7 +1048,7 @@ dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
   return $ DClause pats' exp'' : rest'
 dsClauses n clauses@(Clause outer_pats _ _ : _) = do
   arg_names <- replicateM (length outer_pats) (newUniqueName "arg")
-  let scrutinee = mkTupleDExp (map DVarE arg_names)
+  let scrutinee = mkUnboxedTupleDExp (map DVarE arg_names)
   clause <- DClause (map DVarP arg_names) <$>
               (DCaseE scrutinee <$> foldrM (clause_to_dmatch scrutinee) [] clauses)
   return [clause]
@@ -1060,7 +1060,7 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
       exp <- dsBody body where_decs failure_exp
       (pats', exp') <- dsPatsOverExp pats exp
       uni_pats <- fmap getAll $ concatMapM (fmap All . isUniversalPattern) pats'
-      let match = DMatch (mkTupleDPat pats') exp'
+      let match = DMatch (mkUnboxedTupleDPat pats') exp'
       if uni_pats
       then return [match]
       else return (match : failure_matches)
@@ -1368,20 +1368,40 @@ reorderFields' ds_thing con_name field_names_types field_things deflts =
         Nothing -> return $ deflt : rest'
     reorder (_ : _) [] = error "Internal error in th-desugar."
 
+-- mkTupleDExp, mkUnboxedTupleDExp, and friends construct tuples, avoiding the
+-- use of 1-tuples. These are used to create auxiliary tuple values when
+-- desugaring pattern-matching constructs to simpler forms.
+-- See Note [Auxiliary tuples in pattern matching].
+
 -- | Make a tuple 'DExp' from a list of 'DExp's. Avoids using a 1-tuple.
 mkTupleDExp :: [DExp] -> DExp
 mkTupleDExp [exp] = exp
 mkTupleDExp exps = foldl DAppE (DConE $ tupleDataName (length exps)) exps
+
+-- | Make an unboxed tuple 'DExp' from a list of 'DExp's. Avoids using a 1-tuple.
+mkUnboxedTupleDExp :: [DExp] -> DExp
+mkUnboxedTupleDExp [exp] = exp
+mkUnboxedTupleDExp exps = foldl DAppE (DConE $ unboxedTupleDataName (length exps)) exps
 
 -- | Make a tuple 'Exp' from a list of 'Exp's. Avoids using a 1-tuple.
 mkTupleExp :: [Exp] -> Exp
 mkTupleExp [exp] = exp
 mkTupleExp exps = foldl AppE (ConE $ tupleDataName (length exps)) exps
 
+-- | Make an unboxed tuple 'Exp' from a list of 'Exp's. Avoids using a 1-tuple.
+mkUnboxedTupleExp :: [Exp] -> Exp
+mkUnboxedTupleExp [exp] = exp
+mkUnboxedTupleExp exps = foldl AppE (ConE $ unboxedTupleDataName (length exps)) exps
+
 -- | Make a tuple 'DPat' from a list of 'DPat's. Avoids using a 1-tuple.
 mkTupleDPat :: [DPat] -> DPat
 mkTupleDPat [pat] = pat
 mkTupleDPat pats = DConP (tupleDataName (length pats)) [] pats
+
+-- | Make an unboxed tuple 'DPat' from a list of 'DPat's. Avoids using a 1-tuple.
+mkUnboxedTupleDPat :: [DPat] -> DPat
+mkUnboxedTupleDPat [pat] = pat
+mkUnboxedTupleDPat pats = DConP (unboxedTupleDataName (length pats)) [] pats
 
 -- | Is this pattern guaranteed to match?
 isUniversalPattern :: DsMonad q => DPat -> q Bool
@@ -1741,4 +1761,138 @@ For sweetening:
 * For all other cases, just straightforwardly sweeten
   `DForallT DForallInvis tvbs ty` to `ForallT tvbs [] ty` and
   `DConstrainedT ctxt ty` to `ForallT [] ctxt ty`.
+
+Note [Auxiliary tuples in pattern matching]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+th-desugar simplifies the overall treatment of pattern matching in two
+notable ways:
+
+1. Lambda expressions only bind variables and do not directly perform pattern
+   matching. For example, this:
+
+     \True False -> ()
+
+   Roughly desugars to:
+
+     \x y -> case (x, y) of
+               (True, False) -> ()
+               _             -> error "Non-exhaustive patterns"
+2. th-desugar does not have guards, as guards are desugared into pattern
+   matches. For example, this:
+
+     f x y | True <- x
+           , False <- y
+           = ()
+
+  Roughly desugars to:
+
+    f x y = case (x, y) of
+              (True, False) -> ()
+              _             -> error "Non-exhaustive patterns"
+
+In both of these examples, there are multiple expressions being matched on
+simultaneously. When desugaring these examples to `case` expressions, we need a
+construct that allows us to group these patterns together. Auxiliary tuples are
+one way to accomplish this.
+
+While this use of tuples works well when the arguments have lifted types, such
+as Bool, it doesn't work when the arguments have unlifted types, such as Int#.
+Imagine desugaring this lambda expression, for instance:
+
+  \27# 42# -> ()
+
+The approach above would desugar this to:
+
+  \x y -> case (x, y) of
+            (27#, 42#) -> ()
+            _          -> error "Non-exhaustive patterns"
+
+This will not typecheck, however, as we are using _lifted_ tuples, which
+require their arguments to have lifted types. If we want to support unlifted
+types, we need a different approach.
+
+One idea that seems tempting at first is to create an auxiliary `let`
+expression, e.g.,
+
+  \x y ->
+    let aux 27# 42# = ()
+     in aux x y
+
+This avoids having to use lifted tuples, but it creates a new problem: type
+inference. In the general case, auxiliary `let` expressions aren't enough to
+handle GADT pattern matches, such as in this example:
+
+  data T a where
+    MkT :: Int -> T Int
+
+  g :: T a -> T a -> a
+  g = \(MkT x1) (MkT x2) -> x1 + x2
+
+If you desugar `g` to use an auxiliary `let` expression:
+
+  g :: T a -> T a -> a
+  g = \t1 t2 ->
+        let aux (MkT x1) (MkT x2) = x1 + x2
+        in aux t1 t2
+
+Then it will not typecheck. To make this work, you'd need to give `aux` a type
+signature. Doing this in general is tantamount to performing type inference,
+however, which is very challenging in a Template Haskell setting.
+
+Another approach, which is what th-desugar currently uses, is to use auxiliary
+_unboxed_ tuples. This is identical to the previous tuple approach, but with
+slightly different syntax:
+
+  \x y -> case (# x, y #) of
+            (# 27#, 42# #) -> ()
+            _              -> error "Non-exhaustive patterns"
+
+Unboxed tuples can handle lifted and unlifted arguments alike, so it is capable
+of handling all the examples above.
+
+You might worry that this approach would require clients of th-desugar to
+enable the UnboxedTuples extension in non-obvious places, but fortunately, this
+is not the case. For one thing, all unboxed tuples produced by th-desugar would
+be TH-generated, so we would bypass the need to enable UnboxedTuples to lex
+unboxed tuple syntax. GHC's typechecker also imposes a requirement that
+UnboxedTuples be enabled if a variable has an unboxed tuple type, but this
+never happens in th-desugar by construction. It's possible that a future
+version of GHC might be stricter about this, but it seems unlikely.
+
+There are a couple of exceptions to the general rule that auxiliary binders
+should be unboxed:
+
+1. ParallelListComp is desugared using the `mzip` function, which returns a
+   lifted pair. As a result, the variables bound in a parallel list
+   comprehension must be lifted. This is a restriction which is inherited from
+   GHC itself—https://gitlab.haskell.org/ghc/ghc/-/merge_requests/7270.
+
+2. Match flattening desugars lazy patterns that bind multiple variables to code
+   that extracts fields from tuples. For instance, this:
+
+     data Pair a b = MkPair a b
+
+     f :: Pair a b -> Pair b a
+     f ~(MkPair x y) = MkPair y x
+
+   Desugars to this (roughly) when match-flattened:
+
+     f :: Pair a b -> Pair b a
+     f p =
+       let tuple = case p of
+                     MkPair x y -> (x, y)
+
+           x = case tuple of
+                 (x, _) -> x
+
+           y = case tuple of
+                 (_, y) -> x
+
+        in MkPair y x
+
+   One could imagine using an unboxed tuple here instead, but since the
+   intermediate `tuple` value would have an unboxed tuple this, this would
+   require users of match flattening to enable UnboxedTuples. Fortunately,
+   using unboxed tuples here isn't necessary, as GHC doesn't support binding
+   variables with unlifted types in lazy patterns anyway.
 -}
