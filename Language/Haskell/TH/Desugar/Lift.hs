@@ -28,10 +28,6 @@ $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DForallTelescope, ''DTyVarBndr
                  , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
                  , ''DPatSynDir , ''NewOrData, ''DDerivStrategy
                  , ''DTypeFamilyHead,  ''DFamilyResultSig
-#if __GLASGOW_HASKELL__ <= 710
-                 , ''InjectivityAnn, ''Bang, ''SourceUnpackedness
-                 , ''SourceStrictness, ''Overlap
-#endif
 #if __GLASGOW_HASKELL__ < 801
                  , ''PatSynArgs
 #endif

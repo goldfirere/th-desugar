@@ -52,18 +52,8 @@ import Data.Map.Ordered (Bias(..), Index, L)
 import qualified Data.Map.Ordered as OM
 import Prelude hiding (filter, lookup, null)
 
-#if !(MIN_VERSION_base(4,8,0))
-import Data.Foldable (Foldable)
-import Data.Monoid (Monoid(..))
-import Data.Traversable (Traversable)
-#endif
-
 #if !(MIN_VERSION_base(4,11,0))
 import Data.Semigroup (Semigroup(..))
-#endif
-
-#if __GLASGOW_HASKELL__ < 710
-deriving instance Typeable L
 #endif
 
 -- | An ordered map whose 'insertPre', 'insertPost', 'intersection',

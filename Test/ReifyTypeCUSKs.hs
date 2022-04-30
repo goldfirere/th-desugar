@@ -3,9 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
-#if __GLASGOW_HASKELL__ >= 800
 {-# LANGUAGE TypeInType #-}
-#endif
 #if __GLASGOW_HASKELL__ >= 806
 {-# LANGUAGE StarIsType #-}
 #endif
@@ -16,11 +14,8 @@
 -- the -XCUSKs language extension.
 module ReifyTypeCUSKs where
 
-#if __GLASGOW_HASKELL__ >= 800 && __GLASGOW_HASKELL__ < 806
+#if __GLASGOW_HASKELL__ < 806
 import Data.Kind (type (*))
-#endif
-#if __GLASGOW_HASKELL__ < 710
-import Data.Traversable (traverse)
 #endif
 import GHC.Exts (Constraint)
 import Language.Haskell.TH.Desugar
@@ -39,9 +34,7 @@ test_reify_type_cusks, test_reify_type_no_cusks :: [Bool]
              class A6 (a :: *) where
                type A7 a b
 
-#if __GLASGOW_HASKELL__ >= 800
              data A8 (a :: k) :: k -> *
-#endif
 #if __GLASGOW_HASKELL__ >= 804
              data A9 (a :: j) :: forall k. k -> *
 #endif
@@ -62,9 +55,7 @@ test_reify_type_cusks, test_reify_type_no_cusks :: [Bool]
              class B6 a where
                type B7 (a :: *) (b :: *) :: *
 
-#if __GLASGOW_HASKELL__ >= 800
              data B8 :: k -> *
-#endif
 #if __GLASGOW_HASKELL__ >= 804
              data B9 :: forall j. j -> k -> *
 #endif
@@ -93,14 +84,12 @@ test_reify_type_cusks, test_reify_type_no_cusks :: [Bool]
            , (6, DArrowT `DAppT` typeKind `DAppT` DConT ''Constraint)
            , (7, DArrowT `DAppT` typeKind `DAppT` type_to_type)
            ]
-#if __GLASGOW_HASKELL__ >= 800
            ++
            [ (8, let k = mkName "k" in
                  DForallT (DForallInvis [DPlainTV k SpecifiedSpec]) $
                  DArrowT `DAppT` DVarT k `DAppT`
                    (DArrowT `DAppT` DVarT k `DAppT` typeKind))
            ]
-#endif
 #if __GLASGOW_HASKELL__ >= 804
            ++
            [ (9, let j = mkName "j"
@@ -127,9 +116,7 @@ test_reify_type_cusks, test_reify_type_no_cusks :: [Bool]
          traverse (test_reify_kind "B") $
            map (, Nothing) $
                 [1..7]
-#if __GLASGOW_HASKELL__ >= 800
              ++ [8]
-#endif
 #if __GLASGOW_HASKELL__ >= 804
              ++ [9]
 #endif

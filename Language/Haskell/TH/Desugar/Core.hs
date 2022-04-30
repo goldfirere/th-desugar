@@ -18,9 +18,6 @@ import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Datatype.TyVarBndr
 import Language.Haskell.TH.Syntax hiding (lift)
 
-#if __GLASGOW_HASKELL__ < 709
-import Control.Applicative
-#endif
 import Control.Monad hiding (forM_, mapM)
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.Zip
@@ -30,17 +27,10 @@ import Data.Either (lefts)
 import Data.Foldable as F hiding (concat, notElem)
 import qualified Data.Map as M
 import Data.Map (Map)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (isJust, mapMaybe)
 import qualified Data.Set as S
 import Data.Set (Set)
 import Data.Traversable
-#if __GLASGOW_HASKELL__ > 710
-import Data.Maybe (isJust)
-#endif
-
-#if __GLASGOW_HASKELL__ >= 800
-import qualified Control.Monad.Fail as MonadFail
-#endif
 
 #if __GLASGOW_HASKELL__ >= 803
 import GHC.OverloadedLabels ( fromLabel )
@@ -150,10 +140,8 @@ dsExp (RecConE con_name field_exps) = do
                     InfixC field1 _name field2 -> non_record [field1, field2]
                     RecC _name fields -> reorder_fields fields
                     ForallC _ _ c -> reorder c
-#if __GLASGOW_HASKELL__ >= 800
                     GadtC _names fields _ret_ty -> non_record fields
                     RecGadtC _names fields _ret_ty -> reorder_fields fields
-#endif
 
     reorder_fields fields = reorderFields con_name fields field_exps
                                           (repeat $ DVarE 'undefined)
@@ -178,11 +166,7 @@ dsExp (RecUpdE exp field_exps) = do
                   _ -> impossible "Record update with no fields listed."
   info <- reifyWithLocals first_name
   applied_type <- case info of
-#if __GLASGOW_HASKELL__ > 710
                     VarI _name ty _m_dec -> extract_first_arg ty
-#else
-                    VarI _name ty _m_dec _fixity -> extract_first_arg ty
-#endif
                     _ -> impossible "Record update with an invalid field name."
   type_name <- extract_type_name applied_type
   (_, cons) <- getDataD "This seems to be an error in GHC." type_name
@@ -215,10 +199,8 @@ dsExp (RecUpdE exp field_exps) = do
 
         has_names (RecC _con_name args) =
           args_contain_names args
-#if __GLASGOW_HASKELL__ >= 800
         has_names (RecGadtC _con_name args _ret_ty) =
           args_contain_names args
-#endif
         has_names (ForallC _ _ c) = has_names c
         has_names _               = False
 
@@ -231,23 +213,17 @@ dsExp (RecUpdE exp field_exps) = do
 
     con_to_dmatch :: DsMonad q => Con -> q DMatch
     con_to_dmatch (RecC con_name args) = rec_con_to_dmatch con_name args
-#if __GLASGOW_HASKELL__ >= 800
     -- We're assuming the GADT constructor has only one Name here, but since
     -- this constructor was reified, this assumption should always hold true.
     con_to_dmatch (RecGadtC [con_name] args _ret_ty) = rec_con_to_dmatch con_name args
-#endif
     con_to_dmatch (ForallC _ _ c) = con_to_dmatch c
     con_to_dmatch _ = impossible "Internal error within th-desugar."
 
     error_match = DMatch DWildP (mkErrorMatchExpr RecUpd)
 
     fst_of_3 (x, _, _) = x
-#if __GLASGOW_HASKELL__ >= 709
 dsExp (StaticE exp) = DStaticE <$> dsExp exp
-#endif
-#if __GLASGOW_HASKELL__ > 710
 dsExp (UnboundVarE n) = return (DVarE n)
-#endif
 #if __GLASGOW_HASKELL__ >= 801
 dsExp (AppTypeE exp ty) = DAppTypeE <$> dsExp exp <*> dsType ty
 dsExp (UnboxedSumE exp alt arity) =
@@ -509,17 +485,13 @@ dsBindS mb_mod bind_arg_exp success_pat success_exp ctxt = do
     -- enabled by default, so simply use MonadFail.fail. (That happens to
     -- be the same as Prelude.fail in 8.8+.)
     mk_fail_name = return fail_MonadFail_name
-#elif __GLASGOW_HASKELL__ >= 800
+#else
     mk_fail_name = do
       mfd <- qIsExtEnabled MonadFailDesugaring
       return $ if mfd then fail_MonadFail_name else fail_Prelude_name
-#else
-    mk_fail_name = return fail_Prelude_name
 #endif
 
-#if __GLASGOW_HASKELL__ >= 800
-    fail_MonadFail_name = mk_qual_do_name mb_mod 'MonadFail.fail
-#endif
+    fail_MonadFail_name = mk_qual_do_name mb_mod 'Fail.fail
 
 #if __GLASGOW_HASKELL__ < 807
     fail_Prelude_name = mk_qual_do_name mb_mod 'Prelude.fail
@@ -610,10 +582,8 @@ dsPat (RecP con_name field_pats) = do
                      InfixC field1 _name field2 -> non_record [field1, field2]
                      RecC _name fields -> reorder_fields_pat fields
                      ForallC _ _ c -> reorder c
-#if __GLASGOW_HASKELL__ >= 800
                      GadtC _names fields _ret_ty -> non_record fields
                      RecGadtC _names fields _ret_ty -> reorder_fields_pat fields
-#endif
 
     reorder_fields_pat fields = reorderFieldsPat con_name fields field_pats
 
@@ -670,11 +640,7 @@ dsInfo (ClassI dec instances) = do
   [ddec]     <- dsDec dec
   dinstances <- dsDecs instances
   return $ DTyConI ddec (Just dinstances)
-#if __GLASGOW_HASKELL__ > 710
 dsInfo (ClassOpI name ty parent) =
-#else
-dsInfo (ClassOpI name ty parent _fixity) =
-#endif
   DVarI name <$> dsType ty <*> pure (Just parent)
 dsInfo (TyConI dec) = do
   [ddec] <- dsDec dec
@@ -685,21 +651,12 @@ dsInfo (FamilyI dec instances) = do
   return $ DTyConI ddec (Just dinstances)
 dsInfo (PrimTyConI name arity unlifted) =
   return $ DPrimTyConI name arity unlifted
-#if __GLASGOW_HASKELL__ > 710
 dsInfo (DataConI name ty parent) =
   DVarI name <$> dsType ty <*> pure (Just parent)
 dsInfo (VarI name ty Nothing) =
   DVarI name <$> dsType ty <*> pure Nothing
 dsInfo (VarI name _ (Just _)) =
   impossible $ "Declaration supplied with variable: " ++ show name
-#else
-dsInfo (DataConI name ty parent _fixity) =
-  DVarI name <$> dsType ty <*> pure (Just parent)
-dsInfo (VarI name ty Nothing _fixity) =
-  DVarI name <$> dsType ty <*> pure Nothing
-dsInfo (VarI name _ (Just _) _) =
-  impossible $ "Declaration supplied with variable: " ++ show name
-#endif
 dsInfo (TyVarI name ty) = DTyVarI name <$> dsType ty
 #if __GLASGOW_HASKELL__ >= 801
 dsInfo (PatSynI name ty) = DPatSynI name <$> dsType ty
@@ -713,44 +670,25 @@ dsDecs = concatMapM dsDec
 dsDec :: DsMonad q => Dec -> q [DDec]
 dsDec d@(FunD {}) = dsTopLevelLetDec d
 dsDec d@(ValD {}) = dsTopLevelLetDec d
-#if __GLASGOW_HASKELL__ > 710
 dsDec (DataD cxt n tvbs mk cons derivings) =
   dsDataDec Data cxt n tvbs mk cons derivings
 dsDec (NewtypeD cxt n tvbs mk con derivings) =
   dsDataDec Newtype cxt n tvbs mk [con] derivings
-#else
-dsDec (DataD cxt n tvbs cons derivings) =
-  dsDataDec Data cxt n tvbs Nothing cons derivings
-dsDec (NewtypeD cxt n tvbs con derivings) =
-  dsDataDec Newtype cxt n tvbs Nothing [con] derivings
-#endif
 dsDec (TySynD n tvbs ty) =
   (:[]) <$> (DTySynD n <$> mapM dsTvbUnit tvbs <*> dsType ty)
 dsDec (ClassD cxt n tvbs fds decs) =
   (:[]) <$> (DClassD <$> dsCxt cxt <*> pure n <*> mapM dsTvbUnit tvbs
                      <*> pure fds <*> dsDecs decs)
-#if __GLASGOW_HASKELL__ >= 711
 dsDec (InstanceD over cxt ty decs) =
   (:[]) <$> (DInstanceD over Nothing <$> dsCxt cxt <*> dsType ty <*> dsDecs decs)
-#else
-dsDec (InstanceD cxt ty decs) =
-  (:[]) <$> (DInstanceD Nothing Nothing <$> dsCxt cxt <*> dsType ty <*> dsDecs decs)
-#endif
 dsDec d@(SigD {}) = dsTopLevelLetDec d
 dsDec (ForeignD f) = (:[]) <$> (DForeignD <$> dsForeign f)
 dsDec d@(InfixD {}) = dsTopLevelLetDec d
 dsDec d@(PragmaD {}) = dsTopLevelLetDec d
-#if __GLASGOW_HASKELL__ > 710
 dsDec (OpenTypeFamilyD tfHead) =
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead tfHead)
 dsDec (DataFamilyD n tvbs m_k) =
   (:[]) <$> (DDataFamilyD n <$> mapM dsTvbUnit tvbs <*> mapM dsType m_k)
-#else
-dsDec (FamilyD TypeFam n tvbs m_k) = do
-  (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead n tvbs m_k)
-dsDec (FamilyD DataFam n tvbs m_k) =
-  (:[]) <$> (DDataFamilyD n <$> mapM dsTvbUnit tvbs <*> mapM dsType m_k)
-#endif
 #if __GLASGOW_HASKELL__ >= 807
 dsDec (DataInstD cxt mtvbs lhs mk cons derivings) =
   case unfoldType lhs of
@@ -760,33 +698,21 @@ dsDec (NewtypeInstD cxt mtvbs lhs mk con derivings) =
   case unfoldType lhs of
     (ConT n, tys) -> dsDataInstDec Newtype cxt n mtvbs tys mk [con] derivings
     (_, _)        -> fail $ "Unexpected newtype instance LHS: " ++ pprint lhs
-#elif __GLASGOW_HASKELL__ > 710
+#else
 dsDec (DataInstD cxt n tys mk cons derivings) =
   dsDataInstDec Data cxt n Nothing (map TANormal tys) mk cons derivings
 dsDec (NewtypeInstD cxt n tys mk con derivings) =
   dsDataInstDec Newtype cxt n Nothing (map TANormal tys) mk [con] derivings
-#else
-dsDec (DataInstD cxt n tys cons derivings) =
-  dsDataInstDec Data cxt n Nothing (map TANormal tys) Nothing cons derivings
-dsDec (NewtypeInstD cxt n tys con derivings) =
-  dsDataInstDec Newtype cxt n Nothing (map TANormal tys) Nothing [con] derivings
 #endif
 #if __GLASGOW_HASKELL__ >= 807
 dsDec (TySynInstD eqn) = (:[]) <$> (DTySynInstD <$> dsTySynEqn unusedArgument eqn)
 #else
 dsDec (TySynInstD n eqn) = (:[]) <$> (DTySynInstD <$> dsTySynEqn n eqn)
 #endif
-#if __GLASGOW_HASKELL__ > 710
 dsDec (ClosedTypeFamilyD tfHead eqns) =
   (:[]) <$> (DClosedTypeFamilyD <$> dsTypeFamilyHead tfHead
                                 <*> mapM (dsTySynEqn (typeFamilyHeadName tfHead)) eqns)
-#else
-dsDec (ClosedTypeFamilyD n tvbs m_k eqns) = do
-  (:[]) <$> (DClosedTypeFamilyD <$> dsTypeFamilyHead n tvbs m_k
-                                <*> mapM (dsTySynEqn n) eqns)
-#endif
 dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
-#if __GLASGOW_HASKELL__ >= 709
 #if __GLASGOW_HASKELL__ >= 801
 dsDec (PatSynD n args dir pat) = do
   dir' <- dsPatSynDir n dir
@@ -803,7 +729,6 @@ dsDec (StandaloneDerivD cxt ty) =
   (:[]) <$> (DStandaloneDerivD Nothing Nothing <$> dsCxt cxt <*> dsType ty)
 #endif
 dsDec (DefaultSigD n ty) = (:[]) <$> (DDefaultSigD n <$> dsType ty)
-#endif
 #if __GLASGOW_HASKELL__ >= 807
 dsDec (ImplicitParamBindD {}) = impossible "Non-`let`-bound implicit param binding"
 #endif
@@ -853,7 +778,6 @@ dsDataInstDec nd cxt n mtvbs tys mk cons derivings = do
                            <*> concatMapM (dsCon h98_tvbs h98_fam_inst_type) cons
                            <*> mapM dsDerivClause derivings)
 
-#if __GLASGOW_HASKELL__ > 710
 -- | Desugar a @FamilyResultSig@
 dsFamilyResultSig :: DsMonad q => FamilyResultSig -> q DFamilyResultSig
 dsFamilyResultSig NoSig          = return DNoSig
@@ -869,18 +793,6 @@ dsTypeFamilyHead (TypeFamilyHead n tvbs result inj)
 
 typeFamilyHeadName :: TypeFamilyHead -> Name
 typeFamilyHeadName (TypeFamilyHead n _ _ _) = n
-#else
--- | Desugar bits and pieces into a 'DTypeFamilyHead'
-dsTypeFamilyHead :: DsMonad q
-                 => Name -> [TyVarBndrUnit] -> Maybe Kind -> q DTypeFamilyHead
-dsTypeFamilyHead n tvbs m_kind = do
-  result_sig <- case m_kind of
-    Nothing -> return DNoSig
-    Just k  -> DKindSig <$> dsType k
-  DTypeFamilyHead n <$> mapM dsTvbUnit tvbs
-                    <*> pure result_sig
-                    <*> pure Nothing
-#endif
 
 -- | Desugar @Dec@s that can appear in a @let@ expression. See the
 -- documentation for 'dsLetDec' for an explanation of what the return type
@@ -1039,7 +951,6 @@ dsCon' (ForallC tvbs cxt con) = do
   dcons' <- dsCon' con
   return $ flip map dcons' $ \(n, dtvbs', dcxt', fields, m_gadt_type) ->
     (n, dtvbs ++ dtvbs', dcxt ++ dcxt', fields, m_gadt_type)
-#if __GLASGOW_HASKELL__ > 710
 dsCon' (GadtC nms btys rty) = do
   dbtys <- mapM dsBangType btys
   drty  <- dsType rty
@@ -1058,25 +969,14 @@ dsCon' (RecGadtC nms vbtys rty) = do
   drty   <- dsType rty
   return $ flip map nms $ \nm ->
     (nm, [], [], DRecC dvbtys, Just drty)
-#endif
 
-#if __GLASGOW_HASKELL__ > 710
--- | Desugar a @BangType@ (or a @StrictType@, if you're old-fashioned)
+-- | Desugar a @BangType@.
 dsBangType :: DsMonad q => BangType -> q DBangType
 dsBangType (b, ty) = (b, ) <$> dsType ty
 
--- | Desugar a @VarBangType@ (or a @VarStrictType@, if you're old-fashioned)
+-- | Desugar a @VarBangType@.
 dsVarBangType :: DsMonad q => VarBangType -> q DVarBangType
 dsVarBangType (n, b, ty) = (n, b, ) <$> dsType ty
-#else
--- | Desugar a @BangType@ (or a @StrictType@, if you're old-fashioned)
-dsBangType :: DsMonad q => StrictType -> q DBangType
-dsBangType (b, ty) = (strictToBang b, ) <$> dsType ty
-
--- | Desugar a @VarBangType@ (or a @VarStrictType@, if you're old-fashioned)
-dsVarBangType :: DsMonad q => VarStrictType -> q DVarBangType
-dsVarBangType (n, b, ty) = (n, strictToBang b, ) <$> dsType ty
-#endif
 
 -- | Desugar a @Foreign@.
 dsForeign :: DsMonad q => Foreign -> q DForeign
@@ -1105,9 +1005,7 @@ dsPragma (RuleP str rbs lhs rhs phases)  = DRuleP str Nothing
                                                       <*> pure phases
 #endif
 dsPragma (AnnP target exp)               = DAnnP target <$> dsExp exp
-#if __GLASGOW_HASKELL__ >= 709
 dsPragma (LineP n str)                   = return $ DLineP n str
-#endif
 #if __GLASGOW_HASKELL__ >= 801
 dsPragma (CompleteP cls mty)             = return $ DCompleteP cls mty
 #endif
@@ -1227,15 +1125,11 @@ dsType PromotedConsT = return $ DConT '(:)
 dsType StarT = return $ DConT typeKindName
 dsType ConstraintT = return $ DConT ''Constraint
 dsType (LitT lit) = return $ DLitT lit
-#if __GLASGOW_HASKELL__ >= 709
 dsType EqualityT = return $ DConT ''(~)
-#endif
-#if __GLASGOW_HASKELL__ > 710
 dsType (InfixT t1 n t2) = DAppT <$> (DAppT (DConT n) <$> dsType t1) <*> dsType t2
 dsType (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
 dsType (ParensT t) = dsType t
 dsType WildCardT = return DWildCardT
-#endif
 #if __GLASGOW_HASKELL__ >= 801
 dsType (UnboxedSumT arity) = return $ DConT (unboxedSumTypeName arity)
 #endif
@@ -1326,16 +1220,11 @@ type DerivingClause = DerivClause
 dsDerivClause :: DsMonad q => DerivingClause -> q DDerivClause
 dsDerivClause (DerivClause mds cxt) =
   DDerivClause <$> mapM dsDerivStrategy mds <*> dsCxt cxt
-#elif __GLASGOW_HASKELL__ >= 711
+#else
 type DerivingClause = Pred
 
 dsDerivClause :: DsMonad q => DerivingClause -> q DDerivClause
 dsDerivClause p = DDerivClause Nothing <$> dsPred p
-#else
-type DerivingClause = Name
-
-dsDerivClause :: DsMonad q => DerivingClause -> q DDerivClause
-dsDerivClause n = pure $ DDerivClause Nothing [DConT n]
 #endif
 
 #if __GLASGOW_HASKELL__ >= 801
@@ -1359,14 +1248,6 @@ dsPatSynDir n (ExplBidir clauses) = DExplBidir <$> dsClauses n clauses
 
 -- | Desugar a @Pred@, flattening any internal tuples
 dsPred :: DsMonad q => Pred -> q DCxt
-#if __GLASGOW_HASKELL__ < 709
-dsPred (ClassP n tys) = do
-  ts' <- mapM dsType tys
-  return [foldl DAppT (DConT n) ts']
-dsPred (EqualP t1 t2) = do
-  ts' <- mapM dsType [t1, t2]
-  return [foldl DAppT (DConT ''(~)) ts']
-#else
 dsPred t
   | Just ts <- splitTuple_maybe t
   = concatMapM dsPred ts
@@ -1400,12 +1281,10 @@ dsPred ConstraintT =
 dsPred t@(LitT _) =
   impossible $ "Type literal seen as head of constraint: " ++ show t
 dsPred EqualityT = return [DConT ''(~)]
-#if __GLASGOW_HASKELL__ > 710
 dsPred (InfixT t1 n t2) = (:[]) <$> (DAppT <$> (DAppT (DConT n) <$> dsType t1) <*> dsType t2)
 dsPred (UInfixT _ _ _) = fail "Cannot desugar unresolved infix operators."
 dsPred (ParensT t) = dsPred t
 dsPred WildCardT = return [DWildCardT]
-#endif
 #if __GLASGOW_HASKELL__ >= 801
 dsPred t@(UnboxedSumT {}) =
   impossible $ "Unboxed sum seen as head of constraint: " ++ show t
@@ -1435,7 +1314,6 @@ dsForallPred tvbs cxt p = do
                          (DForallInvis <$> mapM dsTvbSpec tvbs) <*> dsCxt cxt <*> pure p')
     _    -> fail "Cannot desugar constraint tuples in the body of a quantified constraint"
               -- See GHC #15334.
-#endif
 
 -- | Like 'reify', but safer and desugared. Uses local declarations where
 -- available.
@@ -1567,19 +1445,6 @@ probablyWrongUnDTypeArg :: DTypeArg -> DType
 probablyWrongUnDTypeArg (DTANormal t) = t
 probablyWrongUnDTypeArg (DTyArg k)    = k
 
--- | Convert a 'Strict' to a 'Bang' in GHCs 7.x. This is just
--- the identity operation in GHC 8.x, which has no 'Strict'.
--- (This is included in GHC 8.x only for good Haddocking.)
-#if __GLASGOW_HASKELL__ <= 710
-strictToBang :: Strict -> Bang
-strictToBang IsStrict  = Bang NoSourceUnpackedness SourceStrict
-strictToBang NotStrict = Bang NoSourceUnpackedness NoSourceStrictness
-strictToBang Unpacked  = Bang SourceUnpack SourceStrict
-#else
-strictToBang :: Bang -> Bang
-strictToBang = id
-#endif
-
 -- Take a data type name (which does not belong to a data family) and
 -- apply it to its type variable binders to form a DType.
 nonFamilyDataReturnType :: Name -> [DTyVarBndrUnit] -> DType
@@ -1703,21 +1568,7 @@ toposortTyVarsOf tys =
       ascribeWithKind n =
         maybe (DPlainTV n ()) (DKindedTV n ()) (M.lookup n varKindSigs)
 
-      -- An annoying wrinkle: GHCs before 8.0 don't support explicitly
-      -- quantifying kinds, so something like @forall k (a :: k)@ would be
-      -- rejected. To work around this, we filter out any binders whose names
-      -- also appear in a kind on old GHCs.
-      isKindBinderOnOldGHCs
-#if __GLASGOW_HASKELL__ >= 800
-        = const False
-#else
-        = (`elem` kindVars)
-          where
-            kindVars = foldMap fvDType $ M.elems varKindSigs
-#endif
-
   in map ascribeWithKind $
-     filter (not . isKindBinderOnOldGHCs) $
      scopedSort freeVars
 
 dtvbName :: DTyVarBndr flag -> Name

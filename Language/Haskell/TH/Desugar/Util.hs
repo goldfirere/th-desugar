@@ -6,13 +6,9 @@ rae@cs.brynmawr.edu
 Utility functions for th-desugar package.
 -}
 
-{-# LANGUAGE CPP, DeriveDataTypeable, RankNTypes, ScopedTypeVariables, TupleSections #-}
-
-#if __GLASGOW_HASKELL__ >= 800
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE TemplateHaskellQuotes #-}
-{-# LANGUAGE TypeApplications #-}
-#endif
+{-# LANGUAGE CPP, DeriveDataTypeable, RankNTypes, ScopedTypeVariables,
+             TupleSections, AllowAmbiguousTypes, TemplateHaskellQuotes,
+             TypeApplications #-}
 
 module Language.Haskell.TH.Desugar.Util (
   newUniqueName,
@@ -32,10 +28,8 @@ module Language.Haskell.TH.Desugar.Util (
   isTypeKindName, typeKindName,
   unSigType, unfoldType, ForallTelescope(..), FunArgs(..), VisFunArg(..),
   filterVisFunArgs, ravelType, unravelType,
-  TypeArg(..), applyType, filterTANormals, probablyWrongUnTypeArg
-#if __GLASGOW_HASKELL__ >= 800
-  , bindIP
-#endif
+  TypeArg(..), applyType, filterTANormals, probablyWrongUnTypeArg,
+  bindIP
   ) where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
@@ -48,19 +42,12 @@ import Language.Haskell.TH.Syntax
 
 import qualified Control.Monad.Fail as Fail
 import Data.Foldable
+import qualified Data.Kind as Kind
 import Data.Generics hiding ( Fixity )
 import Data.Traversable
 import Data.Maybe
-
-#if __GLASGOW_HASKELL__ < 710
-import Data.Monoid
-#endif
-
-#if __GLASGOW_HASKELL__ >= 800
-import qualified Data.Kind as Kind
 import GHC.Classes ( IP )
 import Unsafe.Coerce ( unsafeCoerce )
-#endif
 
 ----------------------------------------
 -- TH manipulations
@@ -297,11 +284,9 @@ unSigType (SigT t _) = t
 unSigType (AppT f x) = AppT (unSigType f) (unSigType x)
 unSigType (ForallT tvbs ctxt t) =
   ForallT tvbs (map unSigPred ctxt) (unSigType t)
-#if __GLASGOW_HASKELL__ >= 800
 unSigType (InfixT t1 n t2)  = InfixT (unSigType t1) n (unSigType t2)
 unSigType (UInfixT t1 n t2) = UInfixT (unSigType t1) n (unSigType t2)
 unSigType (ParensT t)       = ParensT (unSigType t)
-#endif
 #if __GLASGOW_HASKELL__ >= 807
 unSigType (AppKindT t k)       = AppKindT (unSigType t) (unSigType k)
 unSigType (ImplicitParamT n t) = ImplicitParamT n (unSigType t)
@@ -310,12 +295,7 @@ unSigType t = t
 
 -- | Remove all of the explicit kind signatures from a 'Pred'.
 unSigPred :: Pred -> Pred
-#if __GLASGOW_HASKELL__ >= 710
 unSigPred = unSigType
-#else
-unSigPred (ClassP n tys) = ClassP n (map unSigType tys)
-unSigPred (EqualP t1 t2) = EqualP (unSigType t1) (unSigType t2)
-#endif
 
 -- | Decompose an applied type into its individual components. For example, this:
 --
@@ -335,9 +315,7 @@ unfoldType = go []
     go acc (ForallT _ _ ty) = go acc ty
     go acc (AppT ty1 ty2)   = go (TANormal ty2:acc) ty1
     go acc (SigT ty _)      = go acc ty
-#if __GLASGOW_HASKELL__ >= 800
     go acc (ParensT ty)     = go acc ty
-#endif
 #if __GLASGOW_HASKELL__ >= 807
     go acc (AppKindT ty ki) = go (TyArg ki:acc) ty
 #endif
@@ -445,7 +423,6 @@ extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
 -- General utility
 ----------------------------------------
 
-#if __GLASGOW_HASKELL__ >= 800
 -- dirty implementation of explicit-to-implicit conversion
 newtype MagicIP name a r = MagicIP (IP name a => r)
 
@@ -455,7 +432,6 @@ newtype MagicIP name a r = MagicIP (IP name a => r)
 -- This function is only available with GHC 8.0 or later.
 bindIP :: forall name a r. a -> (IP name a => r) -> r
 bindIP val k = (unsafeCoerce (MagicIP @name k) :: a -> r) val
-#endif
 
 -- like GHC's
 splitAtList :: [a] -> [b] -> ([b], [b])
@@ -542,34 +518,17 @@ isTypeKindName n = n == typeKindName
                 || n == uniStarKindName
 #endif
 
--- | The 'Name' of:
---
--- 1. The kind 'Kind.Type', on GHC 8.0 or later.
+-- | The 'Name' of the kind 'Kind.Type'.
 -- 2. The kind @*@ on older GHCs.
 typeKindName :: Name
-#if __GLASGOW_HASKELL__ >= 800
 typeKindName = ''Kind.Type
-#else
-typeKindName = starKindName
-#endif
 
 #if __GLASGOW_HASKELL__ < 805
 -- | The 'Name' of the kind @*@.
 starKindName :: Name
-#if __GLASGOW_HASKELL__ >= 800
 starKindName = ''(Kind.*)
-#else
-starKindName = mkNameG_tc "ghc-prim" "GHC.Prim" "*"
-#endif
 
--- | The 'Name' of:
---
--- 1. The kind 'Kind.★', on GHC 8.0 or later.
--- 2. The kind @*@ on older GHCs.
+-- | The 'Name' of the kind 'Kind.★'.
 uniStarKindName :: Name
-#if __GLASGOW_HASKELL__ >= 800
 uniStarKindName = ''(Kind.★)
-#else
-uniStarKindName = starKindName
-#endif
 #endif

@@ -11,9 +11,6 @@ module Language.Haskell.TH.Desugar.FV
   , extractBoundNamesDPat
   ) where
 
-#if __GLASGOW_HASKELL__ < 710
-import Data.Foldable (foldMap)
-#endif
 #if __GLASGOW_HASKELL__ < 804
 import Data.Monoid ((<>))
 #endif

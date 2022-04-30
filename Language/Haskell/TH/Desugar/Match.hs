@@ -15,9 +15,6 @@ module Language.Haskell.TH.Desugar.Match (scExp, scLetDec) where
 
 import Prelude hiding ( fail, exp )
 
-#if __GLASGOW_HASKELL__ < 709
-import Control.Applicative
-#endif
 import Control.Monad hiding ( fail )
 import qualified Control.Monad as Monad
 import Data.Data

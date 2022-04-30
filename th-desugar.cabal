@@ -1,5 +1,5 @@
 name:           th-desugar
-version:        1.13
+version:        1.14
 cabal-version:  >= 1.10
 synopsis:       Functions to desugar Template Haskell
 homepage:       https://github.com/goldfirere/th-desugar
@@ -12,9 +12,7 @@ extra-source-files: README.md, CHANGES.md
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
-tested-with:    GHC == 7.8.4
-              , GHC == 7.10.3
-              , GHC == 8.0.2
+tested-with:    GHC == 8.0.2
               , GHC == 8.2.2
               , GHC == 8.4.4
               , GHC == 8.6.5
@@ -45,9 +43,9 @@ source-repository head
 
 library
   build-depends:
-      base >= 4.7 && < 5,
+      base >= 4.9 && < 5,
       ghc-prim,
-      template-haskell >= 2.9 && < 2.19,
+      template-haskell >= 2.11 && < 2.19,
       containers >= 0.5,
       mtl >= 2.1,
       ordered-containers >= 0.2.2,
@@ -56,9 +54,6 @@ library
       th-lift >= 0.6.1,
       th-orphans >= 0.13.7,
       transformers-compat >= 0.6.3
-  if !impl(ghc >= 8.0)
-      build-depends: fail == 4.9.*,
-                     semigroups >= 0.16
   default-extensions: TemplateHaskell
   exposed-modules:    Language.Haskell.TH.Desugar
                       Language.Haskell.TH.Desugar.Expand

@@ -46,11 +46,6 @@ import qualified Data.Set.Ordered as OS
 import Language.Haskell.TH.Desugar.OMap ()
 import Prelude hiding (filter, null)
 
-#if !(MIN_VERSION_base(4,8,0))
-import Data.Foldable (Foldable)
-import Data.Monoid (Monoid)
-#endif
-
 #if !(MIN_VERSION_base(4,11,0))
 import Data.Semigroup (Semigroup(..))
 #endif

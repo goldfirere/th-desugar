@@ -1,8 +1,10 @@
 `th-desugar` release notes
 ==========================
 
-Version next [????.??.??]
+Version 1.14 [????.??.??]
 -------------------------
+* Drop support for GHC 7.8 and 7.10. As a consequence of this, the
+  `strictToBang` was removed as it no longer serves a useful purpose.
 * Fix an inconsistency which caused non-exhaustive `case` expressions to be
   desugared into uses of `EmptyCase`. Non-exhaustive `case` expressions are now
   desugared into code that throws a "`Non-exhaustive patterns in...`" error at

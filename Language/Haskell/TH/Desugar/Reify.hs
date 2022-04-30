@@ -40,9 +40,6 @@ import Control.Monad.Writer
 import Control.Monad.RWS
 import Control.Monad.Trans.Instances ()
 import qualified Data.Foldable as F
-#if __GLASGOW_HASKELL__ < 710
-import Data.Foldable (foldMap)
-#endif
 import Data.Function (on)
 import qualified Data.List as List
 import qualified Data.Map as Map
@@ -107,13 +104,8 @@ getDataD err name = do
            TyConI dec -> return dec
            _ -> badDeclaration
   case dec of
-#if __GLASGOW_HASKELL__ > 710
     DataD _cxt _name tvbs mk cons _derivings -> go tvbs mk cons
     NewtypeD _cxt _name tvbs mk con _derivings -> go tvbs mk [con]
-#else
-    DataD _cxt _name tvbs cons _derivings -> go tvbs Nothing cons
-    NewtypeD _cxt _name tvbs con _derivings -> go tvbs Nothing [con]
-#endif
     _ -> badDeclaration
   where
     go tvbs mk cons = do
@@ -157,11 +149,7 @@ dataConNameToDataName :: DsMonad q => Name -> q Name
 dataConNameToDataName con_name = do
   info <- reifyWithLocals con_name
   case info of
-#if __GLASGOW_HASKELL__ > 710
     DataConI _name _type parent_name -> return parent_name
-#else
-    DataConI _name _type parent_name _fixity -> return parent_name
-#endif
     _ -> fail $ "The name " ++ show con_name ++ " does not appear to be " ++
                 "a data constructor."
 
@@ -182,10 +170,8 @@ dataConNameToCon con_name = do
     get_con_name (RecC name _)        = [name]
     get_con_name (InfixC _ name _)    = [name]
     get_con_name (ForallC _ _ con)    = get_con_name con
-#if __GLASGOW_HASKELL__ > 710
     get_con_name (GadtC names _ _)    = names
     get_con_name (RecGadtC names _ _) = names
-#endif
 
 --------------------------------------------------
 -- DsMonad
@@ -258,75 +244,42 @@ reifyInDec n decs (FunD n' _) | n `nameMatches` n' = Just (n', mkVarI n decs)
 reifyInDec n decs (ValD pat _ _)
   | Just n' <- List.find (nameMatches n) (F.toList (extractBoundNamesPat pat))
   = Just (n', mkVarI n decs)
-#if __GLASGOW_HASKELL__ > 710
 reifyInDec n _    dec@(DataD    _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
 reifyInDec n _    dec@(NewtypeD _ n' _ _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
-#else
-reifyInDec n _    dec@(DataD    _ n' _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
-reifyInDec n _    dec@(NewtypeD _ n' _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
-#endif
 reifyInDec n _    dec@(TySynD n' _ _)       | n `nameMatches` n' = Just (n', TyConI dec)
 reifyInDec n decs dec@(ClassD _ n' _ _ _)   | n `nameMatches` n'
   = Just (n', ClassI (quantifyClassDecMethods dec) (findInstances n decs))
-reifyInDec n decs (ForeignD (ImportF _ _ _ n' ty)) | n `nameMatches` n'
-  = Just (n', mkVarITy n decs ty)
-reifyInDec n decs (ForeignD (ExportF _ _ n' ty)) | n `nameMatches` n'
-  = Just (n', mkVarITy n decs ty)
-#if __GLASGOW_HASKELL__ > 710
+reifyInDec n _    (ForeignD (ImportF _ _ _ n' ty)) | n `nameMatches` n'
+  = Just (n', mkVarITy n ty)
+reifyInDec n _    (ForeignD (ExportF _ _ n' ty)) | n `nameMatches` n'
+  = Just (n', mkVarITy n ty)
 reifyInDec n decs dec@(OpenTypeFamilyD (TypeFamilyHead n' _ _ _)) | n `nameMatches` n'
   = Just (n', FamilyI dec (findInstances n decs))
 reifyInDec n decs dec@(DataFamilyD n' _ _) | n `nameMatches` n'
   = Just (n', FamilyI dec (findInstances n decs))
 reifyInDec n _    dec@(ClosedTypeFamilyD (TypeFamilyHead n' _ _ _) _) | n `nameMatches` n'
   = Just (n', FamilyI dec [])
-#else
-reifyInDec n decs dec@(FamilyD _ n' _ _) | n `nameMatches` n'
-  = Just (n', FamilyI dec (findInstances n decs))
-reifyInDec n _    dec@(ClosedTypeFamilyD n' _ _ _) | n `nameMatches` n'
-  = Just (n', FamilyI dec [])
-#endif
 #if __GLASGOW_HASKELL__ >= 801
 reifyInDec n decs (PatSynD n' _ _ _) | n `nameMatches` n'
   = Just (n', mkPatSynI n decs)
 #endif
 
-#if __GLASGOW_HASKELL__ > 710
 reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
   | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
   = Just info
 reifyInDec n decs (NewtypeD _ ty_name tvbs _mk con _)
   | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) [con]
   = Just info
-#else
-reifyInDec n decs (DataD _ ty_name tvbs cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
-  = Just info
-reifyInDec n decs (NewtypeD _ ty_name tvbs con _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) [con]
-  = Just info
-#endif
-#if __GLASGOW_HASKELL__ > 710
 reifyInDec n _decs (ClassD _ ty_name tvbs _ sub_decs)
   | Just (n', ty) <- findType n sub_decs
   = Just (n', ClassOpI n (quantifyClassMethodType ty_name tvbs True ty) ty_name)
-#else
-reifyInDec n decs (ClassD _ ty_name tvbs _ sub_decs)
-  | Just (n', ty) <- findType n sub_decs
-  = Just (n', ClassOpI n (quantifyClassMethodType ty_name tvbs True ty)
-                       ty_name (fromMaybe defaultFixity $
-                                reifyFixityInDecs n $ sub_decs ++ decs))
-#endif
 reifyInDec n decs (ClassD _ _ _ _ sub_decs)
   | Just info <- firstMatch (reifyInDec n decs) sub_decs
                  -- Important: don't pass (sub_decs ++ decs) to reifyInDec
                  -- above, or else type family defaults can be confused for
                  -- actual instances. See #134.
   = Just info
-#if __GLASGOW_HASKELL__ >= 711
 reifyInDec n decs (InstanceD _ _ _ sub_decs)
-#else
-reifyInDec n decs (InstanceD _ _ sub_decs)
-#endif
   | Just info <- firstMatch reify_in_instance sub_decs
   = Just info
   where
@@ -342,18 +295,11 @@ reifyInDec n decs (NewtypeInstD _ _ lhs _ con _)
   | (ConT ty_name, tys) <- unfoldType lhs
   , Just info <- maybeReifyCon n decs ty_name tys [con]
   = Just info
-#elif __GLASGOW_HASKELL__ > 710
+#else
 reifyInDec n decs (DataInstD _ ty_name tys _ cons _)
   | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) cons
   = Just info
 reifyInDec n decs (NewtypeInstD _ ty_name tys _ con _)
-  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) [con]
-  = Just info
-#else
-reifyInDec n decs (DataInstD _ ty_name tys cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) cons
-  = Just info
-reifyInDec n decs (NewtypeInstD _ ty_name tys con _)
   | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) [con]
   = Just info
 #endif
@@ -365,22 +311,14 @@ maybeReifyCon n _decs ty_name ty_args cons
   | Just (n', con) <- findCon n cons
     -- See Note [Use unSigType in maybeReifyCon]
   , let full_con_ty = unSigType $ con_to_type h98_tvbs h98_res_ty con
-  = Just ( n', DataConI n full_con_ty ty_name
-#if __GLASGOW_HASKELL__ < 800
-                        fixity
-#endif
-         )
+  = Just (n', DataConI n full_con_ty ty_name)
 
   | Just (n', rec_sel_info) <- findRecSelector n cons
   , let (tvbs, sel_ty, con_res_ty) = extract_rec_sel_info rec_sel_info
         -- See Note [Use unSigType in maybeReifyCon]
         full_sel_ty = unSigType $ maybeForallT tvbs [] $ mkArrows [con_res_ty] sel_ty
       -- we don't try to ferret out naughty record selectors.
-  = Just ( n', VarI n full_sel_ty Nothing
-#if __GLASGOW_HASKELL__ < 800
-                    fixity
-#endif
-         )
+  = Just (n', VarI n full_sel_ty Nothing)
   where
     extract_rec_sel_info :: RecSelInfo -> ([TyVarBndrUnit], Type, Type)
       -- Returns ( Selector type variable binders
@@ -396,9 +334,6 @@ maybeReifyCon n _decs ty_name ty_args cons
     h98_tvbs   = freeVariablesWellScoped $ map probablyWrongUnTypeArg ty_args
     h98_res_ty = applyType (ConT ty_name) ty_args
 
-#if __GLASGOW_HASKELL__ < 800
-    fixity = fromMaybe defaultFixity $ reifyFixityInDecs n _decs
-#endif
 maybeReifyCon _ _ _ _ _ = Nothing
 
 {-
@@ -435,21 +370,14 @@ con_to_type h98_tvbs h98_result_ty con =
     go (RecC _ vstys)         = (False, mkArrows (map thdOf3 vstys) h98_result_ty)
     go (InfixC t1 _ t2)       = (False, mkArrows (map snd [t1, t2]) h98_result_ty)
     go (ForallC bndrs cxt c)  = liftSnd (ForallT bndrs cxt) (go c)
-#if __GLASGOW_HASKELL__ > 710
     go (GadtC _ stys rty)     = (True, mkArrows (map snd    stys)  rty)
     go (RecGadtC _ vstys rty) = (True, mkArrows (map thdOf3 vstys) rty)
-#endif
 
 mkVarI :: Name -> [Dec] -> Info
-mkVarI n decs = mkVarITy n decs (maybe (no_type n) snd $ findType n decs)
+mkVarI n decs = mkVarITy n (maybe (no_type n) snd $ findType n decs)
 
-mkVarITy :: Name -> [Dec] -> Type -> Info
-#if __GLASGOW_HASKELL__ > 710
-mkVarITy n _decs ty = VarI n ty Nothing
-#else
-mkVarITy n decs ty = VarI n ty Nothing (fromMaybe defaultFixity $
-                                        reifyFixityInDecs n decs)
-#endif
+mkVarITy :: Name -> Type -> Info
+mkVarITy n ty = VarI n ty Nothing
 
 findType :: Name -> [Dec] -> Maybe (Named Type)
 findType n = firstMatch match_type
@@ -475,12 +403,7 @@ no_type n = error $ "No type information found in local declaration for "
 findInstances :: Name -> [Dec] -> [Dec]
 findInstances n = map stripInstanceDec . concatMap match_instance
   where
-#if __GLASGOW_HASKELL__ >= 711
-    match_instance d@(InstanceD _ _ ty _)
-#else
-    match_instance d@(InstanceD _ ty _)
-#endif
-                                               | ConT n' <- ty_head ty
+    match_instance d@(InstanceD _ _ ty _)      | ConT n' <- ty_head ty
                                                , n `nameMatches` n' = [d]
 #if __GLASGOW_HASKELL__ >= 807
     match_instance (DataInstD ctxt _ lhs mk cons derivs)
@@ -495,12 +418,9 @@ findInstances n = map stripInstanceDec . concatMap match_instance
       where
         mtvbs = rejig_data_inst_tvbs ctxt lhs mk
         d = NewtypeInstD ctxt mtvbs lhs mk con derivs
-#elif __GLASGOW_HASKELL__ > 710
+#else
     match_instance d@(DataInstD _ n' _ _ _ _)    | n `nameMatches` n' = [d]
     match_instance d@(NewtypeInstD _ n' _ _ _ _) | n `nameMatches` n' = [d]
-#else
-    match_instance d@(DataInstD _ n' _ _ _)    | n `nameMatches` n' = [d]
-    match_instance d@(NewtypeInstD _ n' _ _ _) | n `nameMatches` n' = [d]
 #endif
 #if __GLASGOW_HASKELL__ >= 807
     match_instance (TySynInstD (TySynEqn _ lhs rhs))
@@ -513,11 +433,7 @@ findInstances n = map stripInstanceDec . concatMap match_instance
     match_instance d@(TySynInstD n' _)         | n `nameMatches` n' = [d]
 #endif
 
-#if __GLASGOW_HASKELL__ >= 711
     match_instance (InstanceD _ _ _ decs)
-#else
-    match_instance (InstanceD _ _ decs)
-#endif
                                         = concatMap match_instance decs
     match_instance _                    = []
 
@@ -607,10 +523,8 @@ quantifyClassDecMethods (ClassD cxt cls_name cls_tvbs fds sub_decs)
       Just $ SigD n
            $ quantifyClassMethodType cls_name cls_tvbs prepend_cls ty
     go d@(TySynInstD {})      = Just d
-#if __GLASGOW_HASKELL__ > 710
     go d@(OpenTypeFamilyD {}) = Just d
     go d@(DataFamilyD {})     = Just d
-#endif
     go _           = Nothing
 
     -- See (2) in the comments for quantifyClassDecMethods.
@@ -655,11 +569,7 @@ quantifyClassMethodType cls_name cls_tvbs prepend meth_ty =
       | otherwise = id
 
     cls_cxt :: Cxt
-#if __GLASGOW_HASKELL__ < 709
-    cls_cxt = [ClassP cls_name (map tvbToType cls_tvbs)]
-#else
     cls_cxt = [foldl AppT (ConT cls_name) (map tvbToType cls_tvbs)]
-#endif
 
     quantified_meth_ty :: Type
     quantified_meth_ty
@@ -680,11 +590,7 @@ quantifyClassMethodType cls_name cls_tvbs prepend meth_ty =
     all_cls_tvbs = freeVariablesWellScoped $ map tvbToTypeWithSig cls_tvbs
 
 stripInstanceDec :: Dec -> Dec
-#if __GLASGOW_HASKELL__ >= 711
 stripInstanceDec (InstanceD over cxt ty _) = InstanceD over cxt ty []
-#else
-stripInstanceDec (InstanceD cxt ty _)      = InstanceD cxt ty []
-#endif
 stripInstanceDec dec                       = dec
 
 mkArrows :: [Type] -> Type -> Type
@@ -711,18 +617,14 @@ findCon n = firstMatch match_con
         ForallC _ _ c -> case match_con c of
                            Just (n', _) -> Just (n', con)
                            Nothing      -> Nothing
-#if __GLASGOW_HASKELL__ > 710
         GadtC nms _ _    -> gadt_case con nms
         RecGadtC nms _ _ -> gadt_case con nms
-#endif
         _                -> Nothing
 
-#if __GLASGOW_HASKELL__ > 710
     gadt_case :: Con -> [Name] -> Maybe (Named Con)
     gadt_case con nms = case List.find (n `nameMatches`) nms of
                           Just n' -> Just (n', con)
                           Nothing -> Nothing
-#endif
 
 data RecSelInfo
   = RecSelH98  Type -- The record field's type
@@ -735,10 +637,8 @@ findRecSelector n = firstMatch match_con
     match_con :: Con -> Maybe (Named RecSelInfo)
     match_con (RecC _ vstys)            = fmap (liftSnd RecSelH98) $
                                           firstMatch match_rec_sel vstys
-#if __GLASGOW_HASKELL__ >= 800
     match_con (RecGadtC _ vstys ret_ty) = fmap (liftSnd (`RecSelGADT` ret_ty)) $
                                           firstMatch match_rec_sel vstys
-#endif
     match_con (ForallC _ _ c)           = match_con c
     match_con _                         = Nothing
 
@@ -749,28 +649,6 @@ findRecSelector n = firstMatch match_con
 ---------------------------------
 -- Reifying fixities
 ---------------------------------
---
--- This section allows GHC 7.x to call reifyFixity
-
-#if __GLASGOW_HASKELL__ < 711
-qReifyFixity :: Quasi m => Name -> m (Maybe Fixity)
-qReifyFixity name = do
-  info <- qReify name
-  return $ case info of
-    ClassOpI _ _ _ fixity -> Just fixity
-    DataConI _ _ _ fixity -> Just fixity
-    VarI _ _ _ fixity     -> Just fixity
-    _                     -> Nothing
-
-{- | @reifyFixity nm@ attempts to find a fixity declaration for @nm@. For
-example, if the function @foo@ has the fixity declaration @infixr 7 foo@, then
-@reifyFixity 'foo@ would return @'Just' ('Fixity' 7 'InfixR')@. If the function
-@bar@ does not have a fixity declaration, then @reifyFixity 'bar@ returns
-'Nothing', so you may assume @bar@ has 'defaultFixity'.
--}
-reifyFixity :: Name -> Q (Maybe Fixity)
-reifyFixity = qReifyFixity
-#endif
 
 -- | Like 'reifyWithLocals_maybe', but for fixities. Note that a return value
 -- of @Nothing@ might mean that the name is not in scope, or it might mean
@@ -847,21 +725,9 @@ reifyTypeInDecs cusks name decs =
 infoType :: Info -> Maybe Type
 infoType info =
   case info of
-    ClassOpI _ t _
-#if __GLASGOW_HASKELL__ < 800
-             _
-#endif
-                   -> Just t
-    DataConI _ t _
-#if __GLASGOW_HASKELL__ < 800
-             _
-#endif
-                   -> Just t
-    VarI _ t _
-#if __GLASGOW_HASKELL__ < 800
-         _
-#endif
-                   -> Just t
+    ClassOpI _ t _ -> Just t
+    DataConI _ t _ -> Just t
+    VarI _ t _     -> Just t
     TyVarI _ t     -> Just t
 #if __GLASGOW_HASKELL__ >= 802
     PatSynI _ t    -> Just t
@@ -907,7 +773,6 @@ find_kind_sig _ _ = Nothing
 -- This is only done when -XCUSKs is enabled, or on older GHCs where
 -- CUSKs were the only means of specifying this information.
 match_cusk :: Name -> Dec -> Maybe Kind
-#if __GLASGOW_HASKELL__ >= 800
 match_cusk n (DataD _ n' tvbs m_ki _ _)
   | n `nameMatches` n'
   = datatype_kind tvbs m_ki
@@ -923,20 +788,6 @@ match_cusk n (OpenTypeFamilyD (TypeFamilyHead n' tvbs res_sig _))
 match_cusk n (ClosedTypeFamilyD (TypeFamilyHead n' tvbs res_sig _) _)
   | n `nameMatches` n'
   = closed_ty_fam_kind tvbs (res_sig_to_kind res_sig)
-#else
-match_cusk n (DataD _ n' tvbs _ _)
-  | n `nameMatches` n'
-  = datatype_kind tvbs Nothing
-match_cusk n (NewtypeD _ n' tvbs _ _)
-  | n `nameMatches` n'
-  = datatype_kind tvbs Nothing
-match_cusk n (FamilyD _ n' tvbs m_ki)
-  | n `nameMatches` n'
-  = open_ty_fam_kind tvbs m_ki
-match_cusk n (ClosedTypeFamilyD n' tvbs m_ki _)
-  | n `nameMatches` n'
-  = closed_ty_fam_kind tvbs m_ki
-#endif
 match_cusk n (TySynD n' tvbs rhs)
   | n `nameMatches` n'
   = ty_syn_kind tvbs rhs
@@ -961,7 +812,6 @@ match_cusk _ _ = Nothing
 find_assoc_type_kind :: Name -> Map Name Kind -> Dec -> Maybe Kind
 find_assoc_type_kind n cls_tvb_kind_map sub_dec =
   case sub_dec of
-#if __GLASGOW_HASKELL__ >= 800
     DataFamilyD n' tf_tvbs m_ki
       |  n `nameMatches` n'
       -> build_kind (map ascribe_tf_tvb_kind tf_tvbs) (default_res_ki m_ki)
@@ -969,11 +819,6 @@ find_assoc_type_kind n cls_tvb_kind_map sub_dec =
       |  n `nameMatches` n'
       -> build_kind (map ascribe_tf_tvb_kind tf_tvbs)
                     (default_res_ki $ res_sig_to_kind res_sig)
-#else
-    FamilyD _ n' tf_tvbs m_ki
-      |  n `nameMatches` n'
-      -> build_kind (map ascribe_tf_tvb_kind tf_tvbs) (default_res_ki m_ki)
-#endif
     _ -> Nothing
   where
     ascribe_tf_tvb_kind :: TyVarBndrUnit -> TyVarBndrUnit
@@ -1092,12 +937,10 @@ default_tvb tvb = elimTV (\n -> kindedTV n StarT) (\_ _ -> tvb) tvb
 default_res_ki :: Maybe Kind -> Kind
 default_res_ki = fromMaybe StarT
 
-#if __GLASGOW_HASKELL__ >= 800
 res_sig_to_kind :: FamilyResultSig -> Maybe Kind
 res_sig_to_kind NoSig          = Nothing
 res_sig_to_kind (KindSig k)    = Just k
 res_sig_to_kind (TyVarSig tvb) = tvb_kind_maybe tvb
-#endif
 
 whenAlt :: Alternative f => Bool -> f a -> f a
 whenAlt b fa = if b then fa else empty
