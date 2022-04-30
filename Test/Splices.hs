@@ -52,6 +52,7 @@ module Splices where
 
 import qualified Data.List as L
 import Data.Char
+import qualified Data.Kind as Kind (Type)
 import GHC.Exts
 import GHC.TypeLits
 
@@ -202,13 +203,13 @@ test29_listt = [| let f :: [[a]] -> a
 test30_promoted = [| let f :: Proxy '() -> Proxy '[Int, Bool] -> ()
                          f _ _ = () in
                      f Proxy Proxy |]
-test31_constraint = [| let f :: Proxy (c :: * -> Constraint) -> ()
+test31_constraint = [| let f :: Proxy (c :: Kind.Type -> Constraint) -> ()
                            f _ = () in
                        [f (Proxy :: Proxy Eq), f (Proxy :: Proxy Show)] |]
 test32_tylit = [| let f :: Proxy (a :: Symbol) -> Proxy (b :: Nat) -> ()
                       f _ _ = () in
                   f (Proxy :: Proxy "Hi there!") (Proxy :: Proxy 10) |]
-test33_tvbs = [| let f :: forall a (b :: * -> *). Monad b => a -> b a
+test33_tvbs = [| let f :: forall a (b :: Kind.Type -> Kind.Type). Monad b => a -> b a
                      f = return in
                  [f 1, f 2] :: [Maybe Int] |]
 
@@ -360,10 +361,10 @@ test_expand6 = [| let f :: ClosedTF Double -> ()
                   f |]
 
 #if __GLASGOW_HASKELL__ >= 809
-type PolyTF :: forall k. k -> *
+type PolyTF :: forall k. k -> Kind.Type
 #endif
-type family PolyTF (x :: k) :: * where
-  PolyTF (x :: *) = Bool
+type family PolyTF (x :: k) :: Kind.Type where
+  PolyTF (x :: Kind.Type) = Bool
 
 test_expand7 = [| let f :: PolyTF Int -> ()
                       f True = () in
@@ -410,13 +411,13 @@ dectest3 = [d| data Dec3 a where
 dectest4 = [d| newtype Dec4 a where
                  MkDec4 :: (a, Int) -> Dec4 a |]
 dectest5 = [d| type Dec5 a b = (a b, Maybe b) |]
-dectest6 = [d| class (Monad m1, Monad m2) => Dec6 (m1 :: * -> *) m2 | m1 -> m2  where
+dectest6 = [d| class (Monad m1, Monad m2) => Dec6 (m1 :: Kind.Type -> Kind.Type) m2 | m1 -> m2  where
                  lift :: forall a. m1 a -> m2 a
-                 type M2 m1 :: * -> * |]
-dectest7 = [d| type family Dec7 a (b :: *) (c :: Bool) :: * -> * |]
+                 type M2 m1 :: Kind.Type -> Kind.Type |]
+dectest7 = [d| type family Dec7 a (b :: Kind.Type) (c :: Bool) :: Kind.Type -> Kind.Type |]
 dectest8 = [d| type family Dec8 a |]
-dectest9 = [d| data family Dec9 a (b :: * -> *) :: * -> * |]
-dectest10 = [d| type family Dec10 a :: * -> * where
+dectest9 = [d| data family Dec9 a (b :: Kind.Type -> Kind.Type) :: Kind.Type -> Kind.Type |]
+dectest10 = [d| type family Dec10 a :: Kind.Type -> Kind.Type where
                   Dec10 Int = Maybe
                   Dec10 Bool = [] |]
 
@@ -437,7 +438,7 @@ dectest12 = [d| data Dec12 a where
 
               |]
 
-dectest13 = [d| data Dec13 :: (* -> Constraint) -> * where
+dectest13 = [d| data Dec13 :: (Kind.Type -> Constraint) -> Kind.Type where
                   MkDec13 :: c a => a -> Dec13 c
               |]
 
@@ -483,7 +484,7 @@ dectest17 = return [ StandaloneDerivD
                             (ConT ''ExData2 `AppT` VarT (mkName "a"))) ]
 
 #if __GLASGOW_HASKELL__ >= 809
-dectest18 = [d| data Dec18 :: forall k -> k -> * where
+dectest18 = [d| data Dec18 :: forall k -> k -> Kind.Type where
                   MkDec18 :: forall k (a :: k). Dec18 k a |]
 #endif
 
@@ -496,7 +497,7 @@ imp_inst_test1 = [d| instance Dec6 Maybe (Either ()) where
                        lift (Just x) = Right x
                        type M2 Maybe = Either () |]
 
-data family Dec9 a (b :: * -> *) :: * -> *
+data family Dec9 a (b :: Kind.Type -> Kind.Type) :: Kind.Type -> Kind.Type
 imp_inst_test2 = [d| data instance Dec9 Int Maybe a where
                        MkIMB  ::             [a] -> Dec9 Int Maybe a
                        MkIMB2 :: forall a b. b a -> Dec9 Int Maybe a |]
@@ -507,7 +508,7 @@ type family Dec8 a
 imp_inst_test4 = [d| type instance Dec8 Int = Bool |]
 
 -- used for bug8884 test
-type family Poly (a :: k) :: *
+type family Poly (a :: k) :: Kind.Type
 type instance Poly x = Int
 
 flatten_dvald_test = [| let (a,b,c) = ("foo", 4, False) in
@@ -549,11 +550,11 @@ reifyDecs = [d|
 
   class R2 a b where
     r3 :: a -> b -> c -> a
-    type R4 b a :: *
+    type R4 b a :: Kind.Type
     -- Only define this on GHC 8.0 or later, since TH had trouble quoting
     -- associated type family defaults before then.
     type R4 b a = Either a b
-    data R5 a :: *
+    data R5 a :: Kind.Type
 
   data R6 a = R7 { r8 :: a -> a, r9 :: Bool }
 
@@ -562,9 +563,9 @@ reifyDecs = [d|
     type R4 a (R6 a) = a
     data R5 (R6 a) = forall b. Show b => R10 { r11 :: a, naughty :: b }
 
-  type family R12 a b :: *
+  type family R12 a b :: Kind.Type
 
-  data family R13 a :: *
+  data family R13 a :: Kind.Type
 
   data instance R13 Int = R14 { r15 :: Bool }
 
@@ -634,7 +635,7 @@ reifyDecs = [d|
     deriving Eq via (Id [a])
 #endif
 
-  class R25 (f :: k -> *) where
+  class R25 (f :: k -> Kind.Type) where
     r26 :: forall (a :: k). f a
 
   data R27 (a :: k) = R28 { r29 :: Proxy a }
@@ -643,8 +644,8 @@ reifyDecs = [d|
     r31 :: a -> b -> a
 
 #if __GLASGOW_HASKELL__ >= 809
-  type R32 :: forall k -> k -> *
-  type family R32 :: forall k -> k -> * where
+  type R32 :: forall k -> k -> Kind.Type
+  type family R32 :: forall k -> k -> Kind.Type where
 #endif
 
   data R33 a where

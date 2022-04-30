@@ -4,9 +4,6 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeInType #-}
-#if __GLASGOW_HASKELL__ >= 806
-{-# LANGUAGE StarIsType #-}
-#endif
 #if __GLASGOW_HASKELL__ >= 809
 {-# LANGUAGE CUSKs #-}
 #endif
@@ -14,50 +11,48 @@
 -- the -XCUSKs language extension.
 module ReifyTypeCUSKs where
 
-#if __GLASGOW_HASKELL__ < 806
-import Data.Kind (type (*))
-#endif
+import Data.Kind (Type)
 import GHC.Exts (Constraint)
 import Language.Haskell.TH.Desugar
-import Language.Haskell.TH.Syntax
+import Language.Haskell.TH.Syntax hiding (Type)
 import Splices (eqTH)
 
 test_reify_type_cusks, test_reify_type_no_cusks :: [Bool]
 (test_reify_type_cusks, test_reify_type_no_cusks) =
   $(do cusk_decls <-
-         [d| data A1 (a :: *)
-             type A2 (a :: *) = (a :: *)
+         [d| data A1 (a :: Type)
+             type A2 (a :: Type) = (a :: Type)
              type family A3 a
              data family A4 a
-             type family A5 (a :: *) :: * where
+             type family A5 (a :: Type) :: Type where
                A5 a = a
-             class A6 (a :: *) where
+             class A6 (a :: Type) where
                type A7 a b
 
-             data A8 (a :: k) :: k -> *
+             data A8 (a :: k) :: k -> Type
 #if __GLASGOW_HASKELL__ >= 804
-             data A9 (a :: j) :: forall k. k -> *
+             data A9 (a :: j) :: forall k. k -> Type
 #endif
 #if __GLASGOW_HASKELL__ >= 809
              data A10 (k :: Type) (a :: k)
-             data A11 :: forall k -> k -> *
+             data A11 :: forall k -> k -> Type
 #endif
            |]
 
        no_cusk_decls <-
          [d| data B1 a
-             type B2 (a :: *) = a
-             type B3 a = (a :: *)
-             type family B4 (a :: *) where
+             type B2 (a :: Type) = a
+             type B3 a = (a :: Type)
+             type family B4 (a :: Type) where
                B4 a = a
-             type family B5 a :: * where
+             type family B5 a :: Type where
                B5 a = a
              class B6 a where
-               type B7 (a :: *) (b :: *) :: *
+               type B7 (a :: Type) (b :: Type) :: Type
 
-             data B8 :: k -> *
+             data B8 :: k -> Type
 #if __GLASGOW_HASKELL__ >= 804
-             data B9 :: forall j. j -> k -> *
+             data B9 :: forall j. j -> k -> Type
 #endif
            |]
 
