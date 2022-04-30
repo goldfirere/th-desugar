@@ -9,7 +9,7 @@ more nested patterns.
 This code is directly based on the analogous operation as written in GHC.
 -}
 
-{-# LANGUAGE CPP, TemplateHaskell #-}
+{-# LANGUAGE CPP, TemplateHaskellQuotes #-}
 
 module Language.Haskell.TH.Desugar.Match (scExp, scLetDec) where
 
