@@ -16,7 +16,8 @@ Version 1.14 [????.??.??]
   to two arguments, just like `InfixT` is desugared. Similarly, attempting to
   desugar a `PromotedUInfixT` results in an error, just like attempting to
   desugar a `UInfixT` would be.
-* `th-desugar` now supports `DefaultD` (i.e., `default` declarations).
+* `th-desugar` now supports `DefaultD` (i.e., `default` declarations) and
+  `OpaqueP` (i.e., `OPAQUE` pragmas), which were added in GHC 9.4.
 * Fix an inconsistency which caused non-exhaustive `case` expressions to be
   desugared into uses of `EmptyCase`. Non-exhaustive `case` expressions are now
   desugared into code that throws a "`Non-exhaustive patterns in...`" error at

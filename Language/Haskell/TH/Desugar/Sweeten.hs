@@ -250,6 +250,11 @@ pragmaToTH (DCompleteP {}) = error "COMPLETE pragmas only supported in GHC 8.2+"
 #else
 pragmaToTH (DCompleteP cls mty) = CompleteP cls mty
 #endif
+#if __GLASGOW_HASKELL__ >= 903
+pragmaToTH (DOpaqueP n) = OpaqueP n
+#else
+pragmaToTH (DOpaqueP {}) = error "OPAQUE pragmas only supported in GHC 9.4+"
+#endif
 
 ruleBndrToTH :: DRuleBndr -> RuleBndr
 ruleBndrToTH (DRuleVar n) = RuleVar n

@@ -255,6 +255,7 @@ data DPragma = DInlineP Name Inline RuleMatch Phases
              | DAnnP AnnTarget DExp
              | DLineP Int String
              | DCompleteP [Name] (Maybe Name)
+             | DOpaqueP Name
              deriving (Eq, Show, Data, Generic)
 
 -- | Corresponds to TH's @RuleBndr@ type.
