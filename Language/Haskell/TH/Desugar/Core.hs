@@ -22,7 +22,7 @@ import Control.Monad hiding (forM_, mapM)
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.Zip
 import Control.Monad.Writer hiding (forM_, mapM)
-import Data.Data (Data, Typeable)
+import Data.Data (Data)
 import Data.Either (lefts)
 import Data.Foldable as F hiding (concat, notElem)
 import qualified Data.Map as M
@@ -1418,7 +1418,7 @@ applyDType = foldl apply
 data DTypeArg
   = DTANormal DType
   | DTyArg DKind
-  deriving (Eq, Show, Typeable, Data, Generic)
+  deriving (Eq, Show, Data, Generic)
 
 -- | Desugar a 'TypeArg'.
 dsTypeArg :: DsMonad q => TypeArg -> q DTypeArg
@@ -1620,7 +1620,7 @@ data DFunArgs
   | DFAAnon DType DFunArgs
     -- ^ An anonymous argument followed by an arrow. For example, the @a@
     --   in @a -> r@.
-  deriving (Eq, Show, Typeable, Data, Generic)
+  deriving (Eq, Show, Data, Generic)
 
 -- | A /visible/ function argument type (i.e., one that must be supplied
 -- explicitly in the source code). This is in contrast to /invisible/
@@ -1631,7 +1631,7 @@ data DVisFunArg
     -- ^ A visible @forall@ (e.g., @forall a -> a@).
   | DVisFAAnon DType
     -- ^ An anonymous argument followed by an arrow (e.g., @a -> r@).
-  deriving (Eq, Show, Typeable, Data, Generic)
+  deriving (Eq, Show, Data, Generic)
 
 -- | Filter the visible function arguments from a list of 'DFunArgs'.
 filterDVisFunArgs :: DFunArgs -> [DVisFunArg]
