@@ -392,6 +392,13 @@ test_expand9 = [| let f :: TFExpand (Maybe (IO a)) -> IO ()
                   f |]
 #endif
 
+type family TFExpandClosed a where
+  TFExpandClosed (Maybe a) = [a]
+
+test_expand10 = [| let f :: TFExpandClosed (Maybe (IO a)) -> IO ()
+                       f actions = sequence_ actions in
+                   f |]
+
 #if __GLASGOW_HASKELL__ >= 709
 test37_pred = [| let f :: (Read a, (Show a, Num a)) => a -> a
                      f x = read (show x) + x in
