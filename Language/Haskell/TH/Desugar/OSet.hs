@@ -54,7 +54,7 @@ import Data.Semigroup (Semigroup(..))
 -- operations are biased towards leftmost indices when when breaking ties
 -- between keys.
 newtype OSet a = OSet (Bias L (OS.OSet a))
-  deriving (Data, Foldable, Eq, Monoid, Ord, Read, Show, Typeable)
+  deriving (Data, Foldable, Eq, Monoid, Ord, Read, Show)
 
 instance Ord a => Semigroup (OSet a) where
   (<>) = union

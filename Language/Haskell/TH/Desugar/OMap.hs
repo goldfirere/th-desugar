@@ -60,7 +60,7 @@ import Data.Semigroup (Semigroup(..))
 -- 'intersectionWithKey', 'union', and 'unionWithKey' operations are biased
 -- towards leftmost indices when when breaking ties between keys.
 newtype OMap k v = OMap (Bias L (OM.OMap k v))
-  deriving (Data, Foldable, Functor, Eq, Ord, Read, Show, Traversable, Typeable)
+  deriving (Data, Foldable, Functor, Eq, Ord, Read, Show, Traversable)
 
 instance Ord k => Semigroup (OMap k v) where
   (<>) = union

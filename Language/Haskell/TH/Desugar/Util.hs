@@ -201,7 +201,7 @@ data ForallTelescope
   | ForallInvis [TyVarBndrSpec]
     -- ^ An invisible @forall@ (e.g., @forall a {b} c -> {...}@),
     --   where each binder has a 'Specificity'.
-  deriving (Eq, Show, Typeable, Data)
+  deriving (Eq, Show, Data)
 
 -- | The list of arguments in a function 'Type'.
 data FunArgs
@@ -217,7 +217,7 @@ data FunArgs
   | FAAnon Type FunArgs
     -- ^ An anonymous argument followed by an arrow. For example, the @a@
     --   in @a -> r@.
-  deriving (Eq, Show, Typeable, Data)
+  deriving (Eq, Show, Data)
 
 -- | A /visible/ function argument type (i.e., one that must be supplied
 -- explicitly in the source code). This is in contrast to /invisible/
@@ -228,7 +228,7 @@ data VisFunArg
     -- ^ A visible @forall@ (e.g., @forall a -> a@).
   | VisFAAnon Type
     -- ^ An anonymous argument followed by an arrow (e.g., @a -> r@).
-  deriving (Eq, Show, Typeable, Data)
+  deriving (Eq, Show, Data)
 
 -- | Filter the visible function arguments from a list of 'FunArgs'.
 filterVisFunArgs :: FunArgs -> [VisFunArg]
@@ -329,7 +329,7 @@ unfoldType = go []
 data TypeArg
   = TANormal Type
   | TyArg Kind
-  deriving (Eq, Show, Typeable, Data)
+  deriving (Eq, Show, Data)
 
 -- | Apply one 'Type' to a list of arguments.
 applyType :: Type -> [TypeArg] -> Type
