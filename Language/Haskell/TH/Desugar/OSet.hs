@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -60,7 +61,7 @@ instance Ord a => Semigroup (OSet a) where
   (<>) = union
 
 empty :: forall a. OSet a
-empty = coerce (OS.empty :: OS.OSet a)
+empty = coerce (OS.empty @a)
 
 singleton :: a -> OSet a
 singleton a = coerce (OS.singleton a)
@@ -76,13 +77,13 @@ insertPost :: Ord a => OSet a -> a -> OSet a
 insertPost s a = coerce (coerce s OS.|> a)
 
 union :: forall a. Ord a => OSet a -> OSet a -> OSet a
-union = coerce ((OS.|<>) :: OS.OSet a -> OS.OSet a -> OS.OSet a)
+union = coerce ((OS.|<>) @a)
 
 null :: forall a. OSet a -> Bool
-null = coerce (OS.null :: OS.OSet a -> Bool)
+null = coerce (OS.null @a)
 
 size :: forall a. OSet a -> Int
-size = coerce (OS.size :: OS.OSet a -> Int)
+size = coerce (OS.size @a)
 
 member, notMember :: Ord a => a -> OSet a -> Bool
 member    a = coerce (OS.member a)
@@ -95,22 +96,22 @@ filter :: Ord a => (a -> Bool) -> OSet a -> OSet a
 filter f = coerce (OS.filter f)
 
 (\\) :: forall a. Ord a => OSet a -> OSet a -> OSet a
-(\\) = coerce ((OS.\\) :: OS.OSet a -> OS.OSet a -> OS.OSet a)
+(\\) = coerce ((OS.\\) @a)
 
 intersection :: forall a. Ord a => OSet a -> OSet a -> OSet a
-intersection = coerce ((OS.|/\) :: OS.OSet a -> OS.OSet a -> OS.OSet a)
+intersection = coerce ((OS.|/\) @a)
 
 lookupIndex :: Ord a => a -> OSet a -> Maybe Index
 lookupIndex a = coerce (OS.findIndex a)
 
 lookupAt :: forall a. Index -> OSet a -> Maybe a
-lookupAt i s = coerce (OS.elemAt (coerce s) i :: Maybe a)
+lookupAt i s = OS.elemAt @a (coerce s) i
 
 fromList :: Ord a => [a] -> OSet a
 fromList l = coerce (OS.fromList l)
 
 toAscList :: forall a. OSet a -> [a]
-toAscList = coerce (OS.toAscList :: OS.OSet a -> [a])
+toAscList = coerce (OS.toAscList @a)
 
 toSet :: forall a. OSet a -> S.Set a
-toSet = coerce (OS.toSet :: OS.OSet a -> S.Set a)
+toSet = coerce (OS.toSet @a)
