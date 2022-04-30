@@ -30,9 +30,9 @@ module Language.Haskell.TH.Desugar.Expand (
   ) where
 
 import qualified Data.Map as M
-import Control.Monad
 #if __GLASGOW_HASKELL__ < 709
 import Control.Applicative
+import Control.Monad
 #endif
 import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Syntax ( Quasi(..) )
@@ -122,7 +122,15 @@ expand_con ign n args = do
     go :: Info -> q DType
     go info = do
       dinfo <- dsInfo info
+#if __GLASGOW_HASKELL__ < 709
+      -- Old versions of GHC suffer from a bug in which reifyInstances will
+      -- fail if any of the argument types contain type variables. (See
+      -- https://gitlab.haskell.org/ghc/ghc/-/issues/9262).
+      -- As a heavy-handed workaround, we avoid reifying instances for open
+      -- type families on old GHCs if they are applied to a type containing
+      -- type variables.
       args_ok <- allM no_tyvars_tyfams normal_args
+#endif
       case dinfo of
         DTyConI (DTySynD _n tvbs rhs) _
           |  length normal_args >= length tvbs   -- this should always be true!
@@ -159,7 +167,6 @@ expand_con ign n args = do
 
         DTyConI (DClosedTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann) eqns) _
           |  length normal_args >= length tvbs
-          ,  args_ok
           -> do
             let (syn_args, rest_args) = splitAtList tvbs normal_args
             rhss <- mapMaybeM (check_eqn syn_args) eqns
@@ -186,6 +193,7 @@ expand_con ign n args = do
     give_up :: q DType
     give_up = return $ applyDType (DConT n) args
 
+#if __GLASGOW_HASKELL__ < 709
     no_tyvars_tyfams :: DType -> q Bool
     no_tyvars_tyfams = go_ty
       where
@@ -224,6 +232,7 @@ expand_con ign n args = do
 
     allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
     allM f = foldM (\b x -> (b &&) `liftM` f x) True
+#endif
 
 {-
 Note [Don't expand synonyms for *]
