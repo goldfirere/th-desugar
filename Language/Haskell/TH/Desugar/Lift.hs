@@ -15,7 +15,7 @@
 ----------------------------------------------------------------------------
 
 {-# LANGUAGE CPP, TemplateHaskell #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Language.Haskell.TH.Desugar.Lift () where
 

@@ -1,5 +1,5 @@
-{-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
-{-# OPTIONS_GHC -fno-warn-unused-matches #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-# OPTIONS_GHC -Wno-unused-matches #-}
 
 -- | Defines two non-exhaustive functions that roundtrip through desugaring
 -- and sweetening. Both of these functions should desugar to definitions that

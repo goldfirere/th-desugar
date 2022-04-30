@@ -45,8 +45,8 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE OverloadedRecordDot #-}
 #endif
 
-{-# OPTIONS_GHC -fno-warn-missing-signatures -fno-warn-type-defaults
-                -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-missing-signatures -Wno-type-defaults
+                -Wno-name-shadowing #-}
 
 module Splices where
 

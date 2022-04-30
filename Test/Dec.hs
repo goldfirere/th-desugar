@@ -10,7 +10,7 @@ rae@cs.brynmawr.edu
              StandaloneDeriving, DefaultSignatures,
              ConstraintKinds, RoleAnnotations, DeriveAnyClass #-}
 
-{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-name-shadowing
+{-# OPTIONS_GHC -Wno-orphans -Wno-name-shadowing
                 -Wno-redundant-constraints #-}
 
 module Dec where

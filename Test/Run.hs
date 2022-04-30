@@ -11,10 +11,10 @@ rae@cs.brynmawr.edu
              ScopedTypeVariables, GADTs, ViewPatterns, TupleSections,
              TypeOperators, PartialTypeSignatures, PatternSynonyms,
              TypeApplications #-}
-{-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
-            -fno-warn-unused-matches -fno-warn-type-defaults
-            -fno-warn-missing-signatures -fno-warn-unused-do-bind
-            -fno-warn-missing-fields -fno-warn-incomplete-record-updates
+{-# OPTIONS -Wno-incomplete-patterns -Wno-overlapping-patterns
+            -Wno-unused-matches -Wno-type-defaults
+            -Wno-missing-signatures -Wno-unused-do-bind
+            -Wno-missing-fields -Wno-incomplete-record-updates
             -Wno-partial-type-signatures -Wno-redundant-constraints #-}
 
 #if __GLASGOW_HASKELL__ >= 805

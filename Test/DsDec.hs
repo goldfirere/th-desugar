@@ -13,8 +13,8 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE DerivingStrategies #-}
 #endif
 
-{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-incomplete-patterns
-                -fno-warn-name-shadowing -Wno-redundant-constraints #-}
+{-# OPTIONS_GHC -Wno-orphans -Wno-incomplete-patterns
+                -Wno-name-shadowing -Wno-redundant-constraints #-}
 
 module DsDec where
 
