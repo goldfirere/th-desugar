@@ -149,6 +149,7 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #endif
 #if __GLASGOW_HASKELL__ >= 903
              , "opaque_pragma" ~: $test55_opaque_pragma @=? $(dsSplice test55_opaque_pragma)
+             , "lambda_cases" ~: $test56_lambda_cases @=? $(dsSplice test56_lambda_cases)
 #endif
              ]
 

@@ -345,6 +345,10 @@ test55_opaque_pragma =
          f x = x
          {-# OPAQUE f #-}
      in f "Hello, World!" |]
+
+test56_lambda_cases =
+  [| (\cases (Just x) (Just y) -> x ++ y
+             _        _        -> "") (Just "Hello") (Just "World") |]
 #endif
 
 type family TFExpand x
@@ -769,5 +773,6 @@ test_exprs = [ test1_sections
 #endif
 #if __GLASGOW_HASKELL__ >= 903
              , test55_opaque_pragma
+             , test56_lambda_cases
 #endif
              ]

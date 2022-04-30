@@ -18,6 +18,9 @@ Version 1.14 [????.??.??]
   desugar a `UInfixT` would be.
 * `th-desugar` now supports `DefaultD` (i.e., `default` declarations) and
   `OpaqueP` (i.e., `OPAQUE` pragmas), which were added in GHC 9.4.
+* `th-desugar` now desugars `LamCasesE` (i.e., `\cases` expressions), which was
+  added in GHC 9.4. A `\cases` expression is desugared to an ordinary lambda
+  expression, much like `\case` is currently desugared.
 * Fix an inconsistency which caused non-exhaustive `case` expressions to be
   desugared into uses of `EmptyCase`. Non-exhaustive `case` expressions are now
   desugared into code that throws a "`Non-exhaustive patterns in...`" error at

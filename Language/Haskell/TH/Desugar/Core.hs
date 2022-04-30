@@ -247,6 +247,35 @@ dsExp (ProjectionE fields) =
     comp :: DExp -> String -> DExp
     comp acc f = DVarE '(.) `DAppE` mkGetFieldProj f `DAppE` acc
 #endif
+#if __GLASGOW_HASKELL__ >= 903
+dsExp (LamCasesE clauses) = do
+  clauses' <- dsClauses CaseAlt clauses
+  numArgs <-
+    case clauses' of
+      (DClause pats _:_) -> return $ length pats
+      [] -> fail "\\cases expression must have at least one alternative"
+  args <- replicateM numArgs (newUniqueName "x")
+  return $ DLamE args $ DCaseE (mkUnboxedTupleDExp (map DVarE args))
+                               (map dClauseToUnboxedTupleMatch clauses')
+#endif
+
+-- | Convert a 'DClause' to a 'DMatch' by bundling all of the clause's patterns
+-- into a match on a single unboxed tuple pattern. That is, convert this:
+--
+-- @
+-- f x y z = rhs
+-- @
+--
+-- To this:
+--
+-- @
+-- f (# x, y, z #) = rhs
+-- @
+--
+-- This is used to desugar @\\cases@ expressions into lambda expressions.
+dClauseToUnboxedTupleMatch :: DClause -> DMatch
+dClauseToUnboxedTupleMatch (DClause pats rhs) =
+  DMatch (mkUnboxedTupleDPat pats) rhs
 
 #if __GLASGOW_HASKELL__ >= 809
 dsTup :: DsMonad q => (Int -> Name) -> [Maybe Exp] -> q DExp
@@ -844,7 +873,7 @@ dsLetDecs decs = do
 -- 'DLetDec's to support parallel assignment of implicit params.
 dsLetDec :: DsMonad q => Dec -> q ([DLetDec], DExp -> DExp)
 dsLetDec (FunD name clauses) = do
-  clauses' <- dsClauses name clauses
+  clauses' <- dsClauses (FunRhs name) clauses
   return ([DFunD name clauses'], id)
 dsLetDec (ValD pat body where_decs) = do
   (pat', vars) <- dsPatX pat
@@ -1042,19 +1071,19 @@ dsTySynEqn n (TySynEqn lhss rhs) = do
 
 -- | Desugar clauses to a function definition
 dsClauses :: DsMonad q
-          => Name         -- ^ Name of the function
+          => MatchContext -- ^ The context in which the clauses arise
           -> [Clause]     -- ^ Clauses to desugar
           -> q [DClause]
 dsClauses _ [] = return []
-dsClauses n (Clause pats (NormalB exp) where_decs : rest) = do
+dsClauses mc (Clause pats (NormalB exp) where_decs : rest) = do
   -- this case is necessary to maintain the roundtrip property.
-  rest' <- dsClauses n rest
+  rest' <- dsClauses mc rest
   exp' <- dsExp exp
   (where_decs', ip_binder) <- dsLetDecs where_decs
   let exp_with_wheres = maybeDLetE where_decs' (ip_binder exp')
   (pats', exp'') <- dsPatsOverExp pats exp_with_wheres
   return $ DClause pats' exp'' : rest'
-dsClauses n clauses@(Clause outer_pats _ _ : _) = do
+dsClauses mc clauses@(Clause outer_pats _ _ : _) = do
   arg_names <- replicateM (length outer_pats) (newUniqueName "arg")
   let scrutinee = mkUnboxedTupleDExp (map DVarE arg_names)
   clause <- DClause (map DVarP arg_names) <$>
@@ -1063,8 +1092,7 @@ dsClauses n clauses@(Clause outer_pats _ _ : _) = do
   where
     clause_to_dmatch :: DsMonad q => DExp -> Clause -> [DMatch] -> q [DMatch]
     clause_to_dmatch scrutinee (Clause pats body where_decs) failure_matches = do
-      let failure_exp = maybeDCaseE (FunRhs n)
-                                    scrutinee failure_matches
+      let failure_exp = maybeDCaseE mc scrutinee failure_matches
       exp <- dsBody body where_decs failure_exp
       (pats', exp') <- dsPatsOverExp pats exp
       uni_pats <- fmap getAll $ concatMapM (fmap All . isUniversalPattern) pats'
@@ -1263,7 +1291,7 @@ dsDerivStrategy (ViaStrategy ty) = DViaStrategy <$> dsType ty
 dsPatSynDir :: DsMonad q => Name -> PatSynDir -> q DPatSynDir
 dsPatSynDir _ Unidir              = pure DUnidir
 dsPatSynDir _ ImplBidir           = pure DImplBidir
-dsPatSynDir n (ExplBidir clauses) = DExplBidir <$> dsClauses n clauses
+dsPatSynDir n (ExplBidir clauses) = DExplBidir <$> dsClauses (FunRhs n) clauses
 #endif
 
 -- | Desugar a @Pred@, flattening any internal tuples
