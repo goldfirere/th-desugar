@@ -7,7 +7,7 @@ Desugars full Template Haskell syntax into a smaller core syntax for further
 processing. The desugared types and constructors are prefixed with a D.
 -}
 
-{-# LANGUAGE TemplateHaskell, LambdaCase, CPP, ScopedTypeVariables,
+{-# LANGUAGE TemplateHaskellQuotes, LambdaCase, CPP, ScopedTypeVariables,
              TupleSections, DeriveDataTypeable, DeriveGeneric #-}
 
 module Language.Haskell.TH.Desugar.Core where

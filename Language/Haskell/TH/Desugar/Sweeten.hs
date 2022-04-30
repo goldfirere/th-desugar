@@ -7,7 +7,7 @@ Converts desugared TH back into real TH.
 -}
 
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskellQuotes #-}
 
 -----------------------------------------------------------------------------
 -- |
