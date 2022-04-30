@@ -339,6 +339,14 @@ test54_overloaded_record_dot =
      in (ord2.unORD2.unORD1, (.unORD2.unORD1) ord2) |]
 #endif
 
+#if __GLASGOW_HASKELL__ >= 903
+test55_opaque_pragma =
+  [| let f :: String -> String
+         f x = x
+         {-# OPAQUE f #-}
+     in f "Hello, World!" |]
+#endif
+
 type family TFExpand x
 type instance TFExpand Int = Bool
 type instance TFExpand (Maybe a) = [a]
@@ -758,5 +766,8 @@ test_exprs = [ test1_sections
 #endif
 #if __GLASGOW_HASKELL__ >= 902
              , test54_overloaded_record_dot
+#endif
+#if __GLASGOW_HASKELL__ >= 903
+             , test55_opaque_pragma
 #endif
              ]

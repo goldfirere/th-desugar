@@ -1014,6 +1014,9 @@ dsPragma (LineP n str)                   = return $ DLineP n str
 #if __GLASGOW_HASKELL__ >= 801
 dsPragma (CompleteP cls mty)             = return $ DCompleteP cls mty
 #endif
+#if __GLASGOW_HASKELL__ >= 903
+dsPragma (OpaqueP n)                     = return $ DOpaqueP n
+#endif
 
 -- | Desugar a @RuleBndr@.
 dsRuleBndr :: DsMonad q => RuleBndr -> q DRuleBndr
