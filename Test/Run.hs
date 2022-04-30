@@ -9,18 +9,13 @@ rae@cs.brynmawr.edu
              DataKinds, ConstraintKinds, PolyKinds, MultiParamTypeClasses,
              FlexibleInstances, ExistentialQuantification,
              ScopedTypeVariables, GADTs, ViewPatterns, TupleSections,
-             TypeOperators #-}
+             TypeOperators, PartialTypeSignatures, PatternSynonyms,
+             TypeApplications #-}
 {-# OPTIONS -fno-warn-incomplete-patterns -fno-warn-overlapping-patterns
             -fno-warn-unused-matches -fno-warn-type-defaults
             -fno-warn-missing-signatures -fno-warn-unused-do-bind
-            -fno-warn-missing-fields -fno-warn-incomplete-record-updates #-}
-
-#if __GLASGOW_HASKELL__ >= 711
-{-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wno-partial-type-signatures -Wno-redundant-constraints #-}
-#endif
+            -fno-warn-missing-fields -fno-warn-incomplete-record-updates
+            -Wno-partial-type-signatures -Wno-redundant-constraints #-}
 
 #if __GLASGOW_HASKELL__ >= 805
 {-# LANGUAGE DerivingVia #-}
@@ -54,9 +49,6 @@ import qualified Language.Haskell.TH.Syntax as Syn ( lift )
 
 import Control.Exception ( ErrorCall )
 import Control.Monad
-#if __GLASGOW_HASKELL__ < 709
-import Control.Applicative
-#endif
 
 import qualified Data.Map as M
 import Data.Proxy
@@ -120,14 +112,10 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "tylit"    ~: $test32_tylit    @=? $(dsSplice test32_tylit)
              , "tvbs"     ~: $test33_tvbs     @=? $(dsSplice test33_tvbs)
              , "let_as"   ~: $test34_let_as   @=? $(dsSplice test34_let_as)
-#if __GLASGOW_HASKELL__ >= 709
              , "pred"     ~: $test37_pred     @=? $(dsSplice test37_pred)
              , "pred2"    ~: $test38_pred2    @=? $(dsSplice test38_pred2)
              , "eq"       ~: $test39_eq       @=? $(dsSplice test39_eq)
-#endif
-#if __GLASGOW_HASKELL__ >= 711
              , "wildcard" ~: $test40_wildcards@=? $(dsSplice test40_wildcards)
-#endif
 #if __GLASGOW_HASKELL__ >= 801
              , "typeapps"   ~: $test41_typeapps   @=? $(dsSplice test41_typeapps)
              , "scoped_tvs" ~: $test42_scoped_tvs @=? $(dsSplice test42_scoped_tvs)
@@ -182,10 +170,8 @@ test_e8a = $(test_expand8 >>= dsExp >>= expand >>= return . expToTH)
   -- closed type families.
 #endif
 test_e8b = $(test_expand8 >>= dsExp >>= expandUnsoundly >>= return . expToTH)
-#if __GLASGOW_HASKELL__ >= 709
 test_e9a = $test_expand9  -- requires GHC #9262
 test_e9b = $(test_expand9 >>= dsExp >>= expand >>= return . expToTH)
-#endif
 test_e10a = $test_expand10
 test_e10b = $(test_expand10 >>= dsExp >>= expand >>= return . expToTH)
 
@@ -205,9 +191,7 @@ test_expand = and [ hasSameType test35a test35b
                   , hasSameType test_e8a test_e8a
 #endif
                   , hasSameType test_e8b test_e8b
-#if __GLASGOW_HASKELL__ >= 709
                   , hasSameType test_e9a test_e9b
-#endif
                   , hasSameType test_e10a test_e10b
                   ]
 
@@ -234,11 +218,7 @@ test_bug8884 = $(do info <- reify ''Poly
                     let isTypeKind (DConT n) = isTypeKindName n
                         isTypeKind _         = False
                     case (isTypeKind resK, lhs) of
-#if __GLASGOW_HASKELL__ < 709
-                      (True, _ `DAppT` DVarT _) -> [| True |]
-#else
                       (True, _ `DAppT` DSigT (DVarT _) (DVarT _)) -> [| True |]
-#endif
                       _                                     -> do
                         runIO $ do
                           putStrLn "Failed bug8884 test:"
@@ -258,11 +238,7 @@ test_rec_sels = and $(do bools <- mapM testRecSelTypes [1..rec_sel_test_num_sels
                          return $ ListE bools)
 
 test_standalone_deriving :: Bool
-#if __GLASGOW_HASKELL__ >= 709
 test_standalone_deriving = (MkBlarggie 5 'x') == (MkBlarggie 5 'x')
-#else
-test_standalone_deriving = True
-#endif
 
 test_deriving_strategies :: Bool
 #if __GLASGOW_HASKELL__ >= 801
@@ -340,7 +316,6 @@ test_t97 =
 
 test_getDataD_kind_sig :: Bool
 test_getDataD_kind_sig =
-#if __GLASGOW_HASKELL__ >= 800
   3 == $(do data_name <- newName "TestData"
             a         <- newName "a"
             let type_kind     = DConT typeKindName
@@ -351,13 +326,9 @@ test_getDataD_kind_sig =
                                             (Just data_kind_sig) [] [])]
                            (getDataD "th-desugar: Impossible" data_name)
             [| $(Syn.lift (length tvbs)) |])
-#else
-  True -- DataD didn't have the ability to store kind signatures prior to GHC 8.0
-#endif
 
 test_t100 :: Bool
 test_t100 =
-#if __GLASGOW_HASKELL__ >= 800
   $(do decs <- [d| data T b where
                      MkT :: forall a. { unT :: a } -> T a |]
        info <- withLocalDeclarations decs (dsReify (mkName "unT"))
@@ -368,13 +339,6 @@ test_t100 =
        case info of
          Just (DVarI _ actual_ty _) -> exp_ty `eqTHSplice` actual_ty
          _                          -> [| False |])
-#else
-  True -- RecGadtC didn't exist prior to GHC 8.0, so the quote above will
-       -- normalize to `data T b = MkT { unT :: b }`. This defeats the point of
-       -- this test, and to make things worse, this will cause `dsReify` to
-       -- return a different type for unT (forall b. T b -> b). Let's just not
-       -- bother testing this on pre-8.0 GHCs.
-#endif
 
 test_t102 :: [Bool]
 test_t102 =
@@ -394,7 +358,6 @@ test_t102 =
 
 test_t103 :: Bool
 test_t103 =
-#if __GLASGOW_HASKELL__ >= 800
   $(do decs <- [d| data P (a :: k) = MkP |]
        [DDataD _ _ _ _ _ [DCon tvbs _ _ _ _] _] <- dsDecs decs
        case tvbs of
@@ -405,9 +368,6 @@ test_t103 =
            -> [| True |]
            |  otherwise
            -> [| False |])
-#else
-  True -- No explicit kind variable binders prior to GHC 8.0
-#endif
 
 test_t112 :: [Bool]
 test_t112 =
@@ -452,7 +412,6 @@ test_t132 =
 
 test_t154 :: Bool
 test_t154 =
-#if __GLASGOW_HASKELL__ >= 800
   $(do decs  <- [d| data T where
                      (:$$:) :: Int -> Int -> T
                   |]
@@ -462,11 +421,6 @@ test_t154 =
                              -> Just is_infix
                            _ -> Nothing
        mb_is_infix `eqTHSplice` Just False)
-#else
-  True -- GadtC didn't exist prior to GHC 8.0, so the quote above will
-       -- normalize to `data T = (:$$:) Int Int`. This defeats the point of
-       -- this test, so let's just not bother testing this on pre-8.0 GHCs.
-#endif
 
 -- Regression test for #159 which ensures that non-exhaustive functions throw
 -- a runtime error before forcing their arguments.

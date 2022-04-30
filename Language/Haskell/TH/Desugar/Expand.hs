@@ -4,7 +4,7 @@
 rae@cs.brynmawr.edu
 -}
 
-{-# LANGUAGE CPP, NoMonomorphismRestriction, ScopedTypeVariables #-}
+{-# LANGUAGE NoMonomorphismRestriction, ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -30,10 +30,6 @@ module Language.Haskell.TH.Desugar.Expand (
   ) where
 
 import qualified Data.Map as M
-#if __GLASGOW_HASKELL__ < 709
-import Control.Applicative
-import Control.Monad
-#endif
 import Language.Haskell.TH hiding (cxt)
 import Language.Haskell.TH.Syntax ( Quasi(..) )
 import Data.Data
@@ -122,15 +118,6 @@ expand_con ign n args = do
     go :: Info -> q DType
     go info = do
       dinfo <- dsInfo info
-#if __GLASGOW_HASKELL__ < 709
-      -- Old versions of GHC suffer from a bug in which reifyInstances will
-      -- fail if any of the argument types contain type variables. (See
-      -- https://gitlab.haskell.org/ghc/ghc/-/issues/9262).
-      -- As a heavy-handed workaround, we avoid reifying instances for open
-      -- type families on old GHCs if they are applied to a type containing
-      -- type variables.
-      args_ok <- allM no_tyvars_tyfams normal_args
-#endif
       case dinfo of
         DTyConI (DTySynD _n tvbs rhs) _
           |  length normal_args >= length tvbs   -- this should always be true!
@@ -142,9 +129,6 @@ expand_con ign n args = do
 
         DTyConI (DOpenTypeFamilyD (DTypeFamilyHead _n tvbs _frs _ann)) _
           |  length normal_args >= length tvbs   -- this should always be true!
-#if __GLASGOW_HASKELL__ < 709
-          ,  args_ok
-#endif
           -> do
             let (syn_args, rest_args) = splitAtList tvbs normal_args
             -- We need to get the correct instance. If we fail to reify anything
@@ -192,47 +176,6 @@ expand_con ign n args = do
     -- arguments.
     give_up :: q DType
     give_up = return $ applyDType (DConT n) args
-
-#if __GLASGOW_HASKELL__ < 709
-    no_tyvars_tyfams :: DType -> q Bool
-    no_tyvars_tyfams = go_ty
-      where
-        go_ty :: DType -> q Bool
-        -- Interesting cases
-        go_ty (DVarT _) = return False
-        go_ty (DConT con_name) = do
-          m_info <- dsReify con_name
-          return $ case m_info of
-            Nothing -> False   -- we don't know anything. False is safe.
-            Just (DTyConI (DOpenTypeFamilyD {}) _)   -> False
-            Just (DTyConI (DDataFamilyD {}) _)       -> False
-            Just (DTyConI (DClosedTypeFamilyD {}) _) -> False
-            _                                        -> True
-
-        -- Recursive cases
-        go_ty (DForallT tele ty)      = liftM2 (&&) (go_tele tele) (go_ty ty)
-        go_ty (DConstrainedT ctxt ty) = liftM2 (&&) (allM go_ty ctxt) (go_ty ty)
-        go_ty (DAppT t1 t2)           = liftM2 (&&) (go_ty t1) (go_ty t2)
-        go_ty (DAppKindT t k)         = liftM2 (&&) (go_ty t)  (go_ty k)
-        go_ty (DSigT t k)             = liftM2 (&&) (go_ty t)  (go_ty k)
-
-        -- Default to True
-        go_ty DLitT{}    = return True
-        go_ty DArrowT    = return True
-        go_ty DWildCardT = return True
-
-        -- These cases are uninteresting
-        go_tele :: DForallTelescope -> q Bool
-        go_tele (DForallVis   tvbs) = allM go_tvb tvbs
-        go_tele (DForallInvis tvbs) = allM go_tvb tvbs
-
-        go_tvb :: DTyVarBndr flag -> q Bool
-        go_tvb DPlainTV{}        = return True
-        go_tvb (DKindedTV _ _ k) = go_ty k
-
-    allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
-    allM f = foldM (\b x -> (b &&) `liftM` f x) True
-#endif
 
 {-
 Note [Don't expand synonyms for *]

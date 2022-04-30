@@ -8,16 +8,10 @@ rae@cs.brynmawr.edu
              MultiParamTypeClasses, FunctionalDependencies,
              FlexibleInstances, DataKinds, CPP, RankNTypes,
              StandaloneDeriving, DefaultSignatures,
-             ConstraintKinds, RoleAnnotations #-}
-#if __GLASGOW_HASKELL__ >= 710
-{-# LANGUAGE DeriveAnyClass #-}
-#endif
+             ConstraintKinds, RoleAnnotations, DeriveAnyClass #-}
 
-{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-name-shadowing #-}
-
-#if __GLASGOW_HASKELL__ >= 711
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
-#endif
+{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-name-shadowing
+                -Wno-redundant-constraints #-}
 
 module Dec where
 
@@ -34,21 +28,15 @@ $(S.dectest7)
 $(S.dectest8)
 $(S.dectest9)
 $(S.dectest10)
-#if __GLASGOW_HASKELL__ >= 709
 $(S.dectest11)
-#endif
 $(S.dectest12)
 $(S.dectest13)
 $(S.dectest14)
 
-#if __GLASGOW_HASKELL__ >= 710
 $(S.dectest15)
-#endif
 
-#if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
-$(S.dectest16)
-#endif
 #if __GLASGOW_HASKELL__ >= 802
+$(S.dectest16)
 $(S.dectest17)
 #endif
 

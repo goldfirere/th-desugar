@@ -10,11 +10,8 @@ rae@cs.brynmawr.edu
              DataKinds, PolyKinds, GADTs, MultiParamTypeClasses,
              FunctionalDependencies, FlexibleInstances, StandaloneDeriving,
              DefaultSignatures, ConstraintKinds, GADTs, ViewPatterns,
-             TupleSections, NoMonomorphismRestriction, TypeOperators #-}
-
-#if __GLASGOW_HASKELL__ >= 711
-{-# LANGUAGE TypeApplications #-}
-#endif
+             TupleSections, NoMonomorphismRestriction, TypeOperators,
+             TypeApplications #-}
 
 #if __GLASGOW_HASKELL__ >= 801
 {-# LANGUAGE DerivingStrategies #-}
@@ -84,21 +81,14 @@ testDecSplice n = do
   infoReg <- reify regName
   rolesDs  <- reifyRoles dsName
   rolesReg <- reifyRoles regName
-#if __GLASGOW_HASKELL__ < 711
-  eqTHSplice (infoDs, rolesDs) (infoReg, rolesReg)
-#else
   fixityDs  <- reifyFixity dsName
   fixityReg <- reifyFixity regName
   eqTHSplice (infoDs, rolesDs, fixityDs) (infoReg, rolesReg, fixityReg)
-#endif
 
 unqualify :: Data a => a -> a
 unqualify = everywhere (mkT (mkName . nameBase))
 
 assumeStarT :: Data a => a -> a
-#if __GLASGOW_HASKELL__ < 709
-assumeStarT = id
-#else
 assumeStarT = everywhere (mkT assume_spec . mkT assume_unit)
   where
     assume_spec :: TyVarBndrSpec -> TyVarBndrSpec
@@ -112,7 +102,6 @@ assumeStarT = everywhere (mkT assume_spec . mkT assume_unit)
     assume_unit :: TyVarBndrUnit -> TyVarBndrUnit
     assume_unit = elimTV (\n   -> kindedTV n StarT)
                          (\n k -> kindedTV n (assumeStarT k))
-#endif
 
 dropTrailing0s :: Data a => a -> a
 dropTrailing0s = everywhere (mkT (mkName . frob . nameBase))
@@ -236,11 +225,9 @@ test36_expand = [| let f :: Constant Int (,) Bool Char -> Char
                        f = snd in
                    f |]
 
-#if __GLASGOW_HASKELL__ >= 711
 test40_wildcards = [| let f :: (Show a, _) => a -> a -> _
                           f x y = if x == y then show x else "bad" in
                       f True False :: String |]
-#endif
 
 #if __GLASGOW_HASKELL__ >= 801
 test41_typeapps = [| let f :: forall a. (a -> Bool) -> Bool
@@ -386,11 +373,9 @@ test_expand8 = [| let f :: PolyTF IO -> ()
                   f |]
 
 
-#if __GLASGOW_HASKELL__ >= 709
 test_expand9 = [| let f :: TFExpand (Maybe (IO a)) -> IO ()
                       f actions = sequence_ actions in
                   f |]
-#endif
 
 type family TFExpandClosed a where
   TFExpandClosed (Maybe a) = [a]
@@ -399,7 +384,6 @@ test_expand10 = [| let f :: TFExpandClosed (Maybe (IO a)) -> IO ()
                        f actions = sequence_ actions in
                    f |]
 
-#if __GLASGOW_HASKELL__ >= 709
 test37_pred = [| let f :: (Read a, (Show a, Num a)) => a -> a
                      f x = read (show x) + x in
                  (f 3, f 4.5) |]
@@ -411,13 +395,8 @@ test38_pred2 = [| let f :: a b => Proxy a -> b -> b
 test39_eq = [| let f :: (a ~ b) => a -> b
                    f x = x in
                (f ()) |]
-#endif
 
-#if __GLASGOW_HASKELL__ < 709
-dec_test_nums = [1..10] :: [Int]
-#else
 dec_test_nums = [1..11] :: [Int]
-#endif
 
 dectest1 = [d| data Dec1 where
                  Foo :: Dec1
@@ -442,14 +421,12 @@ dectest10 = [d| type family Dec10 a :: * -> * where
                   Dec10 Bool = [] |]
 
 data Blarggie a = MkBlarggie Int a
-#if __GLASGOW_HASKELL__ >= 709
 dectest11 = [d| class Dec11 a where
                   meth13 :: a -> a -> Bool
                   default meth13 :: Eq a => a -> a -> Bool
                   meth13 = (==)
               |]
 standalone_deriving_test = [d| deriving instance Eq a => Eq (Blarggie a) |]
-#endif
 #if __GLASGOW_HASKELL__ >= 801
 deriv_strat_test = [d| deriving stock instance Ord a => Ord (Blarggie a) |]
 #endif
@@ -491,15 +468,12 @@ ds_dectest16 = DInstanceD Nothing (Just [DPlainTV (mkName "a") ()]) []
                   (DConT ''ExData1 `DAppT` DVarT (mkName "a"))) []
 dectest16 :: Q [Dec]
 dectest16 = return [ InstanceD
-#if __GLASGOW_HASKELL__ >= 800
                        Nothing
-#endif
                        [] (ConT ''ExCls `AppT`
                             (ConT ''ExData1 `AppT` VarT (mkName "a"))) [] ]
 ds_dectest17 = DStandaloneDerivD Nothing (Just [DPlainTV (mkName "a") ()]) []
                 (DConT ''ExCls `DAppT`
                   (DConT ''ExData2 `DAppT` DVarT (mkName "a")))
-#if __GLASGOW_HASKELL__ >= 710
 dectest17 :: Q [Dec]
 dectest17 = return [ StandaloneDerivD
 #if __GLASGOW_HASKELL__ >= 802
@@ -507,7 +481,6 @@ dectest17 = return [ StandaloneDerivD
 #endif
                        [] (ConT ''ExCls `AppT`
                             (ConT ''ExData2 `AppT` VarT (mkName "a"))) ]
-#endif
 
 #if __GLASGOW_HASKELL__ >= 809
 dectest18 = [d| data Dec18 :: forall k -> k -> * where
@@ -524,19 +497,11 @@ imp_inst_test1 = [d| instance Dec6 Maybe (Either ()) where
                        type M2 Maybe = Either () |]
 
 data family Dec9 a (b :: * -> *) :: * -> *
-#if __GLASGOW_HASKELL__ >= 800
 imp_inst_test2 = [d| data instance Dec9 Int Maybe a where
                        MkIMB  ::             [a] -> Dec9 Int Maybe a
                        MkIMB2 :: forall a b. b a -> Dec9 Int Maybe a |]
 imp_inst_test3 = [d| newtype instance Dec9 Bool m x where
                        MkBMX :: m x -> Dec9 Bool m x |]
-#else
--- TH-quoted data family instances with GADT syntax are horribly broken on GHC 7.10
--- and older, so we opt to use non-GADT syntax on older GHCs so we can at least
--- test *something*.
-imp_inst_test2 = [d| data instance Dec9 Int Maybe a = MkIMB [a] | forall b. MkIMB2 (b a) |]
-imp_inst_test3 = [d| newtype instance Dec9 Bool m x = MkBMX (m x) |]
-#endif
 
 type family Dec8 a
 imp_inst_test4 = [d| type instance Dec8 Int = Bool |]
@@ -558,13 +523,8 @@ rec_sel_test_num_sels = 4 :: Int
 
 testRecSelTypes :: Int -> Q Exp
 testRecSelTypes n = do
-#if __GLASGOW_HASKELL__ > 710
   VarI _ ty1 _ <- reify (mkName ("DsDec.recsel" ++ show n))
   VarI _ ty2 _ <- reify (mkName ("Dec.recsel"   ++ show n))
-#else
-  VarI _ ty1 _ _ <- reify (mkName ("DsDec.recsel" ++ show n))
-  VarI _ ty2 _ _ <- reify (mkName ("Dec.recsel"   ++ show n))
-#endif
   let ty1' = return $ unqualify ty1
       ty2' = return $ unqualify ty2
   [| let x :: $ty1'
@@ -590,11 +550,9 @@ reifyDecs = [d|
   class R2 a b where
     r3 :: a -> b -> c -> a
     type R4 b a :: *
-#if __GLASGOW_HASKELL__ >= 800
     -- Only define this on GHC 8.0 or later, since TH had trouble quoting
     -- associated type family defaults before then.
     type R4 b a = Either a b
-#endif
     data R5 a :: *
 
   data R6 a = R7 { r8 :: a -> a, r9 :: Bool }
@@ -676,12 +634,10 @@ reifyDecs = [d|
     deriving Eq via (Id [a])
 #endif
 
-#if __GLASGOW_HASKELL__ >= 800
   class R25 (f :: k -> *) where
     r26 :: forall (a :: k). f a
 
   data R27 (a :: k) = R28 { r29 :: Proxy a }
-#endif
 
   class R30 a where
     r31 :: a -> b -> a
@@ -698,16 +654,11 @@ reifyDecs = [d|
 reifyDecsNames :: [Name]
 reifyDecsNames = map mkName
   [ "r1"
-#if __GLASGOW_HASKELL__ < 711
-  , "R2", "r3"      -- these fail due to GHC#11797
-#endif
   , "R4", "R5", "R6", "R7", "r8", "r9", "R10", "r11"
   , "R12", "R13", "R14", "r15", "r16", "r17", "R18", "R19", "R20"
   , "R21"
   , "r22"
-#if __GLASGOW_HASKELL__ >= 800
   , "R25", "r26", "R28", "r29"
-#endif
   , "R30", "r31"
 #if __GLASGOW_HASKELL__ >= 809
   , "R32"
@@ -774,11 +725,9 @@ test_exprs = [ test1_sections
              , test32_tylit
              , test33_tvbs
              , test34_let_as
-#if __GLASGOW_HASKELL__ >= 709
              , test37_pred
              , test38_pred2
              , test39_eq
-#endif
 #if __GLASGOW_HASKELL__ >= 801
              , test41_typeapps
              , test42_scoped_tvs

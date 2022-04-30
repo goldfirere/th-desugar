@@ -51,9 +51,7 @@ module Language.Haskell.TH.Desugar (
   DerivingClause, dsDerivClause, dsLetDec,
   dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses,
   dsBangType, dsVarBangType,
-#if __GLASGOW_HASKELL__ > 710
   dsTypeFamilyHead, dsFamilyResultSig,
-#endif
 #if __GLASGOW_HASKELL__ >= 801
   dsPatSynDir,
 #endif
@@ -97,10 +95,7 @@ module Language.Haskell.TH.Desugar (
   tupleDegree_maybe, tupleNameDegree_maybe,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
-  strictToBang, isTypeKindName, typeKindName,
-#if __GLASGOW_HASKELL__ >= 800
-  bindIP,
-#endif
+  isTypeKindName, typeKindName, bindIP,
   mkExtraDKindBinders, dTyVarBndrToDType, changeDTVFlags, toposortTyVarsOf,
 
   -- ** 'FunArgs' and 'VisFunArg'
@@ -139,10 +134,6 @@ import Data.Function
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Prelude hiding ( exp )
-
-#if __GLASGOW_HASKELL__ < 710
-import Control.Applicative
-#endif
 
 -- | This class relates a TH type with its th-desugar type and allows
 -- conversions back and forth. The functional dependency goes only one

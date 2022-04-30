@@ -11,9 +11,6 @@ module ReifyTypeSigs where
 import Data.Kind
 import Data.Proxy
 #endif
-#if __GLASGOW_HASKELL__ < 710
-import Data.Traversable (traverse)
-#endif
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Syntax hiding (Type)
 import Splices (eqTH)

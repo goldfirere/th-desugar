@@ -137,11 +137,6 @@ data DDec = DLetDec DLetDec
               -- signatures can only appear on the top level.
           deriving (Eq, Show, Typeable, Data, Generic)
 
-#if __GLASGOW_HASKELL__ < 711
-data Overlap = Overlappable | Overlapping | Overlaps | Incoherent
-  deriving (Eq, Ord, Show, Typeable, Data, Generic)
-#endif
-
 -- | Corresponds to TH's 'PatSynDir' type
 data DPatSynDir = DUnidir              -- ^ @pattern P x {<-} p@
                 | DImplBidir           -- ^ @pattern P x {=} p@
@@ -170,11 +165,6 @@ data DFamilyResultSig = DNoSig
                       | DKindSig DKind
                       | DTyVarSig DTyVarBndrUnit
                       deriving (Eq, Show, Typeable, Data, Generic)
-
-#if __GLASGOW_HASKELL__ <= 710
-data InjectivityAnn = InjectivityAnn Name [Name]
-  deriving (Eq, Ord, Show, Typeable, Data, Generic)
-#endif
 
 -- | Corresponds to TH's 'Con' type. Unlike 'Con', all 'DCon's reflect GADT
 -- syntax. This is beneficial for @th-desugar@'s since it means
@@ -250,24 +240,6 @@ type DBangType = (Bang, DType)
 
 -- | Corresponds to TH's @VarBangType@ type.
 type DVarBangType = (Name, Bang, DType)
-
-#if __GLASGOW_HASKELL__ <= 710
--- | Corresponds to TH's definition
-data SourceUnpackedness = NoSourceUnpackedness
-                        | SourceNoUnpack
-                        | SourceUnpack
-  deriving (Eq, Ord, Show, Typeable, Data, Generic)
-
--- | Corresponds to TH's definition
-data SourceStrictness = NoSourceStrictness
-                      | SourceLazy
-                      | SourceStrict
-  deriving (Eq, Ord, Show, Typeable, Data, Generic)
-
--- | Corresponds to TH's definition
-data Bang = Bang SourceUnpackedness SourceStrictness
-  deriving (Eq, Ord, Show, Typeable, Data, Generic)
-#endif
 
 -- | Corresponds to TH's @Foreign@ type.
 data DForeign = DImportF Callconv Safety String Name DType

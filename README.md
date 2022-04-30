@@ -23,6 +23,10 @@ decisions are based on that use case, when more than one design choice was
 possible.
 
 I will try to keep this package up-to-date with respect to changes in GHC.
+The minimum supported version of GHC is 8.0, which was chosen to avoid various
+Template Haskell bugs in older GHC versions that affect how this library
+desugars code. If this choice negatively impacts you, please submit a bug
+report.
 
 Known limitations
 -----------------

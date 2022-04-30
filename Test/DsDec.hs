@@ -8,20 +8,13 @@ rae@cs.brynmawr.edu
              MultiParamTypeClasses, FunctionalDependencies,
              FlexibleInstances, DataKinds, CPP, RankNTypes,
              StandaloneDeriving, DefaultSignatures,
-             ConstraintKinds, RoleAnnotations #-}
-#if __GLASGOW_HASKELL__ >= 710
-{-# LANGUAGE DeriveAnyClass #-}
-#endif
+             ConstraintKinds, RoleAnnotations, DeriveAnyClass #-}
 #if __GLASGOW_HASKELL__ >= 801
 {-# LANGUAGE DerivingStrategies #-}
 #endif
 
 {-# OPTIONS_GHC -fno-warn-orphans -fno-warn-incomplete-patterns
-                -fno-warn-name-shadowing #-}
-
-#if __GLASGOW_HASKELL__ >= 711
-{-# OPTIONS_GHC -Wno-redundant-constraints #-}
-#endif
+                -fno-warn-name-shadowing -Wno-redundant-constraints #-}
 
 module DsDec where
 
@@ -52,10 +45,8 @@ $(dsDecSplice (fmap unqualify S.imp_inst_test4))
 
 $(dsDecSplice S.dectest10)
 
-#if __GLASGOW_HASKELL__ >= 709
 $(dsDecSplice S.dectest11)
 $(dsDecSplice S.standalone_deriving_test)
-#endif
 
 #if __GLASGOW_HASKELL__ >= 801
 $(dsDecSplice S.deriv_strat_test)
@@ -65,14 +56,10 @@ $(dsDecSplice S.dectest12)
 $(dsDecSplice S.dectest13)
 $(dsDecSplice S.dectest14)
 
-#if __GLASGOW_HASKELL__ >= 710
 $(dsDecSplice S.dectest15)
-#endif
 
-#if __GLASGOW_HASKELL__ < 800 || __GLASGOW_HASKELL__ >= 802
-$(return $ decsToTH [S.ds_dectest16])
-#endif
 #if __GLASGOW_HASKELL__ >= 802
+$(return $ decsToTH [S.ds_dectest16])
 $(return $ decsToTH [S.ds_dectest17])
 #endif
 
