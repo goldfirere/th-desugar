@@ -47,7 +47,12 @@ import Data.Generics hiding ( Fixity )
 import Data.Traversable
 import Data.Maybe
 import GHC.Classes ( IP )
+
+#if MIN_VERSION_base(4,17,0)
+import GHC.Exts ( withDict )
+#else
 import Unsafe.Coerce ( unsafeCoerce )
+#endif
 
 ----------------------------------------
 -- TH manipulations
@@ -423,15 +428,19 @@ extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
 -- General utility
 ----------------------------------------
 
--- dirty implementation of explicit-to-implicit conversion
-newtype MagicIP name a r = MagicIP (IP name a => r)
-
 -- | Get an implicit param constraint (@IP name a@, which is the desugared
 -- form of @(?name :: a)@) from an explicit value.
 --
 -- This function is only available with GHC 8.0 or later.
 bindIP :: forall name a r. a -> (IP name a => r) -> r
+#if MIN_VERSION_base(4,17,0)
+bindIP = withDict @(IP name a)
+#else
 bindIP val k = (unsafeCoerce (MagicIP @name k) :: a -> r) val
+
+-- dirty implementation of explicit-to-implicit conversion
+newtype MagicIP name a r = MagicIP (IP name a => r)
+#endif
 
 -- like GHC's
 splitAtList :: [a] -> [b] -> ([b], [b])
