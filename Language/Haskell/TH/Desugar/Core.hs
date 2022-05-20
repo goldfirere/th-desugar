@@ -20,14 +20,16 @@ import Language.Haskell.TH.Syntax hiding (lift)
 
 import Control.Monad hiding (forM_, mapM)
 import qualified Control.Monad.Fail as Fail
+import Control.Monad.Trans (MonadTrans(..))
+import Control.Monad.Writer (MonadWriter(..), WriterT(..))
 import Control.Monad.Zip
-import Control.Monad.Writer hiding (forM_, mapM)
 import Data.Data (Data)
 import Data.Either (lefts)
 import Data.Foldable as F hiding (concat, notElem)
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (isJust, mapMaybe)
+import Data.Monoid (All(..))
 import qualified Data.Set as S
 import Data.Set (Set)
 import Data.Traversable

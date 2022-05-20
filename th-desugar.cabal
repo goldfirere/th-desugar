@@ -47,7 +47,7 @@ library
       ghc-prim,
       template-haskell >= 2.11 && < 2.19,
       containers >= 0.5,
-      mtl >= 2.1,
+      mtl >= 2.1 && < 2.4,
       ordered-containers >= 0.2.2,
       syb >= 0.4,
       th-abstraction >= 0.4 && < 0.5,
