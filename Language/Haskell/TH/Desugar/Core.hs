@@ -18,9 +18,6 @@ import Language.Haskell.TH hiding (match, clause, cxt)
 import Language.Haskell.TH.Datatype.TyVarBndr
 import Language.Haskell.TH.Syntax hiding (lift)
 
-#if __GLASGOW_HASKELL__ < 709
-import Control.Applicative
-#endif
 import Control.Monad hiding (forM_, mapM)
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.Trans (MonadTrans(..))
@@ -36,6 +33,12 @@ import Data.Monoid (All(..))
 import qualified Data.Set as S
 import Data.Set (Set)
 import Data.Traversable
+
+#if __GLASGOW_HASKELL__ < 709
+import Control.Applicative
+import Data.Monoid (Monoid(..))
+#endif
+
 #if __GLASGOW_HASKELL__ > 710
 import Data.Maybe (isJust)
 #endif
