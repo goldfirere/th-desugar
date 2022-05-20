@@ -15,6 +15,9 @@ Version 1.14 [????.??.??]
   runtime, just as all other forms of non-exhaustive expressions are desugared.
 * Fix a bug in which `expandType` would not expand closed type families when
   applied to arguments containing type variables.
+
+Version 1.13.1 [2022.05.20]
+---------------------------
 * Allow building with `mtl-2.3.*`.
 
 Version 1.13 [2021.10.30]
