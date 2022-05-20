@@ -1,6 +1,10 @@
 `th-desugar` release notes
 ==========================
 
+Version next [????.??.??]
+-------------------------
+* Allow building with `mtl-2.3.*`.
+
 Version 1.13 [2021.10.30]
 -------------------------
 * Support GHC 9.2.
