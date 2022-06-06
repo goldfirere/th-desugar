@@ -1146,10 +1146,8 @@ dsType (AppT t1 t2) = DAppT <$> dsType t1 <*> dsType t2
 dsType (SigT ty ki) = DSigT <$> dsType ty <*> dsType ki
 dsType (VarT name) = return $ DVarT name
 dsType (ConT name) = return $ DConT name
-  -- the only difference between ConT and PromotedT is the name lookup. Here, we assume
-  -- that the TH quote mechanism figured out the right name. Note that lookupDataName name
-  -- does not necessarily work, because `name` has its original module attached, which
-  -- may not be in scope.
+-- The PromotedT case is identical to the ConT case above.
+-- See Note [Desugaring promoted types].
 dsType (PromotedT name) = return $ DConT name
 dsType (TupleT n) = return $ DConT (tupleTypeName n)
 dsType (UnboxedTupleT n) = return $ DConT (unboxedTupleTypeName n)
@@ -1180,6 +1178,8 @@ dsType (ForallVisT tvbs ty) =
   DForallT <$> (DForallVis <$> mapM dsTvbUnit tvbs) <*> dsType ty
 #endif
 #if __GLASGOW_HASKELL__ >= 903
+-- The PromotedInfixT case is identical to the InfixT case above.
+-- See Note [Desugaring promoted types].
 dsType (PromotedInfixT t1 n t2) = dsInfixT t1 n t2
 dsType PromotedUInfixT{} = dsUInfixT
 #endif
@@ -1228,6 +1228,35 @@ We adopt a similar stance in L.H.TH.Desugar.Reify when locally reifying the
 types of data constructors: since th-desugar doesn't currently support linear
 types, we pretend as if MulArrowT does not exist. As a result, the type of
 `Just` would be locally reified as `a -> Maybe a`, not `a #-> Maybe a`.
+
+Note [Desugaring promoted types]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ConT and PromotedT both contain Names as a payload, the only difference being
+that PromotedT is intended to refer exclusively to promoted data constructor
+Names, while ConT can refer to both type and data constructor Names alike.
+
+When desugaring a PromotedT, we make the assumption that the TH quoting
+mechanism produced the correct Name and wrap the name in a DConT. In other
+words, we desugar ConT and PromotedT identically. This assumption about
+PromotedT may not always be correct, however. Consider this example:
+
+  data a :+: b = Inl a | Inr b
+  data Exp a = ... | Exp :+: Exp
+
+How should `PromotedT (mkName ":+:")` be desugared? Morally, it ought to be
+desugared to a DConT that contains (:+:) the data constructor, not (:+:) the
+type constructor. Deciding between the two is not always straightforward,
+however. We could use the `lookupDataName` function to try and distinguish
+between the two Names, but this may not necessarily work. This is because the
+Name passed to `lookupDataName` could have its original module attached, which
+may not be in scope.
+
+Long story short: we make things simple (albeit slightly wrong) by desugaring
+ConT and PromotedT identically. We'll wait for someone to complain about the
+wrongness of this approach before researching a more accurate solution.
+
+Note that the same considerations also apply to InfixT and PromotedInfixT,
+which are also desugared identically.
 -}
 
 -- | Desugar an infix 'Type'.
@@ -1353,7 +1382,8 @@ dsPred t@(ForallVisT {}) =
 dsPred MulArrowT = impossible "Linear arrow seen as head of constraint."
 #endif
 #if __GLASGOW_HASKELL__ >= 903
-dsPred (PromotedInfixT t1 n t2) = (:[]) <$> dsInfixT t1 n t2
+dsPred t@PromotedInfixT{} =
+  impossible $ "Promoted infix type seen as head of constraint: " ++ show t
 dsPred PromotedUInfixT{} = dsUInfixT
 #endif
 
