@@ -1,11 +1,11 @@
 `th-desugar` release notes
 ==========================
 
-Version 1.14 [????.??.??]
+Version 1.14 [2022.08.23]
 -------------------------
 * Support GHC 9.4.
 * Drop support for GHC 7.8 and 7.10. As a consequence of this, the
-  `strictToBang` was removed as it no longer serves a useful purpose.
+  `strictToBang` function was removed as it no longer serves a useful purpose.
 * Desugared lambda expressions and guards that bind multiple patterns can now
   have patterns with unlifted types. The desugared code uses `UnboxedTuples` to
   make this possible, so if you load the desugared code into GHCi on prior to
