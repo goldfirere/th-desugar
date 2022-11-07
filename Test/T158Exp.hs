@@ -1,5 +1,6 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 -- | A regression test for #158 which ensures that lambda expressions
 -- containing patterns with unlifted types desugar as expected. We define this
