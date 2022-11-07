@@ -1,6 +1,11 @@
 `th-desugar` release notes
 ==========================
 
+next [????.??.??]
+-----------------
+* Local reification can now reify the types of pattern synonym record
+  selectors.
+
 Version 1.14 [2022.08.23]
 -------------------------
 * Support GHC 9.4.
