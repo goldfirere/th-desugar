@@ -414,6 +414,98 @@ test_t132 =
        actual <- withLocalDeclarations decs (reifyFixityWithLocals m)
        expected `eqTHSplice` actual)
 
+#if __GLASGOW_HASKELL__ >= 801
+-- Test local reification of pattern synonym record selectors.
+test_t137 :: [Bool]
+test_t137 =
+  $(do a <- newName "a"
+       b <- newName "b"
+       let aVarT = DVarT a
+           aVarP = DVarP a
+           bVarT = DVarT b
+           bVarP = DVarP b
+           aTvb = DPlainTV a SpecifiedSpec
+           bTvb = DPlainTV b SpecifiedSpec
+
+           p1    = mkName "P1"
+           unP1a = mkName "unP1a"
+           unP1b = mkName "unP1b"
+           p2    = mkName "P2"
+           unP2a = mkName "unP2a"
+           unP2b = mkName "unP2b"
+           p3    = mkName "P3"
+           unP3a = mkName "unP3a"
+           unP3b = mkName "unP3b"
+
+           tupleTy = DConT (tupleTypeName 2) `DAppT` aVarT `DAppT` bVarT
+           showCxt = [DConT ''Show `DAppT` aVarT]
+           patSynSigDBodyTy =
+             DArrowT `DAppT` aVarT `DAppT` (DArrowT `DAppT` bVarT `DAppT` tupleTy)
+
+           -- pattern P{unPa, unPb} = (unPa, unPb)
+           mkPatSynD :: Name -> Name -> Name -> DDec
+           mkPatSynD p unPa unPb =
+             DPatSynD
+               p
+               (RecordPatSyn [unPa, unPb])
+               DImplBidir
+               (DConP (tupleDataName 2) [] [aVarP, bVarP])
+
+           decs :: [Dec]
+           decs = sweeten
+             [ -- pattern P1 :: a -> b -> (a, b)
+               DPatSynSigD p1 patSynSigDBodyTy
+             , mkPatSynD p1 unP1a unP1b
+
+               -- pattern P2 :: Show a => a -> b -> (a, b)
+             , DPatSynSigD p2 $ DConstrainedT showCxt patSynSigDBodyTy
+             , mkPatSynD p2 unP2a unP2b
+
+               -- pattern P3 :: forall b a. Show a => a -> b -> (a, b)
+             , DPatSynSigD p3 $
+                 DForallT (DForallInvis [bTvb, aTvb]) $
+                 DConstrainedT showCxt patSynSigDBodyTy
+             , mkPatSynD p3 unP3a unP3b
+             ]
+
+           -- Pair each pattern synonym record selector name with the type that
+           -- local reification should produce.
+           expecteds :: [(Name, DType)]
+           expecteds =
+             [ (unP1a, DForallT (DForallInvis [aTvb, bTvb]) $
+                       DArrowT `DAppT` tupleTy `DAppT` aVarT)
+             , (unP1b, DForallT (DForallInvis [aTvb, bTvb]) $
+                       DArrowT `DAppT` tupleTy `DAppT` bVarT)
+
+               -- The reified types below use (DForallInvis []) due to the way
+               -- that ForallT is desugared.
+               -- See Note [Desugaring and sweetening ForallT] in
+               -- Language.Haskell.TH.Desugar.Core.
+             , (unP2a, DForallT (DForallInvis []) $
+                       DConstrainedT showCxt $
+                       DArrowT `DAppT` tupleTy `DAppT` aVarT)
+             , (unP2b, DForallT (DForallInvis []) $
+                       DConstrainedT showCxt $
+                       DArrowT `DAppT` tupleTy `DAppT` bVarT)
+
+             , (unP3a, DForallT (DForallInvis [bTvb, aTvb]) $
+                       DConstrainedT showCxt $
+                       DArrowT `DAppT` tupleTy `DAppT` aVarT)
+             , (unP3b, DForallT (DForallInvis [bTvb, aTvb]) $
+                       DConstrainedT showCxt $
+                       DArrowT `DAppT` tupleTy `DAppT` bVarT)
+             ]
+
+           expected_eq_actual :: (Name, DType) -> DsM Q Bool
+           expected_eq_actual (sel_name, expected_ty) = do
+              let expected_info = Just $ DVarI sel_name expected_ty Nothing
+              actual_info <- dsReify sel_name
+              pure $ expected_info `eqTH` actual_info
+
+       bs <- withLocalDeclarations decs $ mapM expected_eq_actual expecteds
+       Syn.lift bs)
+#endif
+
 test_t154 :: Bool
 test_t154 =
   $(do decs  <- [d| data T where
@@ -639,6 +731,11 @@ main = hspec $ do
       test_t112 [1..]
 
     it "reifies fixity declarations inside of classes" $ test_t132
+
+#if __GLASGOW_HASKELL__ >= 801
+    zipWithM (\b n -> it ("reifies local pattern synonym record selectors " ++ show n) b)
+      test_t137 [1..]
+#endif
 
     zipWithM (\b n -> it ("computes free variables correctly " ++ show n) b)
       test_fvs [1..]

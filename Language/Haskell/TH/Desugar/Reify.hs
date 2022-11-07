@@ -286,6 +286,11 @@ reifyInDec n decs (InstanceD _ _ _ sub_decs)
     reify_in_instance dec@(DataInstD {})    = reifyInDec n (sub_decs ++ decs) dec
     reify_in_instance dec@(NewtypeInstD {}) = reifyInDec n (sub_decs ++ decs) dec
     reify_in_instance _                     = Nothing
+#if __GLASGOW_HASKELL__ >= 801
+reifyInDec n decs (PatSynD pat_syn_name args _ _)
+  | Just (n', full_sel_ty) <- maybeReifyPatSynRecSelector n decs pat_syn_name args
+  = Just (n', VarI n full_sel_ty Nothing)
+#endif
 #if __GLASGOW_HASKELL__ >= 807
 reifyInDec n decs (DataInstD _ _ lhs _ cons _)
   | (ConT ty_name, tys) <- unfoldType lhs
@@ -320,21 +325,172 @@ maybeReifyCon n _decs ty_name ty_args cons
       -- we don't try to ferret out naughty record selectors.
   = Just (n', VarI n full_sel_ty Nothing)
   where
-    extract_rec_sel_info :: RecSelInfo -> ([TyVarBndrUnit], Type, Type)
+    extract_rec_sel_info :: RecSelInfo -> ([TyVarBndrSpec], Type, Type)
       -- Returns ( Selector type variable binders
       --         , Record field type
       --         , constructor result type )
     extract_rec_sel_info rec_sel_info =
       case rec_sel_info of
-        RecSelH98 sel_ty -> (h98_tvbs, sel_ty, h98_res_ty)
+        RecSelH98 sel_ty ->
+          ( changeTVFlags SpecifiedSpec h98_tvbs
+          , sel_ty
+          , h98_res_ty
+          )
         RecSelGADT sel_ty con_res_ty ->
-          ( freeVariablesWellScoped [con_res_ty, sel_ty]
-          , sel_ty, con_res_ty)
+          ( changeTVFlags SpecifiedSpec $
+            freeVariablesWellScoped [con_res_ty, sel_ty]
+          , sel_ty
+          , con_res_ty
+          )
 
-    h98_tvbs   = freeVariablesWellScoped $ map probablyWrongUnTypeArg ty_args
+    h98_tvbs   = freeVariablesWellScoped $
+                 map probablyWrongUnTypeArg ty_args
     h98_res_ty = applyType (ConT ty_name) ty_args
 
 maybeReifyCon _ _ _ _ _ = Nothing
+
+#if __GLASGOW_HASKELL__ >= 801
+-- | Attempt to reify the type of a pattern synonym record selector @n@.
+-- The algorithm for computing this type works as follows:
+--
+-- 1. Reify the type of the parent pattern synonym. Broadly speaking, this
+--    will look something like:
+--
+--    @
+--    pattern P :: forall <req_tvbs>. req_cxt =>
+--                 forall <prov_tvbs>. prov_cxt =>
+--                 arg_ty_1 -> ... -> arg_ty_k -> res
+--    @
+--
+-- 2. Check if @P@ is a record pattern synonym. If it isn't a record pattern
+--    synonym, return 'Nothing'. If it is a record pattern synonym, it will
+--    have @k@ record selectors @sel_1@, ..., @sel_k@.
+--
+-- 3. Check if @n@ is equal to some @sel_i@. If it isn't equal to any of them,
+--    return @Nothing@. If it is equal to some @sel_i@, then return 'Just'
+--    @sel_i@ paired with the following type:
+--
+--    @
+--    sel_i :: forall <req_tvbs>. req_cxt => res -> arg_ty_i
+--    @
+maybeReifyPatSynRecSelector ::
+  Name -> [Dec] -> Name -> PatSynArgs -> Maybe (Named Type)
+maybeReifyPatSynRecSelector n decs pat_syn_name pat_syn_args =
+  case pat_syn_args of
+    -- Part (2) in the Haddocks
+    RecordPatSyn fld_names
+      -> firstMatch match_pat_syn_rec_sel $
+         zip fld_names pat_syn_ty_vis_args
+    _ -> Nothing
+  where
+    -- Part (3) in the Haddocks
+    match_pat_syn_rec_sel :: (Name, Type) -> Maybe (Named Type)
+    match_pat_syn_rec_sel (n', field_ty)
+      | n `nameMatches` n'
+      = Just ( n'
+             , -- See Note [Use unSigType in maybeReifyCon]
+               unSigType $
+               maybeForallT pat_syn_ty_tvbs pat_syn_ty_req_cxt $
+               ArrowT `AppT` pat_syn_ty_res `AppT` field_ty
+             )
+    match_pat_syn_rec_sel _
+      = Nothing
+
+    -- The type of the pattern synonym to which this record selector belongs,
+    -- as described in part (1) in the Haddocks.
+    pat_syn_ty :: Type
+    pat_syn_ty =
+      case findPatSynType pat_syn_name decs of
+        Just ty -> ty
+        Nothing -> no_type n
+
+    pat_syn_ty_args :: FunArgs
+    pat_syn_ty_res :: Type
+    (pat_syn_ty_args, pat_syn_ty_res) =
+      unravelType pat_syn_ty
+
+    -- Decompose a pattern synonym type into the constituent parts described in
+    -- part (1) in the Haddocks. The Haddocks present an idealized form of
+    -- pattern synonym type signature where the required and provided foralls
+    -- and contexts are made explicit. In reality, some of these parts may be
+    -- omitted, so we have to be careful to handle every combination of
+    -- explicit and implicit parts.
+    pat_syn_ty_tvbs :: [TyVarBndrSpec]
+    pat_syn_ty_req_cxt :: Cxt
+    pat_syn_ty_vis_args :: [Type]
+    (pat_syn_ty_tvbs, pat_syn_ty_req_cxt, pat_syn_ty_vis_args) =
+      case pat_syn_ty_args of
+        -- Both the required foralls and context are explicit.
+        --
+        -- The provided foralls and context may be explicit or implicit, but it
+        -- doesn't really matter, as the type of a pattern synonym record
+        -- selector only cares about the required foralls and context.
+        -- Similarly for all cases below this one.
+        FAForalls (ForallInvis req_tvbs) (FACxt req_cxt args) ->
+          ( req_tvbs
+          , req_cxt
+          , mapMaybe vis_arg_anon_maybe $ filterVisFunArgs args
+          )
+
+        -- Only the required foralls are explicit. We can assume that there is
+        -- no required context due to the case above not matching.
+        FAForalls (ForallInvis req_tvbs) args ->
+          ( req_tvbs
+          , []
+          , mapMaybe vis_arg_anon_maybe $ filterVisFunArgs args
+          )
+
+        -- The required context is explicit, but the required foralls are
+        -- implicit. As a result, the order of type variables in the outer
+        -- forall in the type of the pattern synonym is determined by the usual
+        -- left-to-right scoped sort.
+        --
+        -- Note that there may be explicit, provided foralls in this case. For
+        -- example, consider this example:
+        --
+        -- @
+        -- data T a where
+        --   MkT :: b -> T (Maybe b)
+        --
+        -- pattern X :: Show a => forall b. (a ~ Maybe b) => b -> T a
+        -- pattern X{unX} = MkT unX
+        -- @
+        --
+        -- You might worry that the type of @unX@ would need to mention @b@.
+        -- But actually, you can't use @unX@ as a top-level record selector in
+        -- the first place! If you try to do so, GHC will throw the following
+        -- error:
+        --
+        -- @
+        -- Cannot use record selector `unX' as a function due to escaped type variables
+        -- @
+        --
+        -- As a result, we choose not to care about this corner case. We could
+        -- imagine trying to detect this sort of thing here and throwing a
+        -- similar error message, but detecting which type variables do or do
+        -- not escape is tricky in general. (See the Haddocks for
+        -- getRecordSelectors in L.H.TH.Desugar for more on this point.) As a
+        -- result, we don't even bother trying. Similarly for the case below.
+        FACxt req_cxt args ->
+          ( changeTVFlags SpecifiedSpec $
+            freeVariablesWellScoped [pat_syn_ty]
+          , req_cxt
+          , mapMaybe vis_arg_anon_maybe $ filterVisFunArgs args
+          )
+
+        -- The required foralls are implicit. We can assume that there is no
+        -- required context due to the case above not matching.
+        args ->
+          ( changeTVFlags SpecifiedSpec $
+            freeVariablesWellScoped [pat_syn_ty]
+          , []
+          , mapMaybe vis_arg_anon_maybe $ filterVisFunArgs args
+          )
+
+vis_arg_anon_maybe :: VisFunArg -> Maybe Type
+vis_arg_anon_maybe (VisFAAnon ty) = Just ty
+vis_arg_anon_maybe (VisFADep{})   = Nothing
+#endif
 
 {-
 Note [Use unSigType in maybeReifyCon]
@@ -361,7 +517,9 @@ con_to_type :: [TyVarBndrUnit] -- The type variables bound by a data type head.
 con_to_type h98_tvbs h98_result_ty con =
   case go con of
     (is_gadt, ty) | is_gadt   -> ty
-                  | otherwise -> maybeForallT h98_tvbs [] ty
+                  | otherwise -> maybeForallT
+                                   (changeTVFlags SpecifiedSpec h98_tvbs)
+                                   [] ty
   where
     -- Note that we deliberately ignore linear types and use (->) everywhere.
     -- See [Gracefully handling linear types] in L.H.TH.Desugar.Core.
@@ -597,13 +755,11 @@ mkArrows :: [Type] -> Type -> Type
 mkArrows []     res_ty = res_ty
 mkArrows (t:ts) res_ty = AppT (AppT ArrowT t) $ mkArrows ts res_ty
 
-maybeForallT :: [TyVarBndrUnit] -> Cxt -> Type -> Type
+maybeForallT :: [TyVarBndrSpec] -> Cxt -> Type -> Type
 maybeForallT tvbs cxt ty
   | null tvbs && null cxt        = ty
-  | ForallT tvbs2 cxt2 ty2 <- ty = ForallT (tvbs_spec ++ tvbs2) (cxt ++ cxt2) ty2
-  | otherwise                    = ForallT tvbs_spec cxt ty
-  where
-    tvbs_spec = changeTVFlags SpecifiedSpec tvbs
+  | ForallT tvbs2 cxt2 ty2 <- ty = ForallT (tvbs ++ tvbs2) (cxt ++ cxt2) ty2
+  | otherwise                    = ForallT tvbs cxt ty
 
 findCon :: Name -> [Con] -> Maybe (Named Con)
 findCon n = firstMatch match_con
