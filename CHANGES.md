@@ -5,6 +5,8 @@ next [????.??.??]
 -----------------
 * Local reification can now reify the types of pattern synonym record
   selectors.
+* Fix a bug in which the types of locally reified GADT record selectors would
+  sometimes have type variables quantified in the wrong order.
 
 Version 1.14 [2022.08.23]
 -------------------------

@@ -336,9 +336,17 @@ maybeReifyCon n _decs ty_name ty_args cons
           , sel_ty
           , h98_res_ty
           )
-        RecSelGADT sel_ty con_res_ty ->
-          ( changeTVFlags SpecifiedSpec $
-            freeVariablesWellScoped [con_res_ty, sel_ty]
+        RecSelGADT mb_con_tvbs sel_ty con_res_ty ->
+          let -- If the GADT constructor type signature explicitly quantifies
+              -- its type variables, make sure to use that same order in the
+              -- record selector's type.
+              con_tvbs' =
+                case mb_con_tvbs of
+                  Just con_tvbs -> con_tvbs
+                  Nothing ->
+                    changeTVFlags SpecifiedSpec $
+                    freeVariablesWellScoped [con_res_ty, sel_ty] in
+          ( con_tvbs'
           , sel_ty
           , con_res_ty
           )
@@ -784,23 +792,64 @@ findCon n = firstMatch match_con
 
 data RecSelInfo
   = RecSelH98  Type -- The record field's type
-  | RecSelGADT Type -- The record field's type
+  | RecSelGADT (Maybe [TyVarBndrSpec])
+                    -- If the data constructor explicitly quantifies its type
+                    -- variables with a forall, this will be Just. Otherwise,
+                    -- this will be Nothing.
+               Type -- The record field's type
                Type -- The GADT return type
 
 findRecSelector :: Name -> [Con] -> Maybe (Named RecSelInfo)
-findRecSelector n = firstMatch match_con
+findRecSelector n = firstMatch (match_con Nothing)
   where
-    match_con :: Con -> Maybe (Named RecSelInfo)
-    match_con (RecC _ vstys)            = fmap (liftSnd RecSelH98) $
-                                          firstMatch match_rec_sel vstys
-    match_con (RecGadtC _ vstys ret_ty) = fmap (liftSnd (`RecSelGADT` ret_ty)) $
-                                          firstMatch match_rec_sel vstys
-    match_con (ForallC _ _ c)           = match_con c
-    match_con _                         = Nothing
+    match_con :: Maybe [TyVarBndrSpec] -> Con -> Maybe (Named RecSelInfo)
+    match_con mb_tvbs con =
+      case con of
+        RecC _ vstys ->
+          fmap (liftSnd RecSelH98) $
+          firstMatch match_rec_sel vstys
+        RecGadtC _ vstys ret_ty ->
+          fmap (liftSnd (\field_ty ->
+            RecSelGADT (fmap (filter_ret_tvs ret_ty) mb_tvbs) field_ty ret_ty)) $
+          firstMatch match_rec_sel vstys
+        ForallC tvbs _ c ->
+          -- This is the only recursive case, and it is also the place where
+          -- the type variable binders are determined (hence the use of Just
+          -- below). Note that GHC forbids nested foralls in GADT constructor
+          -- type signatures, so it is guaranteed that if a type variable in
+          -- the rest of the type signature appears free, then its binding site
+          -- can be found in one of these binders found in this case.
+          match_con (Just tvbs) c
+        _ -> Nothing
 
     match_rec_sel (n', _, sel_ty)
       | n `nameMatches` n' = Just (n', sel_ty)
     match_rec_sel _        = Nothing
+
+    -- There may be type variables in the type of a GADT constructor that do
+    -- not appear in the type of a record selector. For example, consider:
+    --
+    --   data G a where
+    --     MkG :: forall a b. { x :: a, y :: b } -> G a
+    --
+    -- The type of `x` will only quantify `a` and not `b`:
+    --
+    --   x :: forall a. G a -> a
+    --
+    -- Accordingly, we must filter out any type variables in the GADT
+    -- constructor type that do not appear free in the return type. Note that
+    -- this implies that we cannot support reifying the type of `y`, as `b`
+    -- does not appear free in `G a`. This does not bother us, however, as we
+    -- make no attempt to support naughty record selectors. (See the Haddocks
+    -- for getRecordSelectors in L.H.TH.Desugar for more on this point.)
+    --
+    -- This mirrors the implementation of mkOneRecordSelector in GHC:
+    -- https://gitlab.haskell.org/ghc/ghc/-/blob/37cfe3c0f4fb16189bbe3bb735f758cd6e3d9157/compiler/GHC/Tc/TyCl/Utils.hs#L908-909
+    filter_ret_tvs :: Type -> [TyVarBndrSpec] -> [TyVarBndrSpec]
+    filter_ret_tvs ret_ty =
+      filter (\tvb -> tvName tvb `Set.member` ret_fvs)
+      where
+        ret_fvs = Set.fromList $ freeVariables [ret_ty]
 
 ---------------------------------
 -- Reifying fixities

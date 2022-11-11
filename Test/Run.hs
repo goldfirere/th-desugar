@@ -528,6 +528,57 @@ test_t159 = do
   testOne t159A
   testOne t159B
 
+test_t171 :: Bool
+test_t171 =
+  $(do a <- newName "a"
+       b <- newName "b"
+       c <- newName "c"
+       x <- newName "x"
+       y <- newName "y"
+
+       let aVarT = DVarT a
+           bVarT = DVarT b
+           cVarT = DVarT c
+           aTvb  = DPlainTV a SpecifiedSpec
+           bTvb  = DPlainTV b SpecifiedSpec
+           cTvb  = DPlainTV c SpecifiedSpec
+           t     = mkName "T"
+           mkT   = mkName "mkT"
+           getT1 = mkName "getT1"
+           getT2 = mkName "getT2"
+
+           dec = -- data T x y where
+                 --   MkT :: forall b a c. { getT1 :: b, getT2 :: c } -> T a b
+                 DDataD
+                   Data
+                   []
+                   t
+                   [DPlainTV x (), DPlainTV y ()]
+                   Nothing
+                   [ DCon
+                       [bTvb, aTvb, cTvb]
+                       []
+                       mkT
+                       (DRecC [ ( getT1
+                                , Bang NoSourceUnpackedness NoSourceStrictness
+                                , bVarT
+                                )
+                              , ( getT2
+                                , Bang NoSourceUnpackedness NoSourceStrictness
+                                , cVarT
+                                )
+                              ])
+                       res_ty
+                   ]
+                   []
+           res_ty = DConT t `DAppT` aVarT `DAppT` bVarT
+           expected_ty = DForallT (DForallInvis [bTvb, aTvb]) $
+                         DArrowT `DAppT` res_ty `DAppT` bVarT
+
+       withLocalDeclarations (sweeten [dec]) $ do
+         Just (DVarI _ actual_ty _) <- dsReify getT1
+         expected_ty `eqTHSplice` actual_ty)
+
 -- Unit tests for functions that compute free variables (e.g., fvDType)
 test_fvs :: [Bool]
 test_fvs =
@@ -743,6 +794,8 @@ main = hspec $ do
     it "desugars non-infix GADT constructors with symbolic names correctly" $ test_t154
 
     it "desugars non-exhaustive expressions into code that errors at runtime" $ test_t159
+
+    it "locally reifies GADT record selector types with explicit foralls correctly" $ test_t171
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')
