@@ -3,6 +3,8 @@
 
 next [????.??.??]
 -----------------
+* Support GHC 9.6.
+* TODO RGS: VDQ in terms
 * Local reification can now reify the types of pattern synonym record
   selectors.
 

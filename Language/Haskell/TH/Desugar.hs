@@ -235,6 +235,8 @@ flattenDValD (DValD pat exp) = do
         DBangP pa -> DBangP (wildify name y pa)
         DSigP pa ty -> DSigP (wildify name y pa) ty
         DWildP -> DWildP
+        -- TODO RGS: Can this case legitimately happen?
+        DTypeP _ -> p
 
 flattenDValD other_dec = return [other_dec]
 

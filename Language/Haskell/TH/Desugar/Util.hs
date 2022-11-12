@@ -389,7 +389,10 @@ extractBoundNamesDec (FunD name _)  = OS.singleton name
 extractBoundNamesDec (ValD pat _ _) = extractBoundNamesPat pat
 extractBoundNamesDec _              = OS.empty
 
--- | Extract the names bound in a @Pat@
+-- | Extract the names of terms bound by a 'Pat'.
+--
+-- This does /not/ extract any type variables bound by pattern signatures or
+-- visible type patterns.
 extractBoundNamesPat :: Pat -> OSet Name
 extractBoundNamesPat (LitP _)              = OS.empty
 extractBoundNamesPat (VarP name)           = OS.singleton name
@@ -417,6 +420,9 @@ extractBoundNamesPat (SigP pat _)          = extractBoundNamesPat pat
 extractBoundNamesPat (ViewP _ pat)         = extractBoundNamesPat pat
 #if __GLASGOW_HASKELL__ >= 801
 extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
+#endif
+#if __GLASGOW_HASKELL__ >= 905
+extractBoundNamesPat (TypeP _)             = OS.empty
 #endif
 
 ----------------------------------------

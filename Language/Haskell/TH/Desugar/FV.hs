@@ -41,7 +41,8 @@ fvDType = go
 
 -- | Extract the term variables bound by a 'DPat'.
 --
--- This does /not/ extract any type variables bound by pattern signatures.
+-- This does /not/ extract any type variables bound by pattern signatures or
+-- visible type patterns.
 extractBoundNamesDPat :: DPat -> OSet Name
 extractBoundNamesDPat = go
   where
@@ -53,6 +54,7 @@ extractBoundNamesDPat = go
     go (DBangP p)         = go p
     go (DSigP p _)        = go p
     go DWildP             = OS.empty
+    go (DTypeP _)         = OS.empty
 
 -----
 -- Binding forms

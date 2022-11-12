@@ -63,6 +63,12 @@ expToTH (DAppTypeE exp ty)   = AppTypeE (expToTH exp) (typeToTH ty)
 -- type applications, we will simply drop the applied type.
 expToTH (DAppTypeE exp _)    = expToTH exp
 #endif
+#if __GLASGOW_HASKELL__ >= 905
+expToTH (DTypeE ty)          = TypeE (typeToTH ty)
+#else
+expToTH (DTypeE {})          =
+  error "Visible type expressions supported only in GHC 9.6+"
+#endif
 
 matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
@@ -79,6 +85,12 @@ patToTH (DTildeP pat)       = TildeP (patToTH pat)
 patToTH (DBangP pat)        = BangP (patToTH pat)
 patToTH (DSigP pat ty)      = SigP (patToTH pat) (typeToTH ty)
 patToTH DWildP              = WildP
+#if __GLASGOW_HASKELL__ >= 905
+patToTH (DTypeP ty)         = TypeP (typeToTH ty)
+#else
+patToTH (DTypeP {})          =
+  error "Visible type patterns supported only in GHC 9.6+"
+#endif
 
 decsToTH :: [DDec] -> [Dec]
 decsToTH = map decToTH

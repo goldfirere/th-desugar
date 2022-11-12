@@ -258,6 +258,9 @@ dsExp (LamCasesE clauses) = do
   return $ DLamE args $ DCaseE (mkUnboxedTupleDExp (map DVarE args))
                                (map dClauseToUnboxedTupleMatch clauses')
 #endif
+#if __GLASGOW_HASKELL__ >= 905
+dsExp (TypeE ty) = DTypeE <$> dsType ty
+#endif
 
 -- | Convert a 'DClause' to a 'DMatch' by bundling all of the clause's patterns
 -- into a match on a single unboxed tuple pattern. That is, convert this:
@@ -643,6 +646,9 @@ dsPat (UnboxedSumP pat alt arity) =
 #endif
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
+#if __GLASGOW_HASKELL__ >= 905
+dsPat (TypeP ty) = DTypeP <$> dsType ty
+#endif
 
 -- | Convert a 'DPat' to a 'DExp'. Fails on 'DWildP'.
 dPatToDExp :: DPat -> DExp
@@ -653,6 +659,8 @@ dPatToDExp (DTildeP pat) = dPatToDExp pat
 dPatToDExp (DBangP pat) = dPatToDExp pat
 dPatToDExp (DSigP pat ty) = DSigE (dPatToDExp pat) ty
 dPatToDExp DWildP = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
+-- TODO RGS: Think carefully about this case
+dPatToDExp (DTypeP ty) = DTypeE ty
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
 --   variable
@@ -664,6 +672,8 @@ removeWilds (DTildeP pat) = DTildeP <$> removeWilds pat
 removeWilds (DBangP pat) = DBangP <$> removeWilds pat
 removeWilds (DSigP pat ty) = DSigP <$> removeWilds pat <*> pure ty
 removeWilds DWildP = DVarP <$> newUniqueName "wild"
+-- TODO RGS: Think carefully about this case
+removeWilds p@(DTypeP _) = return p
 
 -- | Desugar @Info@
 dsInfo :: DsMonad q => Info -> q DInfo
@@ -1499,6 +1509,8 @@ isUniversalPattern (DTildeP {})  = return True
 isUniversalPattern (DBangP pat)  = isUniversalPattern pat
 isUniversalPattern (DSigP pat _) = isUniversalPattern pat
 isUniversalPattern DWildP        = return True
+-- TODO RGS: Think carefully about this case
+isUniversalPattern (DTypeP _)    = return True
 
 -- | Apply one 'DExp' to a list of arguments
 applyDExp :: DExp -> [DExp] -> DExp
