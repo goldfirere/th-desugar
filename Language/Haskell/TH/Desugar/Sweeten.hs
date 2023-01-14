@@ -153,7 +153,7 @@ decToTH (DStandaloneDerivD mds _mtvbs cxt ty) =
   standaloneDerivDToTH mds cxt ty
 decToTH (DDefaultSigD n ty)        = DefaultSigD n (typeToTH ty)
 #if __GLASGOW_HASKELL__ >= 801
-decToTH (DPatSynD n args dir pat) = PatSynD n args (patSynDirToTH dir) (patToTH pat)
+decToTH (DPatSynD n args dir pat) = PatSynD n args (patSynDirToTH dir) (patSynPatToTH pat)
 decToTH (DPatSynSigD n ty)        = PatSynSigD n (typeToTH ty)
 #else
 decToTH DPatSynD{}    = patSynErr
@@ -180,6 +180,10 @@ decToTH (DDataD TypeData _cxt n tvbs mk cons _derivings) =
 decToTH (DDataD TypeData _cxt _n _tvbs _mk _cons _derivings) =
   error "`type data` declarations supported only in GHC 9.6+"
 #endif
+
+patSynPatToTH :: DPatSynPat -> Pat
+patSynPatToTH (DPatSynPat p) = patToTH p
+patSynPatToTH (DPatSynViewPat e p) = ViewP (expToTH e) (patToTH p)
 
 #if __GLASGOW_HASKELL__ < 801
 patSynErr :: a

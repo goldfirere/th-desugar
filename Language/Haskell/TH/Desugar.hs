@@ -36,8 +36,8 @@ module Language.Haskell.TH.Desugar (
   pattern BndrInvis,
 #endif
   DMatch(..), DClause(..), DDec(..),
-  DDerivClause(..), DDerivStrategy(..), DPatSynDir(..), DPatSynType,
-  Overlap(..), PatSynArgs(..), DataFlavor(..),
+  DDerivClause(..), DDerivStrategy(..), DPatSynDir(..), DPatSynPat(..),
+  DPatSynType, Overlap(..), PatSynArgs(..), DataFlavor(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
   DCon(..), DConFields(..), DDeclaredInfix, DBangType, DVarBangType,
   Bang(..), SourceUnpackedness(..), SourceStrictness(..),

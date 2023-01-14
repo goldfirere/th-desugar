@@ -186,13 +186,22 @@ data DDec = DLetDec DLetDec
             -- that directly consume @DDec@s.
           | DStandaloneDerivD (Maybe DDerivStrategy) (Maybe [DTyVarBndrUnit]) DCxt DType
           | DDefaultSigD Name DType
-          | DPatSynD Name PatSynArgs DPatSynDir DPat
+          | DPatSynD Name PatSynArgs DPatSynDir DPatSynPat
           | DPatSynSigD Name DPatSynType
           | DKiSigD Name DKind
               -- DKiSigD is part of DDec, not DLetDec, because standalone kind
               -- signatures can only appear on the top level.
           | DDefaultD [DType]
           deriving (Eq, Show, Data, Generic, Lift)
+
+-- | The RHS of a pattern synonym, it augments DPat with view patterns which
+-- are otherwise unrepresentable.
+data DPatSynPat = DPatSynPat DPat          -- ^ @pattern p
+                | DPatSynViewPat DExp DPat -- ^ @pattern (e -> p)
+                                           -- Corresponds to a flattened
+                                           -- equivalent of any original view
+                                           -- pattern
+                deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's 'PatSynDir' type
 data DPatSynDir = DUnidir              -- ^ @pattern P x {<-} p@
