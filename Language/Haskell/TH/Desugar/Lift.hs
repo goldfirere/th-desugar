@@ -26,7 +26,7 @@ import Language.Haskell.TH.Lift
 $(deriveLiftMany [ ''DExp, ''DPat, ''DType, ''DForallTelescope, ''DTyVarBndr
                  , ''DMatch, ''DClause, ''DLetDec, ''DDec, ''DDerivClause, ''DCon
                  , ''DConFields, ''DForeign, ''DPragma, ''DRuleBndr, ''DTySynEqn
-                 , ''DPatSynDir , ''NewOrData, ''DDerivStrategy
+                 , ''DPatSynDir, ''DPatSynPat , ''NewOrData, ''DDerivStrategy
                  , ''DTypeFamilyHead,  ''DFamilyResultSig
 #if __GLASGOW_HASKELL__ < 801
                  , ''PatSynArgs
