@@ -196,11 +196,22 @@ data DDec = DLetDec DLetDec
 
 -- | The RHS of a pattern synonym, it augments DPat with view patterns which
 -- are otherwise unrepresentable.
-data DPatSynPat = DPatSynPat DPat          -- ^ @pattern p
-                | DPatSynViewPat DExp DPat -- ^ @pattern (e -> p)
-                                           -- Corresponds to a flattened
-                                           -- equivalent of any original view
-                                           -- pattern
+data DPatSynPat = DPatSynPat DPat          -- ^ @p@
+                | DPatSynViewPat DExp DPat
+                  -- ^ @(e -> p)@
+                  -- Corresponds to a flattened equivalent of any pattern
+                  -- featuring as-patterns or view-patterns. These are
+                  -- flattened into a single-level view pattern.
+                  --
+                  -- @a\@p@ ~> @DPatSynViewPat (\a -> case a of p -> (a,p)) (a, p)@
+                  -- @(e -> p)@ ~> @DPatSynViewPat e p@
+                  --
+                  -- Only a single layer of view patterns is necessary as
+                  -- viewing functions can be combined according to
+                  -- @(f -> g -> p) = (g . f -> p)@
+                  --
+                  -- th-desugar's desugaring algorithm inlines @.@ and
+                  -- flattens any nested tuples from as-patterns
                 deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's 'PatSynDir' type

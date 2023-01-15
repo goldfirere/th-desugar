@@ -572,26 +572,35 @@ mk_tuple_dpat name_set =
 -- is the entire scope of the variables bound in the pattern.
 dsPatOverExp :: DsMonad q => Pat -> DExp -> q (DPat, DExp)
 dsPatOverExp pat exp = do
-  (pat', vars) <- runWriterT . unPatWithExp $ dsPat pat
+  (pat', vars) <- dsPatX pat
   let name_decs = map (uncurry (DValD . DVarP)) vars
   return (pat', maybeDLetE name_decs exp)
 
 -- | Desugar multiple patterns. Like 'dsPatOverExp'.
 dsPatsOverExp :: DsMonad q => [Pat] -> DExp -> q ([DPat], DExp)
 dsPatsOverExp pats exp = do
-  (pats', vars) <- runWriterT . unPatWithExp $ mapM dsPat pats
+  -- Note that this is nearly dsPatX except that here we are accumulating
+  -- together the "leftovers" for multiple patterns.
+  (pats', vars) <- runPatWithExp $ mapM dsPat pats
   let name_decs = map (uncurry (DValD . DVarP)) vars
   return (pats', maybeDLetE name_decs exp)
 
 -- | Desugar a pattern, returning a list of (Name, DExp) pairs of extra
--- variables that must be bound within the scope of the pattern
+-- variables that must be bound within the scope of the pattern. These
+-- correspond to any as-patterns in the original pattern.
+--
+-- View patterns are not supported, please use pattern guards instead or 'dsPat''
 dsPatX :: DsMonad q => Pat -> q (DPat, [(Name, DExp)])
-dsPatX = runWriterT . unPatWithExp . dsPat
+dsPatX = runPatWithExp . dsPat
 
--- | Desugar a pattern, returning a list of (Name, DExp) pairs of extra
--- variables that must be bound within the scope of the pattern
-dsPatC :: DsMonad q => Pat -> q (DPat, [(DExp, DPat)])
-dsPatC = fmap (second reverse) . runWriterT . unPatWithCases . dsPat
+-- | Desugar a pattern, returning a list of (DPat, DExp) pairs of extra
+-- expressions and corresponding (potentially fallible) patterns which must be
+-- bound for the scope of the pattern. These correspond to view patterns and
+-- as-patterns
+--
+-- For example: @dsPat' (f -> n@p) = (x, [(n, f x), (p, n)])@
+dsPat' :: DsMonad q => Pat -> q (DPat, [(DPat, DExp)])
+dsPat' = fmap (second reverse) . runPatWithCases . dsPat
 
 -- | Desugaring a pattern also returns the list of variables bound in as-patterns
 -- and the values they should be bound to. This variables must be brought into
@@ -603,16 +612,26 @@ newtype PatWithExp q a = PatWithExp { unPatWithExp :: WriterT [(Name, DExp)] q a
                    , Quasi, DsMonad
                    )
 
+-- | The eliminator for 'PatWithExp'
+runPatWithExp :: PatWithExp q a -> q (a, [(Name, DExp)])
+runPatWithExp = runWriterT . unPatWithExp
+
 -- | Desugaring a pattern where any as-patterns are returned in reverse order as
 -- further patterns for case analysis on associated names. View patterns are
 -- also returned by pairing their expression and pattern
-newtype PatWithCases q a = PatWithCases { unPatWithCases :: WriterT [(DExp, DPat)] q a }
+newtype PatWithCases q a = PatWithCases { unPatWithCases :: WriterT [(DPat, DExp)] q a }
   deriving newtype ( Functor, Applicative, Monad
                    , MonadTrans, Fail.MonadFail, MonadIO
-                   , MonadWriter [(DExp, DPat)]
+                   , MonadWriter [(DPat, DExp)]
                    , Quasi, DsMonad
                    )
 
+-- | The eliminator for 'PatWithCases'
+runPatWithCases :: PatWithCases q a -> q (a, [(DPat, DExp)])
+runPatWithCases = runWriterT . unPatWithCases
+
+-- | This class permits different implementations of matching on as-patterns
+-- and view-patterns in order to preserve the behavior of 'dsPatX'.
 class PatM m where
   dsAsP :: Name -> DPat -> m DPat
   dsViewP :: DExp -> DPat -> m DPat
@@ -623,16 +642,17 @@ instance DsMonad q => PatM (PatWithExp q) where
     pat' <- lift $ removeWilds pat
     tell [(name, dPatToDExp pat')]
     return pat'
-  dsViewP _ _ = fail "View patterns are not supported in th-desugar. Use pattern guards instead."
+  dsViewP _ _ =
+    fail "View-patterns are only supported in pattern synonyms, please use pattern guards instead."
 
 instance DsMonad q => PatM (PatWithCases q) where
   dsAsP :: Name -> DPat -> PatWithCases q DPat
   dsAsP name pat = do
-    tell [(DVarE name, pat)]
+    tell [(pat, DVarE name)]
     return (DVarP name)
   dsViewP exp pat = do
     viewed <- qNewName "viewed"
-    tell [(exp `DAppE` DVarE viewed, pat)]
+    tell [(pat, exp `DAppE` DVarE viewed)]
     return (DVarP viewed)
 
 -- | Desugar a pattern.
@@ -811,27 +831,23 @@ dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #if __GLASGOW_HASKELL__ >= 801
 dsDec (PatSynD n args dir pat) = do
   dir' <- dsPatSynDir n dir
-  (pat', subPats) <- dsPatC pat
+  (pat', subPats) <- dsPat' pat
   patSynPat <- if null subPats
     then pure (DPatSynPat pat')
     else do
-      -- We'll do a view pattern which uses a tuple to put all the arg
-      -- names in scope
-      arg <- qNewName "arg"
       -- All the names we need to bind for the pattern
       let allNames = allNamesIn args
       -- RHS of the lambda
       let r = mkTupleDExp (DVarE <$> allNames)
       -- RHS of the view pattern
       let p = mkTupleDPat (DVarP <$> allNames)
-      -- Fold up the sub-matches as successive cases, including the initial
-      -- pattern
-      let c = foldr (\(asExp, asPat) e -> DCaseE (asExp) [DMatch asPat e])
+      -- Fold up the sub-matches as successive cases
+      let c = foldr (\(asPat, asExp) e -> DCaseE asExp [DMatch asPat e])
                     r
-                    ((DVarE arg, pat') : subPats)
-      -- The LHS of the view pattern is a lambda which introduces a new var and
-      -- eliminates it using our cases
-      let l = DLamE [arg] c
+                    subPats
+      -- The LHS of the view pattern is a lambda which matches on our top level
+      -- patterns and does case analysis for all the subsequent ones.
+      l <- mkDLamEFromDPats [pat'] c
       pure (DPatSynViewPat l p)
   pure [DPatSynD n args dir' patSynPat]
 dsDec (PatSynSigD n ty) = (:[]) <$> (DPatSynSigD n <$> dsType ty)
