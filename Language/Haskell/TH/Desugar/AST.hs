@@ -6,15 +6,17 @@ Defines the desugared Template Haskell AST. The desugared types and
 constructors are prefixed with a D.
 -}
 
-{-# LANGUAGE CPP, DeriveDataTypeable, DeriveFunctor, DeriveGeneric #-}
+{-# LANGUAGE CPP, DeriveDataTypeable, DeriveFunctor, DeriveGeneric, DeriveLift #-}
 
 module Language.Haskell.TH.Desugar.AST where
 
 import Data.Data hiding (Fixity)
 import GHC.Generics hiding (Fixity)
 import Language.Haskell.TH
+import Language.Haskell.TH.Instances ()
+import Language.Haskell.TH.Syntax (Lift)
 #if __GLASGOW_HASKELL__ < 900
-import Language.Haskell.TH.Datatype.TyVarBndr (Specificity)
+import Language.Haskell.TH.Datatype.TyVarBndr (Specificity(..))
 #endif
 
 -- | Corresponds to TH's @Exp@ type. Note that @DLamE@ takes names, not patterns.
@@ -28,7 +30,7 @@ data DExp = DVarE Name
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
           | DStaticE DExp
-          deriving (Eq, Show, Data, Generic)
+          deriving (Eq, Show, Data, Generic, Lift)
 
 
 -- | Corresponds to TH's @Pat@ type.
@@ -39,7 +41,7 @@ data DPat = DLitP Lit
           | DBangP DPat
           | DSigP DPat DType
           | DWildP
-          deriving (Eq, Show, Data, Generic)
+          deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Type@ type, used to represent
 -- types and kinds.
@@ -53,7 +55,7 @@ data DType = DForallT DForallTelescope DType
            | DArrowT
            | DLitT TyLit
            | DWildCardT
-           deriving (Eq, Show, Data, Generic)
+           deriving (Eq, Show, Data, Generic, Lift)
 
 -- | The type variable binders in a @forall@.
 data DForallTelescope
@@ -64,7 +66,7 @@ data DForallTelescope
   | DForallInvis [DTyVarBndrSpec]
     -- ^ An invisible @forall@ (e.g., @forall a {b} c -> {...}@),
     --   where each binder has a 'Specificity'.
-  deriving (Eq, Show, Data, Generic)
+  deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Kinds are types. Corresponds to TH's @Kind@
 type DKind = DType
@@ -79,7 +81,7 @@ type DCxt = [DPred]
 data DTyVarBndr flag
   = DPlainTV Name flag
   | DKindedTV Name flag DKind
-  deriving (Eq, Show, Data, Generic, Functor)
+  deriving (Eq, Show, Data, Generic, Functor, Lift)
 
 -- | Corresponds to TH's @TyVarBndrSpec@
 type DTyVarBndrSpec = DTyVarBndr Specificity
@@ -89,11 +91,11 @@ type DTyVarBndrUnit = DTyVarBndr ()
 
 -- | Corresponds to TH's @Match@ type.
 data DMatch = DMatch DPat DExp
-  deriving (Eq, Show, Data, Generic)
+  deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Clause@ type.
 data DClause = DClause [DPat] DExp
-  deriving (Eq, Show, Data, Generic)
+  deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Declarations as used in a @let@ statement.
 data DLetDec = DFunD Name [DClause]
@@ -101,12 +103,12 @@ data DLetDec = DFunD Name [DClause]
              | DSigD Name DType
              | DInfixD Fixity Name
              | DPragmaD DPragma
-             deriving (Eq, Show, Data, Generic)
+             deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Is it a @newtype@ or a @data@ type?
 data NewOrData = Newtype
                | Data
-               deriving (Eq, Show, Data, Generic)
+               deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
@@ -136,13 +138,13 @@ data DDec = DLetDec DLetDec
               -- DKiSigD is part of DDec, not DLetDec, because standalone kind
               -- signatures can only appear on the top level.
           | DDefaultD [DType]
-          deriving (Eq, Show, Data, Generic)
+          deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's 'PatSynDir' type
 data DPatSynDir = DUnidir              -- ^ @pattern P x {<-} p@
                 | DImplBidir           -- ^ @pattern P x {=} p@
                 | DExplBidir [DClause] -- ^ @pattern P x {<-} p where P x = e@
-                deriving (Eq, Show, Data, Generic)
+                deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's 'PatSynType' type
 type DPatSynType = DType
@@ -153,19 +155,19 @@ data PatSynArgs
   = PrefixPatSyn [Name]        -- ^ @pattern P {x y z} = p@
   | InfixPatSyn Name Name      -- ^ @pattern {x P y} = p@
   | RecordPatSyn [Name]        -- ^ @pattern P { {x,y,z} } = p@
-  deriving (Eq, Show, Data, Generic)
+  deriving (Eq, Show, Data, Generic, Lift)
 #endif
 
 -- | Corresponds to TH's 'TypeFamilyHead' type
 data DTypeFamilyHead = DTypeFamilyHead Name [DTyVarBndrUnit] DFamilyResultSig
                                        (Maybe InjectivityAnn)
-                     deriving (Eq, Show, Data, Generic)
+                     deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's 'FamilyResultSig' type
 data DFamilyResultSig = DNoSig
                       | DKindSig DKind
                       | DTyVarSig DTyVarBndrUnit
-                      deriving (Eq, Show, Data, Generic)
+                      deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's 'Con' type. Unlike 'Con', all 'DCon's reflect GADT
 -- syntax. This is beneficial for @th-desugar@'s since it means
@@ -184,13 +186,13 @@ data DFamilyResultSig = DNoSig
 -- * A 'DCon' always has an explicit return type.
 data DCon = DCon [DTyVarBndrSpec] DCxt Name DConFields
                  DType  -- ^ The GADT result type
-          deriving (Eq, Show, Data, Generic)
+          deriving (Eq, Show, Data, Generic, Lift)
 
 -- | A list of fields either for a standard data constructor or a record
 -- data constructor.
 data DConFields = DNormalC DDeclaredInfix [DBangType]
                 | DRecC [DVarBangType]
-                deriving (Eq, Show, Data, Generic)
+                deriving (Eq, Show, Data, Generic, Lift)
 
 -- | 'True' if a constructor is declared infix. For normal ADTs, this means
 -- that is was written in infix style. For example, both of the constructors
@@ -245,7 +247,7 @@ type DVarBangType = (Name, Bang, DType)
 -- | Corresponds to TH's @Foreign@ type.
 data DForeign = DImportF Callconv Safety String Name DType
               | DExportF Callconv String Name DType
-              deriving (Eq, Show, Data, Generic)
+              deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Pragma@ type.
 data DPragma = DInlineP Name Inline RuleMatch Phases
@@ -256,16 +258,16 @@ data DPragma = DInlineP Name Inline RuleMatch Phases
              | DLineP Int String
              | DCompleteP [Name] (Maybe Name)
              | DOpaqueP Name
-             deriving (Eq, Show, Data, Generic)
+             deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @RuleBndr@ type.
 data DRuleBndr = DRuleVar Name
                | DTypedRuleVar Name DType
-               deriving (Eq, Show, Data, Generic)
+               deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @TySynEqn@ type (to store type family equations).
 data DTySynEqn = DTySynEqn (Maybe [DTyVarBndrUnit]) DType DType
-               deriving (Eq, Show, Data, Generic)
+               deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Info@ type.
 data DInfo = DTyConI DDec (Maybe [DInstanceDec])
@@ -278,17 +280,17 @@ data DInfo = DTyConI DDec (Maybe [DInstanceDec])
                -- ^ The @Int@ is the arity; the @Bool@ is whether this tycon
                -- is unlifted.
            | DPatSynI Name DPatSynType
-           deriving (Eq, Show, Data, Generic)
+           deriving (Eq, Show, Data, Generic, Lift)
 
 type DInstanceDec = DDec -- ^ Guaranteed to be an instance declaration
 
 -- | Corresponds to TH's @DerivClause@ type.
 data DDerivClause = DDerivClause (Maybe DDerivStrategy) DCxt
-                  deriving (Eq, Show, Data, Generic)
+                  deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @DerivStrategy@ type.
 data DDerivStrategy = DStockStrategy     -- ^ A \"standard\" derived instance
                     | DAnyclassStrategy  -- ^ @-XDeriveAnyClass@
                     | DNewtypeStrategy   -- ^ @-XGeneralizedNewtypeDeriving@
                     | DViaStrategy DType -- ^ @-XDerivingVia@
-                    deriving (Eq, Show, Data, Generic)
+                    deriving (Eq, Show, Data, Generic, Lift)
