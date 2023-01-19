@@ -449,7 +449,7 @@ test_t137 =
                p
                (RecordPatSyn [unPa, unPb])
                DImplBidir
-               (DConP (tupleDataName 2) [] [aVarP, bVarP])
+               (DPatSynPat (DConP (tupleDataName 2) [] [aVarP, bVarP]))
 
            decs :: [Dec]
            decs = sweeten

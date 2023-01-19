@@ -8,7 +8,8 @@ processing. The desugared types and constructors are prefixed with a D.
 -}
 
 {-# LANGUAGE TemplateHaskellQuotes, LambdaCase, CPP, ScopedTypeVariables,
-             TupleSections, DeriveDataTypeable, DeriveGeneric #-}
+             TupleSections, DeriveDataTypeable, DeriveGeneric,
+             GeneralizedNewtypeDeriving, InstanceSigs #-}
 
 module Language.Haskell.TH.Desugar.Core where
 
@@ -19,10 +20,12 @@ import Language.Haskell.TH.Datatype.TyVarBndr
 import Language.Haskell.TH.Syntax hiding (lift)
 
 import Control.Monad hiding (forM_, mapM)
+import Control.Monad.IO.Class (MonadIO)
 import qualified Control.Monad.Fail as Fail
 import Control.Monad.Trans (MonadTrans(..))
 import Control.Monad.Writer (MonadWriter(..), WriterT(..))
 import Control.Monad.Zip
+import Data.Bifunctor (second)
 import Data.Data (Data)
 import Data.Either (lefts)
 import Data.Foldable as F hiding (concat, notElem)
@@ -558,29 +561,91 @@ mk_tuple_dpat name_set =
 -- is the entire scope of the variables bound in the pattern.
 dsPatOverExp :: DsMonad q => Pat -> DExp -> q (DPat, DExp)
 dsPatOverExp pat exp = do
-  (pat', vars) <- runWriterT $ dsPat pat
+  (pat', vars) <- dsPatX pat
   let name_decs = map (uncurry (DValD . DVarP)) vars
   return (pat', maybeDLetE name_decs exp)
 
 -- | Desugar multiple patterns. Like 'dsPatOverExp'.
 dsPatsOverExp :: DsMonad q => [Pat] -> DExp -> q ([DPat], DExp)
 dsPatsOverExp pats exp = do
-  (pats', vars) <- runWriterT $ mapM dsPat pats
+  -- Note that this is nearly dsPatX except that here we are accumulating
+  -- together the "leftovers" for multiple patterns.
+  (pats', vars) <- runPatWithExp $ mapM dsPat pats
   let name_decs = map (uncurry (DValD . DVarP)) vars
   return (pats', maybeDLetE name_decs exp)
 
 -- | Desugar a pattern, returning a list of (Name, DExp) pairs of extra
--- variables that must be bound within the scope of the pattern
+-- variables that must be bound within the scope of the pattern. These
+-- correspond to any as-patterns in the original pattern.
+--
+-- View patterns are not supported, please use pattern guards instead or 'dsPat''
 dsPatX :: DsMonad q => Pat -> q (DPat, [(Name, DExp)])
-dsPatX = runWriterT . dsPat
+dsPatX = runPatWithExp . dsPat
+
+-- | Desugar a pattern, returning a list of (DPat, DExp) pairs of extra
+-- expressions and corresponding (potentially fallible) patterns which must be
+-- bound for the scope of the pattern. These correspond to view patterns and
+-- as-patterns
+--
+-- For example: @dsPat' (f -> n@p) = (x, [(n, f x), (p, n)])@
+dsPat' :: DsMonad q => Pat -> q (DPat, [(DPat, DExp)])
+dsPat' = fmap (second reverse) . runPatWithCases . dsPat
 
 -- | Desugaring a pattern also returns the list of variables bound in as-patterns
 -- and the values they should be bound to. This variables must be brought into
 -- scope in the "body" of the pattern.
-type PatM q = WriterT [(Name, DExp)] q
+newtype PatWithExp q a = PatWithExp { unPatWithExp :: WriterT [(Name, DExp)] q a }
+  deriving ( Functor, Applicative, Monad
+           , MonadTrans, Fail.MonadFail, MonadIO
+           , MonadWriter [(Name, DExp)]
+           , Quasi, DsMonad
+           )
+
+-- | The eliminator for 'PatWithExp'
+runPatWithExp :: PatWithExp q a -> q (a, [(Name, DExp)])
+runPatWithExp = runWriterT . unPatWithExp
+
+-- | Desugaring a pattern where any as-patterns are returned in reverse order as
+-- further patterns for case analysis on associated names. View patterns are
+-- also returned by pairing their expression and pattern
+newtype PatWithCases q a = PatWithCases { unPatWithCases :: WriterT [(DPat, DExp)] q a }
+  deriving ( Functor, Applicative, Monad
+           , MonadTrans, Fail.MonadFail, MonadIO
+           , MonadWriter [(DPat, DExp)]
+           , Quasi, DsMonad
+           )
+
+-- | The eliminator for 'PatWithCases'
+runPatWithCases :: PatWithCases q a -> q (a, [(DPat, DExp)])
+runPatWithCases = runWriterT . unPatWithCases
+
+-- | This class permits different implementations of matching on as-patterns
+-- and view-patterns in order to preserve the behavior of 'dsPatX'.
+class PatM m where
+  dsAsP :: Name -> DPat -> m DPat
+  dsViewP :: DExp -> DPat -> m DPat
+
+instance DsMonad q => PatM (PatWithExp q) where
+  dsAsP :: Name -> DPat -> PatWithExp q DPat
+  dsAsP name pat = do
+    pat' <- lift $ removeWilds pat
+    tell [(name, dPatToDExp pat')]
+    return pat'
+  dsViewP _ _ =
+    fail "View-patterns are only supported in pattern synonyms, please use pattern guards instead."
+
+instance DsMonad q => PatM (PatWithCases q) where
+  dsAsP :: Name -> DPat -> PatWithCases q DPat
+  dsAsP name pat = do
+    tell [(pat, DVarE name)]
+    return (DVarP name)
+  dsViewP exp pat = do
+    viewed <- qNewName "viewed"
+    tell [(pat, exp `DAppE` DVarE viewed)]
+    return (DVarP viewed)
 
 -- | Desugar a pattern.
-dsPat :: DsMonad q => Pat -> PatM q DPat
+dsPat :: (PatM m, DsMonad m) => Pat -> m DPat
 dsPat (LitP lit) = return $ DLitP lit
 dsPat (VarP n) = return $ DVarP n
 dsPat (TupP pats) = DConP (tupleDataName (length pats)) [] <$> mapM dsPat pats
@@ -599,12 +664,10 @@ dsPat (TildeP pat) = DTildeP <$> dsPat pat
 dsPat (BangP pat) = DBangP <$> dsPat pat
 dsPat (AsP name pat) = do
   pat' <- dsPat pat
-  pat'' <- lift $ removeWilds pat'
-  tell [(name, dPatToDExp pat'')]
-  return pat''
+  dsAsP name pat'
 dsPat WildP = return DWildP
 dsPat (RecP con_name field_pats) = do
-  con <- lift $ dataConNameToCon con_name
+  con <- dataConNameToCon con_name
   reordered <- reorder con
   return $ DConP con_name [] reordered
   where
@@ -626,9 +689,9 @@ dsPat (RecP con_name field_pats) = do
                         --
                         -- Con{} desugars down to Con _ ... _.
                       = return $ replicate (length fields) DWildP
-                      | otherwise = lift $ impossible
-                                         $ "Record syntax used with non-record constructor "
-                                           ++ (show con_name) ++ "."
+                      | otherwise = impossible
+                                  $ "Record syntax used with non-record constructor "
+                                    ++ (show con_name) ++ "."
 
 dsPat (ListP pats) = go pats
   where go [] = return $ DConP '[] [] []
@@ -641,8 +704,10 @@ dsPat (SigP pat ty) = DSigP <$> dsPat pat <*> dsType ty
 dsPat (UnboxedSumP pat alt arity) =
   DConP (unboxedSumDataName alt arity) [] <$> ((:[]) <$> dsPat pat)
 #endif
-dsPat (ViewP _ _) =
-  fail "View patterns are not supported in th-desugar. Use pattern guards instead."
+dsPat (ViewP exp pat) = do
+  exp' <- dsExp exp
+  pat' <- dsPat pat
+  dsViewP exp' pat'
 
 -- | Convert a 'DPat' to a 'DExp'. Fails on 'DWildP'.
 dPatToDExp :: DPat -> DExp
@@ -747,10 +812,25 @@ dsDec (RoleAnnotD n roles) = return [DRoleAnnotD n roles]
 #if __GLASGOW_HASKELL__ >= 801
 dsDec (PatSynD n args dir pat) = do
   dir' <- dsPatSynDir n dir
-  (pat', vars) <- dsPatX pat
-  unless (null vars) $
-    fail $ "Pattern synonym definition cannot contain as-patterns (@)."
-  return [DPatSynD n args dir' pat']
+  (pat', subPats) <- dsPat' pat
+  patSynPat <- if null subPats
+    then pure (DPatSynPat pat')
+    else do
+      -- All the names we need to bind for the pattern
+      let allNames = allNamesIn args
+      -- RHS of the lambda
+      let r = mkTupleDExp (DVarE <$> allNames)
+      -- RHS of the view pattern
+      let p = mkTupleDPat (DVarP <$> allNames)
+      -- Fold up the sub-matches as successive cases
+      let c = foldr (\(asPat, asExp) e -> DCaseE asExp [DMatch asPat e])
+                    r
+                    subPats
+      -- The LHS of the view pattern is a lambda which matches on our top level
+      -- patterns and does case analysis for all the subsequent ones.
+      l <- mkDLamEFromDPats [pat'] c
+      pure (DPatSynViewPat l p)
+  pure [DPatSynD n args dir' patSynPat]
 dsDec (PatSynSigD n ty) = (:[]) <$> (DPatSynSigD n <$> dsType ty)
 dsDec (StandaloneDerivD mds cxt ty) =
   (:[]) <$> (DStandaloneDerivD <$> mapM dsDerivStrategy mds
@@ -1422,7 +1502,7 @@ mkDForallConstrainedT tele ctxt ty =
 reorderFields :: DsMonad q => Name -> [VarStrictType] -> [FieldExp] -> [DExp] -> q [DExp]
 reorderFields = reorderFields' dsExp
 
-reorderFieldsPat :: DsMonad q => Name -> [VarStrictType] -> [FieldPat] -> PatM q [DPat]
+reorderFieldsPat :: (DsMonad q, PatM q) => Name -> [VarStrictType] -> [FieldPat] -> q [DPat]
 reorderFieldsPat con_name field_decs field_pats =
   reorderFields' dsPat con_name field_decs field_pats (repeat DWildP)
 
