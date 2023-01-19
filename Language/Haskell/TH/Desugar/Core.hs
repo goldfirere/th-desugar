@@ -8,7 +8,7 @@ processing. The desugared types and constructors are prefixed with a D.
 -}
 
 {-# LANGUAGE TemplateHaskellQuotes, LambdaCase, CPP, ScopedTypeVariables,
-             TupleSections, DeriveDataTypeable, DeriveGeneric, DerivingStrategies,
+             TupleSections, DeriveDataTypeable, DeriveGeneric,
              GeneralizedNewtypeDeriving, InstanceSigs #-}
 
 module Language.Haskell.TH.Desugar.Core where
@@ -595,11 +595,11 @@ dsPat' = fmap (second reverse) . runPatWithCases . dsPat
 -- and the values they should be bound to. This variables must be brought into
 -- scope in the "body" of the pattern.
 newtype PatWithExp q a = PatWithExp { unPatWithExp :: WriterT [(Name, DExp)] q a }
-  deriving newtype ( Functor, Applicative, Monad
-                   , MonadTrans, Fail.MonadFail, MonadIO
-                   , MonadWriter [(Name, DExp)]
-                   , Quasi, DsMonad
-                   )
+  deriving ( Functor, Applicative, Monad
+           , MonadTrans, Fail.MonadFail, MonadIO
+           , MonadWriter [(Name, DExp)]
+           , Quasi, DsMonad
+           )
 
 -- | The eliminator for 'PatWithExp'
 runPatWithExp :: PatWithExp q a -> q (a, [(Name, DExp)])
@@ -609,11 +609,11 @@ runPatWithExp = runWriterT . unPatWithExp
 -- further patterns for case analysis on associated names. View patterns are
 -- also returned by pairing their expression and pattern
 newtype PatWithCases q a = PatWithCases { unPatWithCases :: WriterT [(DPat, DExp)] q a }
-  deriving newtype ( Functor, Applicative, Monad
-                   , MonadTrans, Fail.MonadFail, MonadIO
-                   , MonadWriter [(DPat, DExp)]
-                   , Quasi, DsMonad
-                   )
+  deriving ( Functor, Applicative, Monad
+           , MonadTrans, Fail.MonadFail, MonadIO
+           , MonadWriter [(DPat, DExp)]
+           , Quasi, DsMonad
+           )
 
 -- | The eliminator for 'PatWithCases'
 runPatWithCases :: PatWithCases q a -> q (a, [(DPat, DExp)])
