@@ -106,6 +106,9 @@ getDataD err name = do
   case dec of
     DataD _cxt _name tvbs mk cons _derivings -> go tvbs mk cons
     NewtypeD _cxt _name tvbs mk con _derivings -> go tvbs mk [con]
+#if __GLASGOW_HASKELL__ >= 906
+    TypeDataD _name tvbs mk cons -> go tvbs mk cons
+#endif
     _ -> badDeclaration
   where
     go tvbs mk cons = do
@@ -263,6 +266,9 @@ reifyInDec n _    dec@(ClosedTypeFamilyD (TypeFamilyHead n' _ _ _) _) | n `nameM
 reifyInDec n decs (PatSynD n' _ _ _) | n `nameMatches` n'
   = Just (n', mkPatSynI n decs)
 #endif
+#if __GLASGOW_HASKELL__ >= 906
+reifyInDec n _ dec@(TypeDataD n' _ _ _) | n `nameMatches` n' = Just (n', TyConI dec)
+#endif
 
 reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
   | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
@@ -306,6 +312,11 @@ reifyInDec n decs (DataInstD _ ty_name tys _ cons _)
   = Just info
 reifyInDec n decs (NewtypeInstD _ ty_name tys _ con _)
   | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) [con]
+  = Just info
+#endif
+#if __GLASGOW_HASKELL__ >= 906
+reifyInDec n decs (TypeDataD ty_name tvbs _mk cons)
+  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
   = Just info
 #endif
 
@@ -1007,6 +1018,11 @@ match_cusk n (ClassD _ n' tvbs _ sub_decs)
                                         , Just tvb_kind <- [tvb_kind_maybe tvb]
                                         ]
   = firstMatch (find_assoc_type_kind n cls_tvb_kind_map) sub_decs
+#if __GLASGOW_HASKELL__ >= 906
+match_cusk n (TypeDataD n' tvbs m_ki _)
+  | n `nameMatches` n'
+  = datatype_kind tvbs m_ki
+#endif
 match_cusk _ _ = Nothing
 
 -- Uncover the kind of an associated type family. There is an invariant
@@ -1198,7 +1214,7 @@ lookupValueNameWithLocals = lookupNameWithLocals False
 lookupTypeNameWithLocals :: DsMonad q => String -> q (Maybe Name)
 lookupTypeNameWithLocals = lookupNameWithLocals True
 
-lookupNameWithLocals :: DsMonad q => Bool -> String -> q (Maybe Name)
+lookupNameWithLocals :: forall q. DsMonad q => Bool -> String -> q (Maybe Name)
 lookupNameWithLocals ns s = do
     mb_name <- qLookupName ns s
     case mb_name of
@@ -1211,20 +1227,22 @@ lookupNameWithLocals ns s = do
       decs <- localDeclarations
       let mb_infos = map (reifyInDec built_name decs) decs
           infos = catMaybes mb_infos
-      return $ firstMatch (if ns then find_type_name
-                                 else find_value_name) infos
+      firstMatchM (if ns then find_type_name
+                         else find_value_name) infos
 
     -- These functions work over Named Infos so we can avoid performing
     -- tiresome pattern-matching to retrieve the name associated with each Info.
-    find_type_name, find_value_name :: Named Info -> Maybe Name
-    find_type_name (n, info) =
-      case infoNameSpace info of
+    find_type_name, find_value_name :: Named Info -> q (Maybe Name)
+    find_type_name (n, info) = do
+      name_space <- lookupInfoNameSpace info
+      pure $ case name_space of
         TcClsName -> Just n
         VarName   -> Nothing
         DataName  -> Nothing
 
-    find_value_name (n, info) =
-      case infoNameSpace info of
+    find_value_name (n, info) = do
+      name_space <- lookupInfoNameSpace info
+      pure $ case name_space of
         VarName   -> Just n
         DataName  -> Just n
         TcClsName -> Nothing
@@ -1265,22 +1283,33 @@ reifyNameSpace n@(Name _ nf) =
     -- For other names, we must use reification to determine what NameSpace
     -- it lives in (if any).
     _ -> do mb_info <- reifyWithLocals_maybe n
-            pure $ fmap infoNameSpace mb_info
+            traverse lookupInfoNameSpace mb_info
 
--- | Determine a name's 'NameSpace' from its 'Info'.
-infoNameSpace :: Info -> NameSpace
-infoNameSpace info =
+-- | Look up a name's 'NameSpace' from its 'Info'.
+lookupInfoNameSpace :: DsMonad q => Info -> q NameSpace
+lookupInfoNameSpace info =
   case info of
-    ClassI{}     -> TcClsName
-    TyConI{}     -> TcClsName
-    FamilyI{}    -> TcClsName
-    PrimTyConI{} -> TcClsName
-    TyVarI{}     -> TcClsName
+    ClassI{}     -> pure TcClsName
+    TyConI{}     -> pure TcClsName
+    FamilyI{}    -> pure TcClsName
+    PrimTyConI{} -> pure TcClsName
+    TyVarI{}     -> pure TcClsName
 
-    ClassOpI{}   -> VarName
-    VarI{}       -> VarName
+    ClassOpI{}   -> pure VarName
+    VarI{}       -> pure VarName
 
-    DataConI{}   -> DataName
+    DataConI _dc_name _dc_ty parent_name -> do
+      -- DataConI usually refers to a value-level Name, but it could also refer
+      -- to a type-level 'Name' if the data constructor corresponds to a
+      -- @type data@ declaration. In order to know for sure, we must perform
+      -- some additional reification.
+      mb_parent_info <- reifyWithLocals_maybe parent_name
+      pure $ case mb_parent_info of
+#if __GLASGOW_HASKELL__ >= 906
+        Just (TyConI (TypeDataD {}))
+          -> TcClsName
+#endif
+        _ -> DataName
 #if __GLASGOW_HASKELL__ >= 801
-    PatSynI{}    -> DataName
+    PatSynI{}    -> pure DataName
 #endif

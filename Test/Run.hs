@@ -26,6 +26,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE StandaloneKindSignatures #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 906
+{-# LANGUAGE TypeData #-}
+#endif
+
 module Main where
 
 import Prelude hiding ( exp )
@@ -45,7 +49,7 @@ import Language.Haskell.TH.Desugar
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.Expand  ( expandUnsoundly )
 import Language.Haskell.TH
-import qualified Language.Haskell.TH.Syntax as Syn ( lift )
+import qualified Language.Haskell.TH.Syntax as Syn ( NameSpace(..), lift )
 
 import Control.Exception ( ErrorCall )
 import Control.Monad
@@ -528,6 +532,22 @@ test_t159 = do
   testOne t159A
   testOne t159B
 
+#if __GLASGOW_HASKELL__ >= 906
+test_t170 :: [Bool]
+test_t170 =
+  $(do decs <- [d| type data TyData = MkTyData |]
+
+       let test_TypeData_NameSpace nameStr =
+             withLocalDeclarations decs $ do
+               Just name <- lookupTypeNameWithLocals nameStr
+               mbNS <- reifyNameSpace name
+               mbNS `eqTHSplice` Just Syn.TcClsName
+
+       let b1 = test_TypeData_NameSpace "TyData"
+       let b2 = test_TypeData_NameSpace "MkTyData"
+       [| [$b1, $b2] |])
+#endif
+
 test_t171 :: Bool
 test_t171 =
   $(do a <- newName "a"
@@ -794,6 +814,11 @@ main = hspec $ do
     it "desugars non-infix GADT constructors with symbolic names correctly" $ test_t154
 
     it "desugars non-exhaustive expressions into code that errors at runtime" $ test_t159
+
+#if __GLASGOW_HASKELL__ >= 906
+    zipWithM (\b n -> it ("looks up TypeData names in the type namespace correctly " ++ show n) b)
+      test_t170 [1..]
+#endif
 
     it "locally reifies GADT record selector types with explicit foralls correctly" $ test_t171
 

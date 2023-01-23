@@ -45,6 +45,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE OverloadedRecordDot #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 906
+{-# LANGUAGE TypeData #-}
+#endif
+
 {-# OPTIONS_GHC -Wno-missing-signatures -Wno-type-defaults
                 -Wno-name-shadowing #-}
 
@@ -662,6 +666,12 @@ reifyDecs = [d|
 
   data R33 a where
     R34 :: { r35 :: Int } -> R33 Int
+
+#if __GLASGOW_HASKELL__ >= 906
+  type data R36 a = R37 a
+  type data R38 a where
+    R39 :: forall a. a -> R38 a
+#endif
   |]
 
 reifyDecsNames :: [Name]
@@ -677,6 +687,9 @@ reifyDecsNames = map mkName
   , "R32"
 #endif
   , "R33", "R34", "r35"
+#if __GLASGOW_HASKELL__ >= 906
+  , "R36", "R37", "R38", "R39"
+#endif
   ]
 
 simplCaseTests :: [Q Exp]

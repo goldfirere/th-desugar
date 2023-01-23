@@ -39,7 +39,7 @@ module Language.Haskell.TH.Desugar.Sweeten (
 import Prelude hiding (exp)
 import Control.Arrow
 
-import Language.Haskell.TH hiding (cxt)
+import Language.Haskell.TH hiding (Extension(..), cxt)
 import Language.Haskell.TH.Datatype.TyVarBndr
 
 import Language.Haskell.TH.Desugar.AST
@@ -108,9 +108,10 @@ decToTH (DDataFamilyD n tvbs mk) =
   DataFamilyD n (map tvbToTH tvbs) (fmap typeToTH mk)
 decToTH (DDataInstD nd cxt mtvbs lhs mk cons derivings) =
   let ndc = case (nd, cons) of
-              (Newtype, [con]) -> DNewtypeCon con
-              (Newtype, _)     -> error "Newtype that doesn't have only one constructor"
-              (Data,    _)     -> DDataCons cons
+              (Newtype,  [con]) -> DNewtypeCon con
+              (Newtype,  _)     -> error "Newtype that doesn't have only one constructor"
+              (Data,     _)     -> DDataCons cons
+              (TypeData, _)     -> error "Data family instance that is combined with `type data`"
   in dataInstDecToTH ndc cxt mtvbs lhs mk derivings
 #if __GLASGOW_HASKELL__ >= 807
 decToTH (DTySynInstD eqn) = TySynInstD (snd $ tySynEqnToTH eqn)
@@ -145,6 +146,15 @@ decToTH (DDefaultD tys) = DefaultD (map typeToTH tys)
 #else
 decToTH (DDefaultD{})   =
   error "Default declarations supported only in GHC 9.4+"
+#endif
+#if __GLASGOW_HASKELL__ >= 906
+decToTH (DDataD TypeData _cxt n tvbs mk cons _derivings) =
+  -- NB: Due to the invariants on 'DDataD' and 'TypeData', _cxt and _derivings
+  -- will be empty.
+  TypeDataD n (map tvbToTH tvbs) (fmap typeToTH mk) (map conToTH cons)
+#else
+decToTH (DDataD TypeData _cxt _n _tvbs _mk _cons _derivings) =
+  error "`type data` declarations supported only in GHC 9.6+"
 #endif
 
 #if __GLASGOW_HASKELL__ < 801

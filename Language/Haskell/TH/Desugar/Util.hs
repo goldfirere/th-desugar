@@ -20,7 +20,7 @@ module Language.Haskell.TH.Desugar.Util (
   thirdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat,
   tvbToType, tvbToTypeWithSig, tvbToTANormalWithSig,
-  nameMatches, thdOf3, liftFst, liftSnd, firstMatch,
+  nameMatches, thdOf3, liftFst, liftSnd, firstMatch, firstMatchM,
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
   unboxedTupleNameDegree_maybe, splitTuple_maybe,
@@ -491,6 +491,9 @@ expectJustM err Nothing  = Fail.fail err
 
 firstMatch :: (a -> Maybe b) -> [a] -> Maybe b
 firstMatch f xs = listToMaybe $ mapMaybe f xs
+
+firstMatchM :: Monad m => (a -> m (Maybe b)) -> [a] -> m (Maybe b)
+firstMatchM f xs = listToMaybe <$> mapMaybeM f xs
 
 -- | Semi-shallow version of 'everywhereM' - does not recurse into children of nodes of type @a@ (only applies the handler to them).
 --

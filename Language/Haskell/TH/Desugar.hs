@@ -29,7 +29,7 @@ module Language.Haskell.TH.Desugar (
   DTyVarBndr(..), DTyVarBndrSpec, DTyVarBndrUnit, Specificity(..),
   DMatch(..), DClause(..), DDec(..),
   DDerivClause(..), DDerivStrategy(..), DPatSynDir(..), DPatSynType,
-  Overlap(..), PatSynArgs(..), NewOrData(..),
+  Overlap(..), PatSynArgs(..), DataFlavor(..),
   DTypeFamilyHead(..), DFamilyResultSig(..), InjectivityAnn(..),
   DCon(..), DConFields(..), DDeclaredInfix, DBangType, DVarBangType,
   Bang(..), SourceUnpackedness(..), SourceStrictness(..),
