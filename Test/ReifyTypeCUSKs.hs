@@ -1,9 +1,12 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
+#if __GLASGOW_HASKELL__ < 806
 {-# LANGUAGE TypeInType #-}
+#endif
 #if __GLASGOW_HASKELL__ >= 809
 {-# LANGUAGE CUSKs #-}
 #endif
