@@ -3,6 +3,23 @@
 
 next [????.??.??]
 -----------------
+* Support GHC 9.6.
+* The `NewOrData` data type has been renamed to `DataFlavor` and extended to
+  support `type data` declarations:
+
+  ```diff
+  -data NewOrData  = NewType | Data
+  +data DataFlavor = NewType | Data | TypeData
+  ```
+
+  Desugaring upholds the following properties regarding `TypeData`:
+
+  * A `DDataD` with a `DataFlavor` of `TypeData` cannot have any deriving
+    clauses or datatype contexts, and the `DConFields` in each `DCon` will be a
+    `NormalC` where each `Bang` is equal to
+    `Bang NoSourceUnpackedness NoSourceStrictness`.
+  * A `DDataInstD` can have a `DataFlavor` of `NewType` or `Data`, but not
+    `TypeData`.
 * Local reification can now reify the types of pattern synonym record
   selectors.
 * Fix a bug in which the types of locally reified GADT record selectors would

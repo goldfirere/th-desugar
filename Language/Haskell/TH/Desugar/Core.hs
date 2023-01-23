@@ -14,9 +14,9 @@ module Language.Haskell.TH.Desugar.Core where
 
 import Prelude hiding (mapM, foldl, foldr, all, elem, exp, concatMap, and)
 
-import Language.Haskell.TH hiding (match, clause, cxt)
+import Language.Haskell.TH hiding (Extension(..), match, clause, cxt)
 import Language.Haskell.TH.Datatype.TyVarBndr
-import Language.Haskell.TH.Syntax hiding (lift)
+import Language.Haskell.TH.Syntax hiding (Extension(..), lift)
 
 import Control.Monad hiding (forM_, mapM)
 import qualified Control.Monad.Fail as Fail
@@ -40,6 +40,8 @@ import GHC.OverloadedLabels ( fromLabel )
 
 #if __GLASGOW_HASKELL__ >= 807
 import GHC.Classes (IP(..))
+#else
+import qualified Language.Haskell.TH as LangExt (Extension(..))
 #endif
 
 #if __GLASGOW_HASKELL__ >= 902
@@ -518,7 +520,7 @@ dsBindS mb_mod bind_arg_exp success_pat success_exp ctxt = do
     mk_fail_name = return fail_MonadFail_name
 #else
     mk_fail_name = do
-      mfd <- qIsExtEnabled MonadFailDesugaring
+      mfd <- qIsExtEnabled LangExt.MonadFailDesugaring
       return $ if mfd then fail_MonadFail_name else fail_Prelude_name
 #endif
 
@@ -769,10 +771,14 @@ dsDec (KiSigD n ki) = (:[]) <$> (DKiSigD n <$> dsType ki)
 #if __GLASGOW_HASKELL__ >= 903
 dsDec (DefaultD tys) = (:[]) <$> (DDefaultD <$> mapM dsType tys)
 #endif
+#if __GLASGOW_HASKELL__ >= 906
+dsDec (TypeDataD n tys mk cons) =
+  dsDataDec TypeData [] n tys mk cons []
+#endif
 
--- | Desugar a 'DataD' or 'NewtypeD'.
+-- | Desugar a 'DataD', 'NewtypeD', or 'TypeDataD'.
 dsDataDec :: DsMonad q
-          => NewOrData -> Cxt -> Name -> [TyVarBndrUnit]
+          => DataFlavor -> Cxt -> Name -> [TyVarBndrUnit]
           -> Maybe Kind -> [Con] -> [DerivingClause] -> q [DDec]
 dsDataDec nd cxt n tvbs mk cons derivings = do
   tvbs' <- mapM dsTvbUnit tvbs
@@ -789,7 +795,7 @@ dsDataDec nd cxt n tvbs mk cons derivings = do
 
 -- | Desugar a 'DataInstD' or a 'NewtypeInstD'.
 dsDataInstDec :: DsMonad q
-              => NewOrData -> Cxt -> Name -> Maybe [TyVarBndrUnit] -> [TypeArg]
+              => DataFlavor -> Cxt -> Name -> Maybe [TyVarBndrUnit] -> [TypeArg]
               -> Maybe Kind -> [Con] -> [DerivingClause] -> q [DDec]
 dsDataInstDec nd cxt n mtvbs tys mk cons derivings = do
   mtvbs' <- mapM (mapM dsTvbUnit) mtvbs

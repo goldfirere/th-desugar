@@ -105,14 +105,28 @@ data DLetDec = DFunD Name [DClause]
              | DPragmaD DPragma
              deriving (Eq, Show, Data, Generic, Lift)
 
--- | Is it a @newtype@ or a @data@ type?
-data NewOrData = Newtype
-               | Data
-               deriving (Eq, Show, Data, Generic, Lift)
+-- | Is a data type or data instance declaration a @newtype@ declaration, a
+-- @data@ declaration, or a @type data@ declaration?
+data DataFlavor
+  = Newtype  -- ^ @newtype@
+  | Data     -- ^ @data@
+  | TypeData -- ^ @type data@
+  deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
-          | DDataD NewOrData DCxt Name [DTyVarBndrUnit] (Maybe DKind) [DCon] [DDerivClause]
+            -- | An ordinary (i.e., non-data family) data type declaration. Note
+            -- that desugaring upholds the following properties regarding the
+            -- 'DataFlavor' field:
+            --
+            -- * If the 'DataFlavor' is 'NewType', then there will be exactly
+            --   one 'DCon'.
+            --
+            -- * If the 'DataFlavor' is 'TypeData', then there will be no
+            --   'DDerivClause's, the 'DCxt' will be empty, and the 'DConFields'
+            --   in each 'DCon' will be a 'NormalC' where each 'Bang' is equal
+            --   to @Bang 'NoSourceUnpackedness' 'NoSourceStrictness'@.
+          | DDataD DataFlavor DCxt Name [DTyVarBndrUnit] (Maybe DKind) [DCon] [DDerivClause]
           | DTySynD Name [DTyVarBndrUnit] DType
           | DClassD DCxt Name [DTyVarBndrUnit] [FunDep] [DDec]
             -- | Note that the @Maybe [DTyVarBndrUnit]@ field is dropped
@@ -123,7 +137,16 @@ data DDec = DLetDec DLetDec
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
           | DDataFamilyD Name [DTyVarBndrUnit] (Maybe DKind)
-          | DDataInstD NewOrData DCxt (Maybe [DTyVarBndrUnit]) DType (Maybe DKind)
+            -- | A data family instance declaration. Note that desugaring
+            -- upholds the following properties regarding the 'DataFlavor'
+            -- field:
+            --
+            -- * If the 'DataFlavor' is 'NewType', then there will be exactly
+            --   one 'DCon'.
+            --
+            -- * The 'DataFlavor' will never be 'TypeData', as GHC does not
+            --   permit combining data families with @type data@.
+          | DDataInstD DataFlavor DCxt (Maybe [DTyVarBndrUnit]) DType (Maybe DKind)
                        [DCon] [DDerivClause]
           | DTySynInstD DTySynEqn
           | DRoleAnnotD Name [Role]
