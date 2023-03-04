@@ -1,8 +1,8 @@
 `th-desugar` release notes
 ==========================
 
-next [????.??.??]
------------------
+Version 1.15 [????.??.??]
+-------------------------
 * Support GHC 9.6.
 * The `NewOrData` data type has been renamed to `DataFlavor` and extended to
   support `type data` declarations:
