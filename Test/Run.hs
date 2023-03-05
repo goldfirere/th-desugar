@@ -329,10 +329,11 @@ test_getDataD_kind_sig =
             let type_kind     = DConT typeKindName
                 data_kind_sig = DArrowT `DAppT` type_kind `DAppT`
                                   (DArrowT `DAppT` type_kind `DAppT` type_kind)
-            (tvbs, _) <- withLocalDeclarations
-                           [decToTH (DDataD Data [] data_name [DPlainTV a ()]
-                                            (Just data_kind_sig) [] [])]
-                           (getDataD "th-desugar: Impossible" data_name)
+            (_, tvbs, _) <-
+              withLocalDeclarations
+                [decToTH (DDataD Data [] data_name [DPlainTV a ()]
+                                 (Just data_kind_sig) [] [])]
+                (getDataD "th-desugar: Impossible" data_name)
             [| $(Syn.lift (length tvbs)) |])
 
 test_t100 :: Bool

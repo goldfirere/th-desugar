@@ -48,12 +48,13 @@ import Data.Maybe
 import qualified Data.Set as Set
 import Data.Set (Set)
 
-import Language.Haskell.TH.Datatype
+import Language.Haskell.TH.Datatype ( freeVariables, freeVariablesWellScoped
+                                    , quantifyType, resolveTypeSynonyms )
 import Language.Haskell.TH.Datatype.TyVarBndr
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax hiding ( lift )
 
-import Language.Haskell.TH.Desugar.Util
+import Language.Haskell.TH.Desugar.Util as Util
 
 -- | Like @reify@ from Template Haskell, but looks also in any not-yet-typechecked
 -- declarations. To establish this list of not-yet-typechecked declarations,
@@ -93,29 +94,30 @@ reifyFail name =
 -- Utilities
 ---------------------------------
 
--- | Extract the @TyVarBndr@s and constructors given the @Name@ of a type
+-- | Extract the 'DataFlavor', 'TyVarBndr's and constructors given the 'Name'
+-- of a type.
 getDataD :: DsMonad q
          => String       -- ^ Print this out on failure
          -> Name         -- ^ Name of the datatype (@data@ or @newtype@) of interest
-         -> q ([TyVarBndrUnit], [Con])
+         -> q (DataFlavor, [TyVarBndrUnit], [Con])
 getDataD err name = do
   info <- reifyWithLocals name
   dec <- case info of
            TyConI dec -> return dec
            _ -> badDeclaration
   case dec of
-    DataD _cxt _name tvbs mk cons _derivings -> go tvbs mk cons
-    NewtypeD _cxt _name tvbs mk con _derivings -> go tvbs mk [con]
+    DataD _cxt _name tvbs mk cons _derivings -> go Data tvbs mk cons
+    NewtypeD _cxt _name tvbs mk con _derivings -> go Newtype tvbs mk [con]
 #if __GLASGOW_HASKELL__ >= 906
-    TypeDataD _name tvbs mk cons -> go tvbs mk cons
+    TypeDataD _name tvbs mk cons -> go Util.TypeData tvbs mk cons
 #endif
     _ -> badDeclaration
   where
-    go tvbs mk cons = do
+    go df tvbs mk cons = do
       let k = fromMaybe (ConT typeKindName) mk
       extra_tvbs <- mkExtraKindBinders k
       let all_tvbs = tvbs ++ extra_tvbs
-      return (all_tvbs, cons)
+      return (df, all_tvbs, cons)
 
     badDeclaration =
           fail $ "The name (" ++ (show name) ++ ") refers to something " ++
@@ -162,7 +164,7 @@ dataConNameToCon con_name = do
   -- we need to get the field ordering from the constructor. We must reify
   -- the constructor to get the tycon, and then reify the tycon to get the `Con`s
   type_name <- dataConNameToDataName con_name
-  (_, cons) <- getDataD "This seems to be an error in GHC." type_name
+  (_, _, cons) <- getDataD "This seems to be an error in GHC." type_name
   let m_con = List.find (any (con_name ==) . get_con_name) cons
   case m_con of
     Just con -> return con

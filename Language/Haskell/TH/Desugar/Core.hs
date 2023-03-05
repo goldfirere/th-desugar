@@ -173,7 +173,7 @@ dsExp (RecUpdE exp field_exps) = do
                     VarI _name ty _m_dec -> extract_first_arg ty
                     _ -> impossible "Record update with an invalid field name."
   type_name <- extract_type_name applied_type
-  (_, cons) <- getDataD "This seems to be an error in GHC." type_name
+  (_, _, cons) <- getDataD "This seems to be an error in GHC." type_name
   let filtered_cons = filter_cons_with_names cons (map fst field_exps)
   exp' <- dsExp exp
   matches <- mapM con_to_dmatch filtered_cons
@@ -1497,7 +1497,7 @@ isUniversalPattern (DLitP {}) = return False
 isUniversalPattern (DVarP {}) = return True
 isUniversalPattern (DConP con_name _ pats) = do
   data_name <- dataConNameToDataName con_name
-  (_tvbs, cons) <- getDataD "Internal error." data_name
+  (_df, _tvbs, cons) <- getDataD "Internal error." data_name
   if length cons == 1
   then fmap and $ mapM isUniversalPattern pats
   else return False

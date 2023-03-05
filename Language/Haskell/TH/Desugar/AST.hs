@@ -19,6 +19,8 @@ import Language.Haskell.TH.Syntax (Lift)
 import Language.Haskell.TH.Datatype.TyVarBndr (Specificity(..))
 #endif
 
+import Language.Haskell.TH.Desugar.Util (DataFlavor)
+
 -- | Corresponds to TH's @Exp@ type. Note that @DLamE@ takes names, not patterns.
 data DExp = DVarE Name
           | DConE Name
@@ -104,14 +106,6 @@ data DLetDec = DFunD Name [DClause]
              | DInfixD Fixity Name
              | DPragmaD DPragma
              deriving (Eq, Show, Data, Generic, Lift)
-
--- | Is a data type or data instance declaration a @newtype@ declaration, a
--- @data@ declaration, or a @type data@ declaration?
-data DataFlavor
-  = Newtype  -- ^ @newtype@
-  | Data     -- ^ @data@
-  | TypeData -- ^ @type data@
-  deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
