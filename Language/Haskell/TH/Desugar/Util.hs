@@ -6,9 +6,9 @@ rae@cs.brynmawr.edu
 Utility functions for th-desugar package.
 -}
 
-{-# LANGUAGE CPP, DeriveDataTypeable, RankNTypes, ScopedTypeVariables,
-             TupleSections, AllowAmbiguousTypes, TemplateHaskellQuotes,
-             TypeApplications #-}
+{-# LANGUAGE CPP, DeriveDataTypeable, DeriveGeneric, DeriveLift, RankNTypes,
+             ScopedTypeVariables, TupleSections, AllowAmbiguousTypes,
+             TemplateHaskellQuotes, TypeApplications #-}
 
 module Language.Haskell.TH.Desugar.Util (
   newUniqueName,
@@ -29,7 +29,8 @@ module Language.Haskell.TH.Desugar.Util (
   unSigType, unfoldType, ForallTelescope(..), FunArgs(..), VisFunArg(..),
   filterVisFunArgs, ravelType, unravelType,
   TypeArg(..), applyType, filterTANormals, probablyWrongUnTypeArg,
-  bindIP
+  bindIP,
+  DataFlavor(..)
   ) where
 
 import Prelude hiding (mapM, foldl, concatMap, any)
@@ -43,10 +44,11 @@ import Language.Haskell.TH.Syntax
 import qualified Control.Monad.Fail as Fail
 import Data.Foldable
 import qualified Data.Kind as Kind
-import Data.Generics hiding ( Fixity )
+import Data.Generics ( Data, Typeable, everything, extM, gmapM, mkQ )
 import Data.Traversable
 import Data.Maybe
 import GHC.Classes ( IP )
+import GHC.Generics ( Generic )
 import Unsafe.Coerce ( unsafeCoerce )
 
 ----------------------------------------
@@ -535,3 +537,11 @@ starKindName = ''(Kind.*)
 uniStarKindName :: Name
 uniStarKindName = ''(Kind.★)
 #endif
+
+-- | Is a data type or data instance declaration a @newtype@ declaration, a
+-- @data@ declaration, or a @type data@ declaration?
+data DataFlavor
+  = Newtype  -- ^ @newtype@
+  | Data     -- ^ @data@
+  | TypeData -- ^ @type data@
+  deriving (Eq, Show, Data, Generic, Lift)

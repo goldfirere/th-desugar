@@ -20,6 +20,12 @@ Version 1.15 [????.??.??]
     `Bang NoSourceUnpackedness NoSourceStrictness`.
   * A `DDataInstD` can have a `DataFlavor` of `NewType` or `Data`, but not
     `TypeData`.
+* The type of `getDataD` has been changed to also include a `DataFlavor`:
+
+  ```diff
+  -getDataD :: DsMonad q => String -> Name -> q ([TyVarBndrUnit], [Con])
+  +getDataD :: DsMonad q => String -> Name -> q (DataFlavor, [TyVarBndrUnit], [Con])
+  ```
 * Local reification can now reify the types of pattern synonym record
   selectors.
 * Fix a bug in which the types of locally reified GADT record selectors would
