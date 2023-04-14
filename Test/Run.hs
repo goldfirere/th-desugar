@@ -49,7 +49,7 @@ import Language.Haskell.TH.Desugar
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.Expand  ( expandUnsoundly )
 import Language.Haskell.TH
-import qualified Language.Haskell.TH.Syntax as Syn ( NameSpace(..), lift )
+import qualified Language.Haskell.TH.Syntax as Syn
 
 import Control.Exception ( ErrorCall )
 import Control.Monad
