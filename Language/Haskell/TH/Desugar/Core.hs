@@ -262,6 +262,10 @@ dsExp (LamCasesE clauses) = do
   return $ DLamE args $ DCaseE (mkUnboxedTupleDExp (map DVarE args))
                                (map dClauseToUnboxedTupleMatch clauses')
 #endif
+#if __GLASGOW_HASKELL__ >= 907
+dsExp (TypedBracketE exp) = DTypedBracketE <$> dsExp exp
+dsExp (TypedSpliceE exp)  = DTypedSpliceE <$> dsExp exp
+#endif
 
 -- | Convert a 'DClause' to a 'DMatch' by bundling all of the clause's patterns
 -- into a match on a single unboxed tuple pattern. That is, convert this:
