@@ -35,6 +35,8 @@ data DExp = DVarE Name
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
           | DStaticE DExp
+          | DTypedBracketE DExp
+          | DTypedSpliceE DExp
           deriving (Eq, Show, Data, Generic, Lift)
 
 

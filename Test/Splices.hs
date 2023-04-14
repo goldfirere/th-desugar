@@ -379,6 +379,14 @@ test56_lambda_cases =
              _        _        -> "") (Just "Hello") (Just "World") |]
 #endif
 
+#if __GLASGOW_HASKELL__ >= 907
+test57_typed_th_bracket =
+  typedBracketE [| 'x' |]
+
+test58_typed_th_splice =
+  typedSpliceE (typedBracketE [| 'y' |])
+#endif
+
 type family TFExpand x
 type instance TFExpand Int = Bool
 type instance TFExpand (Maybe a) = [a]
@@ -825,5 +833,9 @@ test_exprs = [ test1_sections
 #if __GLASGOW_HASKELL__ >= 903
              , test55_opaque_pragma
              , test56_lambda_cases
+#endif
+#if __GLASGOW_HASKELL__ >= 907
+             , test57_typed_th_bracket
+             , test58_typed_th_splice
 #endif
              ]

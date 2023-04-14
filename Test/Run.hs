@@ -171,6 +171,10 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "opaque_pragma" ~: $test55_opaque_pragma @=? $(dsSplice test55_opaque_pragma)
              , "lambda_cases" ~: $test56_lambda_cases @=? $(dsSplice test56_lambda_cases)
 #endif
+#if __GLASGOW_HASKELL__ >= 907
+             , "typed_th_bracket" ~: $$($test57_typed_th_bracket) @=? $$($(dsSplice test57_typed_th_bracket))
+             , "typed_th_splice" ~: $test58_typed_th_splice @=? $(dsSplice test58_typed_th_splice)
+#endif
              ]
 
 test35a = $test35_expand

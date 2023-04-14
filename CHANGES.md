@@ -35,6 +35,9 @@ Version 1.16 [????.??.??]
     convert a `DTyVarBndrVis` to a `DTypeArg`. `dTyVarBndrVisToDTypeArg` omits
     kind signatures when converting `DKindedTV`s, while
     `dTyVarBndrVisToDTypeArgWithSig` preserves kind signatures.
+* `th-desugar` now supports generating typed Template Haskell quotes and splices
+  via the new `DTypedBracketE` and `DTypedSpliceE` constructors of `DExp`,
+  respectively.
 * The `tupleNameDegree_maybe` function now returns:
   * `Just 0` when the argument is `''Unit`
   * `Just 1` when the argument is `''Solo` or `'MkSolo`

@@ -63,6 +63,15 @@ expToTH (DAppTypeE exp ty)   = AppTypeE (expToTH exp) (typeToTH ty)
 -- type applications, we will simply drop the applied type.
 expToTH (DAppTypeE exp _)    = expToTH exp
 #endif
+#if __GLASGOW_HASKELL__ >= 907
+expToTH (DTypedBracketE exp) = TypedBracketE (expToTH exp)
+expToTH (DTypedSpliceE exp)  = TypedSpliceE (expToTH exp)
+#else
+expToTH (DTypedBracketE {})  =
+  error "Typed Template Haskell brackets supported only in GHC 9.8+"
+expToTH (DTypedSpliceE {})   =
+  error "Typed Template Haskell splices supported only in GHC 9.8+"
+#endif
 
 matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []

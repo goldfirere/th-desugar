@@ -55,6 +55,8 @@ scExp (DCaseE scrut matches)
 scExp (DLetE decs body) = DLetE <$> mapM scLetDec decs <*> scExp body
 scExp (DSigE exp ty) = DSigE <$> scExp exp <*> pure ty
 scExp (DAppTypeE exp ty) = DAppTypeE <$> scExp exp <*> pure ty
+scExp (DTypedBracketE exp) = DTypedBracketE <$> scExp exp
+scExp (DTypedSpliceE exp) = DTypedSpliceE <$> scExp exp
 scExp e@(DVarE {}) = return e
 scExp e@(DConE {}) = return e
 scExp e@(DLitE {}) = return e
