@@ -24,6 +24,7 @@ Version 1.16 [????.??.??]
   `TyVarBndrVis` to adapt your existing `th-desugar` code. (Note that `TyVarBndr
   flag` is an instance of `Functor`, so this can be accomplished with `fmap`.)
 * TODO RGS: `FldName` changes
+* TODO RGS: typed TH changes
 * The `tupleNameDegree_maybe` function now returns:
   * `Just 0` when the argument is `''Unit`
   * `Just 1` when the argument is `''Solo` or `'MkSolo`
