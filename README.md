@@ -31,6 +31,46 @@ report.
 Known limitations
 -----------------
 
+## Desugaring depends on language extensions of use sites
+
+Suppose you quote some Template Haskell declarations in module `A`:
+
+```hs
+{-# LANGUAGE ... #-}
+module A where
+
+decs :: Q [Dec]
+decs = [d| ... |]
+```
+
+And later desugar the declarations with `th-desugar` in module `B`:
+
+```hs
+{-# LANGUAGE ... #-}
+module B where
+
+import A (decs)
+import Language.Haskell.TH.Desugar (dsDecs)
+
+$(do desugaredDecs <- dsDecs decs
+     ...)
+```
+
+There are some situations where `th-desugar`'s desugaring depends on which
+language extensions are enabled, such as:
+
+* `MonadFailDesugaring` (for desugaring partial pattern matches in `do`
+  notation)
+* `NoFieldSelectors` (for determining if a record field can be reified as a
+  field selector with `lookupValueNameWithLocals`)
+
+Somewhat counterintuitively, `th-desugar` will consult the language extensions
+in module `B` (the site where the `decs` are used) for this process, not module
+`A` (where the `decs` were defined). This is really a Template Haskell
+limitation, since Template Haskell does not offer any way to reify which
+language extensions were enabled at the time the declarations were defined. As a
+result, `th-desugar` can only check for language extensions at use sites.
+
 ## Limited support for kind inference
 
 `th-desugar` sometimes has to construct types for certain Haskell entities.

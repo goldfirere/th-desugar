@@ -56,6 +56,10 @@ import Language.Haskell.TH.Syntax hiding ( lift )
 
 import Language.Haskell.TH.Desugar.Util as Util
 
+#if __GLASGOW_HASKELL__ >= 907
+import qualified Language.Haskell.TH as LangExt (Extension(..))
+#endif
+
 -- | Like @reify@ from Template Haskell, but looks also in any not-yet-typechecked
 -- declarations. To establish this list of not-yet-typechecked declarations,
 -- use 'withLocalDeclarations'. Returns 'Nothing' if reification fails.
@@ -1251,13 +1255,21 @@ lookupNameWithLocals ns s = do
         TcClsName -> Just n
         VarName   -> Nothing
         DataName  -> Nothing
+#if __GLASGOW_HASKELL__ >= 907
+        FldName{} -> Nothing
+#endif
 
     find_value_name (n, info) = do
       name_space <- lookupInfoNameSpace info
-      pure $ case name_space of
-        VarName   -> Just n
-        DataName  -> Just n
-        TcClsName -> Nothing
+      case name_space of
+        VarName   -> pure $ Just n
+        DataName  -> pure $ Just n
+        TcClsName -> pure Nothing
+#if __GLASGOW_HASKELL__ >= 907
+        FldName{} -> do
+          fieldSels <- qIsExtEnabled LangExt.FieldSelectors
+          pure $ if fieldSels then Just n else Nothing
+#endif
 
 -- | Like TH's @lookupValueName@, but if this name is not bound, then we assume
 -- it is declared in the current module.
@@ -1308,7 +1320,36 @@ lookupInfoNameSpace info =
     TyVarI{}     -> pure TcClsName
 
     ClassOpI{}   -> pure VarName
+#if __GLASGOW_HASKELL__ >= 907
+    -- A VarI might correspond to a top-level value (i.e., a VarName) or a
+    -- record field (i.e., a FldName). The only way to distinguish them is to
+    -- check if the VarI's Name and Type correspond to a data type with a
+    -- corresponding record field Name.
+    VarI n ty _  -> do
+      -- First, check to see if `ty` is of the form `D -> T`, where `D` is
+      -- headed by a data type. We can safely ignore `forall`s here by using
+      -- `filterVisFunArgs`, as we only care about the first visible argument.
+      let (ty_args, _ty_res) = unravelType ty
+          ty_vis_args = filterVisFunArgs ty_args
+      case ty_vis_args of
+        [VisFAAnon ty_anon_arg]
+          | (ConT parent_name, _) <- unfoldType ty_anon_arg
+          -> -- If we find the data type constructor `parent_name`, then check
+             -- if one of the data constructors for `parent_name` contains a
+             -- record field named `n`.
+             do mb_parent_info <- reifyWithLocals_maybe parent_name
+                pure $ case mb_parent_info of
+                  Just (TyConI (DataD _cxt _name _tvbs _mk cons _derivings))
+                    |  isJust $ findRecSelector n cons
+                    -> FldName $ nameBase parent_name
+                  Just (TyConI (NewtypeD _cxt _name _tvbs _mk con _derivings))
+                    |  isJust $ findRecSelector n [con]
+                    -> FldName $ nameBase parent_name
+                  _ -> VarName
+        _ -> pure VarName
+#else
     VarI{}       -> pure VarName
+#endif
 
     DataConI _dc_name _dc_ty parent_name -> do
       -- DataConI usually refers to a value-level Name, but it could also refer

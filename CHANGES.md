@@ -38,6 +38,12 @@ Version 1.16 [????.??.??]
 * `th-desugar` now supports generating typed Template Haskell quotes and splices
   via the new `DTypedBracketE` and `DTypedSpliceE` constructors of `DExp`,
   respectively.
+* The `lookupValueNameWithLocals` function will no longer reify field selectors
+  when the `NoFieldSelectors` language extension is set, mirroring the behavior
+  of the `lookupValueName` function in `template-haskell`. Note that this will
+  only happen when using GHC 9.8 or later, as previous versions of GHC do not
+  equip Template Haskell with enough information to conclude whether a value is
+  a record field or not.
 * The `tupleNameDegree_maybe` function now returns:
   * `Just 0` when the argument is `''Unit`
   * `Just 1` when the argument is `''Solo` or `'MkSolo`
