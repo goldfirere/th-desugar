@@ -49,6 +49,7 @@ import Dec ( RecordSel )
 import ReifyTypeCUSKs
 import ReifyTypeSigs
 import T159Decs ( t159A, t159B )
+import T183 ( t183 )
 import qualified Language.Haskell.TH.Datatype.TyVarBndr as THAbs
 import Language.Haskell.TH.Desugar
 import qualified Language.Haskell.TH.Desugar.OSet as OS
@@ -896,6 +897,9 @@ main = hspec $ do
 #endif
 
     it "locally reifies GADT record selector types with explicit foralls correctly" $ test_t171
+
+    it "doesn't reify a field selector with lookupValueNameWithLocals when NoFieldSelectors is set" $
+      t183 == Nothing
 
     zipWithM (\b n -> it ("recognizes tuple names with tupleDegree_maybe correctly " ++ show n) b)
       test_t187 [1..]
