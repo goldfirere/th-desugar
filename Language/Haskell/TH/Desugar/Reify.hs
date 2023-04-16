@@ -1253,6 +1253,9 @@ lookupNameWithLocals ns s = do
         TcClsName -> Just n
         VarName   -> Nothing
         DataName  -> Nothing
+#if __GLASGOW_HASKELL__ >= 907
+        FldName{} -> Nothing
+#endif
 
     find_value_name (n, info) = do
       name_space <- lookupInfoNameSpace info
@@ -1260,6 +1263,9 @@ lookupNameWithLocals ns s = do
         VarName   -> Just n
         DataName  -> Just n
         TcClsName -> Nothing
+#if __GLASGOW_HASKELL__ >= 907
+        FldName{} -> Just n
+#endif
 
 -- | Like TH's @lookupValueName@, but if this name is not bound, then we assume
 -- it is declared in the current module.
@@ -1310,7 +1316,26 @@ lookupInfoNameSpace info =
     TyVarI{}     -> pure TcClsName
 
     ClassOpI{}   -> pure VarName
+#if __GLASGOW_HASKELL__ >= 907
+    VarI n ty _  -> do
+      let (ty_args, _ty_res) = unravelType ty
+          ty_vis_args = filterVisFunArgs ty_args
+      case ty_vis_args of
+        [VisFAAnon ty_anon_arg]
+          | (ConT parent_name, _) <- unfoldType ty_anon_arg
+          -> do mb_parent_info <- reifyWithLocals_maybe parent_name
+                pure $ case mb_parent_info of
+                  Just (TyConI (DataD _cxt _name _tvbs _mk cons _derivings))
+                    |  isJust $ findRecSelector n cons
+                    -> FldName $ nameBase parent_name
+                  Just (TyConI (NewtypeD _cxt _name _tvbs _mk con _derivings))
+                    |  isJust $ findRecSelector n [con]
+                    -> FldName $ nameBase parent_name
+                  _ -> VarName
+        _ -> pure VarName
+#else
     VarI{}       -> pure VarName
+#endif
 
     DataConI _dc_name _dc_ty parent_name -> do
       -- DataConI usually refers to a value-level Name, but it could also refer
