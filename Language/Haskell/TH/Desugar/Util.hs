@@ -310,6 +310,24 @@ unSigPred = unSigType
 -- @
 -- ('ConT' ''Proxy, ['TyArg' ('ConT' ''Type), 'TANormal' ('ConT' ''Char)])
 -- @
+--
+-- This process forgets about infix application, so both of these types:
+--
+-- @
+-- Int :++: Int
+-- (:++:) Int Int
+-- @
+--
+-- will be unfolded to this:
+--
+-- @
+-- ('ConT' ''(:+:), ['TANormal' ('ConT' ''Int), 'TANormal' ('ConT' ''Int)])
+-- @
+--
+-- This function should only be used after all 'UInfixT' and 'PromotedUInfixT'
+-- types have been resolved (e.g., via @th-abstraction@'s
+-- @<https://hackage.haskell.org/package/th-abstraction-0.5.0.0/docs/Language-Haskell-TH-Datatype.html#v:resolveInfixT resolveInfixT>@
+-- function).
 unfoldType :: Type -> (Type, [TypeArg])
 unfoldType = go []
   where
@@ -318,8 +336,12 @@ unfoldType = go []
     go acc (AppT ty1 ty2)             = go (TANormal ty2:acc) ty1
     go acc (SigT ty _)                = go acc ty
     go acc (ParensT ty)               = go acc ty
+    go acc (InfixT ty1 n ty2)         = go (TANormal ty1:TANormal ty2:acc) (ConT n)
 #if __GLASGOW_HASKELL__ >= 807
     go acc (AppKindT ty ki)           = go (TyArg ki:acc) ty
+#endif
+#if __GLASGOW_HASKELL__ >= 904
+    go acc (PromotedInfixT ty1 n ty2) = go (TANormal ty1:TANormal ty2:acc) (PromotedT n)
 #endif
     go acc ty                         = (ty, acc)
 

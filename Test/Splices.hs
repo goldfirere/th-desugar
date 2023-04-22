@@ -672,6 +672,10 @@ reifyDecs = [d|
   type data R38 a where
     R39 :: forall a. a -> R38 a
 #endif
+
+  -- A regression test for #184
+  data family x ^^^ y
+  data instance x ^^^ y = R40 x y
   |]
 
 reifyDecsNames :: [Name]
@@ -690,6 +694,7 @@ reifyDecsNames = map mkName
 #if __GLASGOW_HASKELL__ >= 906
   , "R36", "R37", "R38", "R39"
 #endif
+  , "R40"
   ]
 
 simplCaseTests :: [Q Exp]
