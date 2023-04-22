@@ -830,8 +830,8 @@ main = hspec $ do
                mapM (\ t -> withLocalDeclarations [] (dsType t >>= expandType >>= return . typeToTH)) >>=
               Syn.lift . map pprint)
 
-    zipWith3M (\a b n -> it ("reifies local definition " ++ show n) $ a == b)
-      local_reifications normal_reifications [1..]
+    zipWith3M (\a b nm -> it ("reifies local definition " ++ nameBase nm) $ a == b)
+      local_reifications normal_reifications reifyDecsNames
 
     zipWithM (\b n -> it ("works on simplCase test " ++ show n) b) simplCase [1..]
 
