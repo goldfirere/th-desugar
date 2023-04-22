@@ -1,6 +1,11 @@
 `th-desugar` release notes
 ==========================
 
+Version next [????.??.??]
+-------------------------
+* Fix a bug in which infix data family declaration would mistakenly be rejected
+  when reified locally.
+
 Version 1.15 [2023.03.12]
 -------------------------
 * Support GHC 9.6.
