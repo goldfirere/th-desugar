@@ -314,14 +314,14 @@ unfoldType :: Type -> (Type, [TypeArg])
 unfoldType = go []
   where
     go :: [TypeArg] -> Type -> (Type, [TypeArg])
-    go acc (ForallT _ _ ty) = go acc ty
-    go acc (AppT ty1 ty2)   = go (TANormal ty2:acc) ty1
-    go acc (SigT ty _)      = go acc ty
-    go acc (ParensT ty)     = go acc ty
+    go acc (ForallT _ _ ty)           = go acc ty
+    go acc (AppT ty1 ty2)             = go (TANormal ty2:acc) ty1
+    go acc (SigT ty _)                = go acc ty
+    go acc (ParensT ty)               = go acc ty
 #if __GLASGOW_HASKELL__ >= 807
-    go acc (AppKindT ty ki) = go (TyArg ki:acc) ty
+    go acc (AppKindT ty ki)           = go (TyArg ki:acc) ty
 #endif
-    go acc ty               = (ty, acc)
+    go acc ty                         = (ty, acc)
 
 -- | An argument to a type, either a normal type ('TANormal') or a visible
 -- kind application ('TyArg').
