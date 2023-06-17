@@ -6,7 +6,7 @@ rae@cs.brynmawr.edu
 
 {-# LANGUAGE CPP, MultiParamTypeClasses, FunctionalDependencies,
              TypeSynonymInstances, FlexibleInstances, LambdaCase,
-             ScopedTypeVariables #-}
+             ScopedTypeVariables, PatternSynonyms #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -27,6 +27,14 @@ module Language.Haskell.TH.Desugar (
   DExp(..), DLetDec(..), DPat(..),
   DType(..), DForallTelescope(..), DKind, DCxt, DPred,
   DTyVarBndr(..), DTyVarBndrSpec, DTyVarBndrUnit, Specificity(..),
+  DTyVarBndrVis,
+#if __GLASGOW_HASKELL__ >= 907
+  BndrVis(..),
+#else
+  BndrVis,
+  pattern BndrReq,
+  pattern BndrInvis,
+#endif
   DMatch(..), DClause(..), DDec(..),
   DDerivClause(..), DDerivStrategy(..), DPatSynDir(..), DPatSynType,
   Overlap(..), PatSynArgs(..), DataFlavor(..),
@@ -43,7 +51,7 @@ module Language.Haskell.TH.Desugar (
   -- * Main desugaring functions
   dsExp, dsDecs, dsType, dsInfo,
   dsPatOverExp, dsPatsOverExp, dsPatX,
-  dsLetDecs, dsTvb, dsTvbSpec, dsTvbUnit, dsCxt,
+  dsLetDecs, dsTvb, dsTvbSpec, dsTvbUnit, dsTvbVis, dsCxt,
   dsCon, dsForeign, dsPragma, dsRuleBndr,
 
   -- ** Secondary desugaring functions
@@ -107,10 +115,14 @@ module Language.Haskell.TH.Desugar (
   filterDVisFunArgs, ravelDType, unravelDType,
 
   -- ** 'TypeArg'
-  TypeArg(..), applyType, filterTANormals, unfoldType,
+  TypeArg(..), applyType, filterTANormals,
+  tyVarBndrVisToTypeArg, tyVarBndrVisToTypeArgWithSig,
+  unfoldType,
 
   -- ** 'DTypeArg'
-  DTypeArg(..), applyDType, filterDTANormals, unfoldDType,
+  DTypeArg(..), applyDType, filterDTANormals,
+  dTyVarBndrVisToDTypeArg, dTyVarBndrVisToDTypeArgWithSig,
+  unfoldDType,
 
   -- ** Extracting bound names
   extractBoundNamesStmt, extractBoundNamesDec, extractBoundNamesPat
@@ -372,16 +384,18 @@ getRecordSelectors cons = merge_let_decs `fmap` concatMapM get_record_sels cons
 -- are fresh type variable names.
 --
 -- This expands kind synonyms if necessary.
-mkExtraDKindBinders :: forall q. DsMonad q => DKind -> q [DTyVarBndrUnit]
+mkExtraDKindBinders :: forall q. DsMonad q => DKind -> q [DTyVarBndrVis]
 mkExtraDKindBinders k = do
   k' <- expandType k
   let (fun_args, _) = unravelDType k'
       vis_fun_args  = filterDVisFunArgs fun_args
   mapM mk_tvb vis_fun_args
   where
-    mk_tvb :: DVisFunArg -> q DTyVarBndrUnit
-    mk_tvb (DVisFADep tvb) = return tvb
-    mk_tvb (DVisFAAnon ki) = DKindedTV <$> qNewName "a" <*> return () <*> return ki
+    mk_tvb :: DVisFunArg -> q (DTyVarBndrVis)
+    mk_tvb (DVisFADep tvb) = return (BndrReq <$ tvb)
+    mk_tvb (DVisFAAnon ki) = do
+      name <- qNewName "a"
+      pure $ DKindedTV name BndrReq ki
 
 {- $localReification
 

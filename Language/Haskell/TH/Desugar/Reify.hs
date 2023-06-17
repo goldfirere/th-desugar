@@ -99,7 +99,7 @@ reifyFail name =
 getDataD :: DsMonad q
          => String       -- ^ Print this out on failure
          -> Name         -- ^ Name of the datatype (@data@ or @newtype@) of interest
-         -> q (DataFlavor, [TyVarBndrUnit], [Con])
+         -> q (DataFlavor, [TyVarBndrVis], [Con])
 getDataD err name = do
   info <- reifyWithLocals name
   dec <- case info of
@@ -137,16 +137,18 @@ getDataD err name = do
 -- are fresh type variable names.
 --
 -- This expands kind synonyms if necessary.
-mkExtraKindBinders :: forall q. Quasi q => Kind -> q [TyVarBndrUnit]
+mkExtraKindBinders :: forall q. Quasi q => Kind -> q [TyVarBndrVis]
 mkExtraKindBinders k = do
   k' <- runQ $ resolveTypeSynonyms k
   let (fun_args, _) = unravelType k'
       vis_fun_args  = filterVisFunArgs fun_args
   mapM mk_tvb vis_fun_args
   where
-    mk_tvb :: VisFunArg -> q TyVarBndrUnit
-    mk_tvb (VisFADep tvb) = return tvb
-    mk_tvb (VisFAAnon ki) = kindedTV <$> qNewName "a" <*> return ki
+    mk_tvb :: VisFunArg -> q TyVarBndrVis
+    mk_tvb (VisFADep tvb) = return $ mapTVFlag (const BndrReq) tvb
+    mk_tvb (VisFAAnon ki) = do
+      name <- qNewName "a"
+      pure $ kindedTVFlag name BndrReq ki
 
 -- | From the name of a data constructor, retrive the datatype definition it
 -- is a part of.
@@ -273,10 +275,10 @@ reifyInDec n _ dec@(TypeDataD n' _ _ _) | n `nameMatches` n' = Just (n', TyConI 
 #endif
 
 reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
+  | Just info <- maybeReifyCon n decs ty_name (map tyVarBndrVisToTypeArgWithSig tvbs) cons
   = Just info
 reifyInDec n decs (NewtypeD _ ty_name tvbs _mk con _)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) [con]
+  | Just info <- maybeReifyCon n decs ty_name (map tyVarBndrVisToTypeArgWithSig tvbs) [con]
   = Just info
 reifyInDec n _decs (ClassD _ ty_name tvbs _ sub_decs)
   | Just (n', ty) <- findType n sub_decs
@@ -318,7 +320,7 @@ reifyInDec n decs (NewtypeInstD _ ty_name tys _ con _)
 #endif
 #if __GLASGOW_HASKELL__ >= 906
 reifyInDec n decs (TypeDataD ty_name tvbs _mk cons)
-  | Just info <- maybeReifyCon n decs ty_name (map tvbToTANormalWithSig tvbs) cons
+  | Just info <- maybeReifyCon n decs ty_name (map tyVarBndrVisToTypeArgWithSig tvbs) cons
   = Just info
 #endif
 
@@ -734,10 +736,10 @@ quantifyClassDecMethods dec = dec
 -- a single class method, like `method`, then one needs the class context to
 -- appear in the reified type, so `True` is appropriate.
 quantifyClassMethodType
-  :: Name            -- ^ The class name.
-  -> [TyVarBndrUnit] -- ^ The class's type variable binders.
-  -> Bool            -- ^ If 'True', prepend a class predicate.
-  -> Type            -- ^ The method type.
+  :: Name           -- ^ The class name.
+  -> [TyVarBndrVis] -- ^ The class's type variable binders.
+  -> Bool           -- ^ If 'True', prepend a class predicate.
+  -> Type           -- ^ The method type.
   -> Type
 quantifyClassMethodType cls_name cls_tvbs prepend meth_ty =
   add_cls_cxt quantified_meth_ty
@@ -748,7 +750,7 @@ quantifyClassMethodType cls_name cls_tvbs prepend meth_ty =
       | otherwise = id
 
     cls_cxt :: Cxt
-    cls_cxt = [foldl AppT (ConT cls_name) (map tvbToType cls_tvbs)]
+    cls_cxt = [applyType (ConT cls_name) (map tyVarBndrVisToTypeArg cls_tvbs)]
 
     quantified_meth_ty :: Type
     quantified_meth_ty
@@ -1044,17 +1046,18 @@ find_assoc_type_kind n cls_tvb_kind_map sub_dec =
                     (default_res_ki $ res_sig_to_kind res_sig)
     _ -> Nothing
   where
-    ascribe_tf_tvb_kind :: TyVarBndrUnit -> TyVarBndrUnit
+    ascribe_tf_tvb_kind :: TyVarBndrVis -> TyVarBndrVis
     ascribe_tf_tvb_kind tvb =
-      elimTV (\tvn -> kindedTV tvn $ fromMaybe StarT $ Map.lookup tvn cls_tvb_kind_map)
-             (\_ _ -> tvb)
-             tvb
+      elimTVFlag
+        (\tvn flag -> kindedTVFlag tvn flag $ fromMaybe StarT $ Map.lookup tvn cls_tvb_kind_map)
+        (\_ _ _ -> tvb)
+        tvb
 
 -- Data types have CUSKs when:
 --
 -- 1. All of their type variables have explicit kinds.
 -- 2. All kind variables in the result kind are explicitly quantified.
-datatype_kind :: [TyVarBndrUnit] -> Maybe Kind -> Maybe Kind
+datatype_kind :: [TyVarBndrVis] -> Maybe Kind -> Maybe Kind
 datatype_kind tvbs m_ki =
   whenAlt (all tvb_is_kinded tvbs && ki_fvs_are_bound) $
   build_kind tvbs (default_res_ki m_ki)
@@ -1066,14 +1069,14 @@ datatype_kind tvbs m_ki =
       in ki_fvs `Set.isSubsetOf` tvb_vars
 
 -- Classes have CUSKs when all of their type variables have explicit kinds.
-class_kind :: [TyVarBndrUnit] -> Maybe Kind
+class_kind :: [TyVarBndrVis] -> Maybe Kind
 class_kind tvbs = whenAlt (all tvb_is_kinded tvbs) $
                   build_kind tvbs ConstraintT
 
 -- Open type families and data families always have CUSKs. Type variables
 -- without explicit kinds default to Type, as does the return kind if it
 -- is not specified.
-open_ty_fam_kind :: [TyVarBndrUnit] -> Maybe Kind -> Maybe Kind
+open_ty_fam_kind :: [TyVarBndrVis] -> Maybe Kind -> Maybe Kind
 open_ty_fam_kind tvbs m_ki =
   build_kind (map default_tvb tvbs) (default_res_ki m_ki)
 
@@ -1081,7 +1084,7 @@ open_ty_fam_kind tvbs m_ki =
 --
 -- 1. All of their type variables have explicit kinds.
 -- 2. An explicit return kind is supplied.
-closed_ty_fam_kind :: [TyVarBndrUnit] -> Maybe Kind -> Maybe Kind
+closed_ty_fam_kind :: [TyVarBndrVis] -> Maybe Kind -> Maybe Kind
 closed_ty_fam_kind tvbs m_ki =
   case m_ki of
     Just ki -> whenAlt (all tvb_is_kinded tvbs) $
@@ -1092,7 +1095,7 @@ closed_ty_fam_kind tvbs m_ki =
 --
 -- 1. All of their type variables have explicit kinds.
 -- 2. The right-hand-side type is annotated with an explicit kind.
-ty_syn_kind :: [TyVarBndrUnit] -> Type -> Maybe Kind
+ty_syn_kind :: [TyVarBndrVis] -> Type -> Maybe Kind
 ty_syn_kind tvbs rhs =
   case rhs of
     SigT _ ki -> whenAlt (all tvb_is_kinded tvbs) $
@@ -1104,16 +1107,16 @@ ty_syn_kind tvbs rhs =
 -- this function is `Maybe Kind` because there are situations where even
 -- this amount of information is not sufficient to determine the full kind.
 -- See Note [The limitations of standalone kind signatures].
-build_kind :: [TyVarBndrUnit] -> Kind -> Maybe Kind
+build_kind :: [TyVarBndrVis] -> Kind -> Maybe Kind
 build_kind arg_kinds res_kind =
   fmap quantifyType $ fst $
   foldr go (Just res_kind, Set.fromList (freeVariables res_kind)) arg_kinds
   where
-    go :: TyVarBndrUnit -> (Maybe Kind, Set Name) -> (Maybe Kind, Set Name)
+    go :: TyVarBndrVis -> (Maybe Kind, Set Name) -> (Maybe Kind, Set Name)
     go tvb (res, res_fvs) =
       elimTV (\n ->
                ( if n `Set.member` res_fvs
-                 then forall_vis tvb res
+                 then forall_ tvb res
                  else Nothing -- We have a type variable binder without an
                               -- explicit kind that is not used dependently, so
                               -- we cannot build a kind from it. This is the
@@ -1122,15 +1125,22 @@ build_kind arg_kinds res_kind =
                ))
              (\n k ->
                ( if n `Set.member` res_fvs
-                 then forall_vis tvb res
+                 then forall_ tvb res
                  else fmap (ArrowT `AppT` k `AppT`) res
                , Set.fromList (freeVariables k) `Set.union` res_fvs
                ))
              tvb
 
-    forall_vis :: TyVarBndrUnit -> Maybe Kind -> Maybe Kind
+    forall_ :: TyVarBndrVis -> Maybe Kind -> Maybe Kind
 #if __GLASGOW_HASKELL__ >= 809
-    forall_vis tvb m_ki = fmap (ForallVisT [tvb]) m_ki
+    forall_ tvb m_ki = fmap forallT m_ki
+      where
+        bndrVis :: BndrVis
+        bndrVis = elimTVFlag (\_ flag -> flag) (\_ flag _ -> flag) tvb
+        forallT :: Kind -> Kind
+        forallT = case bndrVis of
+          BndrReq   -> ForallVisT (changeTVFlags () [tvb])
+          BndrInvis -> ForallT (changeTVFlags SpecifiedSpec [tvb]) []
       -- One downside of this approach is that we generate kinds like this:
       --
       --   forall a -> forall b -> forall c -> (a, b, c)
@@ -1141,7 +1151,7 @@ build_kind arg_kinds res_kind =
       --
       -- Thankfully, the difference is only cosmetic.
 #else
-    forall_vis _   _    = Nothing
+    forall_ _   _    = Nothing
 #endif
 
 tvb_is_kinded :: TyVarBndr_ flag -> Bool
@@ -1154,8 +1164,8 @@ vis_arg_kind_maybe :: VisFunArg -> Maybe Kind
 vis_arg_kind_maybe (VisFADep tvb) = tvb_kind_maybe tvb
 vis_arg_kind_maybe (VisFAAnon k)  = Just k
 
-default_tvb :: TyVarBndrUnit -> TyVarBndrUnit
-default_tvb tvb = elimTV (\n -> kindedTV n StarT) (\_ _ -> tvb) tvb
+default_tvb :: TyVarBndr_ flag -> TyVarBndr_ flag
+default_tvb tvb = elimTVFlag (\n flag -> kindedTVFlag n flag StarT) (\_ _ _ -> tvb) tvb
 
 default_res_ki :: Maybe Kind -> Kind
 default_res_ki = fromMaybe StarT

@@ -49,6 +49,7 @@ import Dec ( RecordSel )
 import ReifyTypeCUSKs
 import ReifyTypeSigs
 import T159Decs ( t159A, t159B )
+import qualified Language.Haskell.TH.Datatype.TyVarBndr as THAbs
 import Language.Haskell.TH.Desugar
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.Expand  ( expandUnsoundly )
@@ -291,7 +292,7 @@ test_stuck_tyfam_expansion =
                    (decsToTH [ -- type family F (x :: k) :: k
                                DOpenTypeFamilyD
                                  (DTypeFamilyHead fam_name
-                                                  [DKindedTV x () (DVarT k)]
+                                                  [DKindedTV x THAbs.BndrReq (DVarT k)]
                                                   (DKindSig (DVarT k))
                                                   Nothing)
                                -- type instance F (x :: ()) = x
@@ -346,7 +347,7 @@ test_getDataD_kind_sig =
                                   (DArrowT `DAppT` type_kind `DAppT` type_kind)
             (_, tvbs, _) <-
               withLocalDeclarations
-                [decToTH (DDataD Data [] data_name [DPlainTV a ()]
+                [decToTH (DDataD Data [] data_name [DPlainTV a THAbs.BndrReq]
                                  (Just data_kind_sig) [] [])]
                 (getDataD "th-desugar: Impossible" data_name)
             [| $(Syn.lift (length tvbs)) |])
@@ -425,7 +426,7 @@ test_t132 =
            --     m :: a
            --
            -- We define this by hand to avoid GHC#17608 on pre-9.0 GHCs.
-           decs = sweeten [ DClassD [] c [DPlainTV a ()] []
+           decs = sweeten [ DClassD [] c [DPlainTV a THAbs.BndrReq] []
                             [ DLetDec (DInfixD fixity m)
                             , DLetDec (DSigD m (DVarT a))
                             ]
@@ -589,7 +590,7 @@ test_t171 =
                    Data
                    []
                    t
-                   [DPlainTV x (), DPlainTV y ()]
+                   [DPlainTV x THAbs.BndrReq, DPlainTV y THAbs.BndrReq]
                    Nothing
                    [ DCon
                        [bTvb, aTvb, cTvb]

@@ -9,6 +9,12 @@ rae@cs.brynmawr.edu
              FlexibleInstances, DataKinds, CPP, RankNTypes,
              StandaloneDeriving, DefaultSignatures,
              ConstraintKinds, RoleAnnotations, DeriveAnyClass #-}
+#if __GLASGOW_HASKELL__ >= 810
+{-# LANGUAGE StandaloneKindSignatures #-}
+#endif
+#if __GLASGOW_HASKELL__ >= 907
+{-# LANGUAGE TypeAbstractions #-}
+#endif
 
 {-# OPTIONS_GHC -Wno-orphans -Wno-name-shadowing
                 -Wno-redundant-constraints #-}
@@ -42,6 +48,10 @@ $(S.dectest17)
 
 #if __GLASGOW_HASKELL__ >= 809
 $(S.dectest18)
+#endif
+
+#if __GLASGOW_HASKELL__ >= 907
+$(S.dectest19)
 #endif
 
 $(fmap unqualify S.instance_test)
