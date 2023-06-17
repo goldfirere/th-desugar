@@ -3,6 +3,26 @@
 
 Version 1.16 [????.??.??]
 -------------------------
+* Support GHC 9.8.
+* Add support for invisible binders in type-level declarations. As part of this
+  change:
+
+  * `Language.Haskell.TH.Desugar` now exports a `DTyVarBndrVis` type synonym,
+    which is the `th-desugar` counterpart to `TyVarBndrVis`. It also exports a
+    `dsTvbVis` function, which is the `DTyVarBndrVis` counterpart to `dsTvbSpec`
+    and `dsTvbUnit`.
+  * `Language.Haskell.TH.Desugar` now re-exports `BndrVis` from
+    `template-haskell`.
+  * The `DDataD`, `DTySynD`, `DClassD`, `DDataFamilyD`, and `DTypeFamilyHead`
+    parts of the `th-desugar` AST now use `DTyVarBndrVis` instead of
+    `DTyVarBndrUnit`.
+  * The `mkExtraDKindBinders`, `dsCon`, and `dsDataDec` functions now use
+    `DTyVarBndrVis` instead of `DTyVarBndrUnit`.
+  * The `getDataD` function now uses `TyVarBndrVis` instead of `TyVarBndrUnit`.
+
+  It is possible that you will need to convert between `TyVarBndrUnit` and
+  `TyVarBndrVis` to adapt your existing `th-desugar` code. (Note that `TyVarBndr
+  flag` is an instance of `Functor`, so this can be accomplished with `fmap`.)
 * The `tupleNameDegree_maybe` function now returns:
   * `Just 0` when the argument is `''Unit`
   * `Just 1` when the argument is `''Solo` or `'MkSolo`

@@ -8,9 +8,9 @@
 #
 # For more information, see https://github.com/haskell-CI/haskell-ci
 #
-# version: 0.16
+# version: 0.16.3
 #
-# REGENDATA ("0.16",["--config=cabal.haskell-ci","cabal.project"])
+# REGENDATA ("0.16.3",["--config=cabal.haskell-ci","cabal.project"])
 #
 name: Haskell-CI
 on:
@@ -207,6 +207,15 @@ jobs:
           if [ $((HCNUMVER >= 80200)) -ne 0 ] ; then echo "package th-desugar" >> cabal.project ; fi
           if [ $((HCNUMVER >= 80200)) -ne 0 ] ; then echo "    ghc-options: -Werror=missing-methods" >> cabal.project ; fi
           cat >> cabal.project <<EOF
+          source-repository-package
+            type:     git
+            location: https://github.com/glguy/th-abstraction
+            tag:      a3314597fe39f78db6c62127d3c0aa0e5f60bccd
+
+          source-repository-package
+            type:     git
+            location: https://github.com/RyanGlScott/th-lift
+            tag:      8f0a43f64df8dcff2e7aa0f3c2861013cdf7175c
           EOF
           $HCPKG list --simple-output --names-only | perl -ne 'for (split /\s+/) { print "constraints: $_ installed\n" unless /^(th-desugar)$/; }' >> cabal.project.local
           cat cabal.project

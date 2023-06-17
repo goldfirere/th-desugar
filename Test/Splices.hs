@@ -98,15 +98,32 @@ unqualify :: Data a => a -> a
 unqualify = everywhere (mkT (mkName . nameBase))
 
 assumeStarT :: Data a => a -> a
-assumeStarT = everywhere (mkT assume_spec . mkT assume_unit)
+assumeStarT = everywhere (assume_spec_t . assume_vis_t . assume_unit_t)
   where
-    assume_spec :: TyVarBndrSpec -> TyVarBndrSpec
+    assume_spec_t :: Typeable a => a -> a
 #if __GLASGOW_HASKELL__ >= 900
+    assume_spec_t = mkT assume_spec
+
+    assume_spec :: TyVarBndrSpec -> TyVarBndrSpec
     assume_spec (PlainTV n spec)    = KindedTV n spec StarT
     assume_spec (KindedTV n spec k) = KindedTV n spec (assumeStarT k)
 #else
-    assume_spec = assume_unit
+    assume_spec_t = id
 #endif
+
+    assume_vis_t :: Typeable a => a -> a
+#if __GLASGOW_HASKELL__ >= 907
+    assume_vis_t = mkT assume_vis
+
+    assume_vis :: TyVarBndrVis -> TyVarBndrVis
+    assume_vis (PlainTV n vis)    = KindedTV n vis StarT
+    assume_vis (KindedTV n vis k) = KindedTV n vis (assumeStarT k)
+#else
+    assume_vis_t = id
+#endif
+
+    assume_unit_t :: Typeable a => a -> a
+    assume_unit_t = mkT assume_unit
 
     assume_unit :: TyVarBndrUnit -> TyVarBndrUnit
     assume_unit = elimTV (\n   -> kindedTV n StarT)
@@ -506,6 +523,11 @@ dectest17 = return [ StandaloneDerivD
 #if __GLASGOW_HASKELL__ >= 809
 dectest18 = [d| data Dec18 :: forall k -> k -> Kind.Type where
                   MkDec18 :: forall k (a :: k). Dec18 k a |]
+#endif
+
+#if __GLASGOW_HASKELL__ >= 907
+dectest19 = [d| type Dec19 :: forall k. k -> Kind.Type
+                data Dec19 @k (a :: k) = MkDec19 k (Proxy a) |]
 #endif
 
 instance_test = [d| instance (Show a, Show b) => Show (a -> b) where

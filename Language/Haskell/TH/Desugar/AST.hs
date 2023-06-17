@@ -18,6 +18,9 @@ import Language.Haskell.TH.Syntax (Lift)
 #if __GLASGOW_HASKELL__ < 900
 import Language.Haskell.TH.Datatype.TyVarBndr (Specificity(..))
 #endif
+#if __GLASGOW_HASKELL__ < 907
+import Language.Haskell.TH.Datatype.TyVarBndr (BndrVis)
+#endif
 
 import Language.Haskell.TH.Desugar.Util (DataFlavor)
 
@@ -91,6 +94,9 @@ type DTyVarBndrSpec = DTyVarBndr Specificity
 -- | Corresponds to TH's @TyVarBndrUnit@
 type DTyVarBndrUnit = DTyVarBndr ()
 
+-- | Corresponds to TH's @TyVarBndrVis@
+type DTyVarBndrVis = DTyVarBndr BndrVis
+
 -- | Corresponds to TH's @Match@ type.
 data DMatch = DMatch DPat DExp
   deriving (Eq, Show, Data, Generic, Lift)
@@ -120,9 +126,9 @@ data DDec = DLetDec DLetDec
             --   'DDerivClause's, the 'DCxt' will be empty, and the 'DConFields'
             --   in each 'DCon' will be a 'NormalC' where each 'Bang' is equal
             --   to @Bang 'NoSourceUnpackedness' 'NoSourceStrictness'@.
-          | DDataD DataFlavor DCxt Name [DTyVarBndrUnit] (Maybe DKind) [DCon] [DDerivClause]
-          | DTySynD Name [DTyVarBndrUnit] DType
-          | DClassD DCxt Name [DTyVarBndrUnit] [FunDep] [DDec]
+          | DDataD DataFlavor DCxt Name [DTyVarBndrVis] (Maybe DKind) [DCon] [DDerivClause]
+          | DTySynD Name [DTyVarBndrVis] DType
+          | DClassD DCxt Name [DTyVarBndrVis] [FunDep] [DDec]
             -- | Note that the @Maybe [DTyVarBndrUnit]@ field is dropped
             -- entirely when sweetened, so it is only useful for functions
             -- that directly consume @DDec@s.
@@ -130,7 +136,7 @@ data DDec = DLetDec DLetDec
           | DForeignD DForeign
           | DOpenTypeFamilyD DTypeFamilyHead
           | DClosedTypeFamilyD DTypeFamilyHead [DTySynEqn]
-          | DDataFamilyD Name [DTyVarBndrUnit] (Maybe DKind)
+          | DDataFamilyD Name [DTyVarBndrVis] (Maybe DKind)
             -- | A data family instance declaration. Note that desugaring
             -- upholds the following properties regarding the 'DataFlavor'
             -- field:
@@ -176,7 +182,7 @@ data PatSynArgs
 #endif
 
 -- | Corresponds to TH's 'TypeFamilyHead' type
-data DTypeFamilyHead = DTypeFamilyHead Name [DTyVarBndrUnit] DFamilyResultSig
+data DTypeFamilyHead = DTypeFamilyHead Name [DTyVarBndrVis] DFamilyResultSig
                                        (Maybe InjectivityAnn)
                      deriving (Eq, Show, Data, Generic, Lift)
 
