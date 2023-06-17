@@ -710,9 +710,9 @@ dsDec (DataD cxt n tvbs mk cons derivings) =
 dsDec (NewtypeD cxt n tvbs mk con derivings) =
   dsDataDec Newtype cxt n tvbs mk [con] derivings
 dsDec (TySynD n tvbs ty) =
-  (:[]) <$> (DTySynD n <$> mapM dsTvbUnit tvbs <*> dsType ty)
+  (:[]) <$> (DTySynD n <$> mapM dsTvbVis tvbs <*> dsType ty)
 dsDec (ClassD cxt n tvbs fds decs) =
-  (:[]) <$> (DClassD <$> dsCxt cxt <*> pure n <*> mapM dsTvbUnit tvbs
+  (:[]) <$> (DClassD <$> dsCxt cxt <*> pure n <*> mapM dsTvbVis tvbs
                      <*> pure fds <*> dsDecs decs)
 dsDec (InstanceD over cxt ty decs) =
   (:[]) <$> (DInstanceD over Nothing <$> dsCxt cxt <*> dsType ty <*> dsDecs decs)
@@ -723,7 +723,7 @@ dsDec d@(PragmaD {}) = dsTopLevelLetDec d
 dsDec (OpenTypeFamilyD tfHead) =
   (:[]) <$> (DOpenTypeFamilyD <$> dsTypeFamilyHead tfHead)
 dsDec (DataFamilyD n tvbs m_k) =
-  (:[]) <$> (DDataFamilyD n <$> mapM dsTvbUnit tvbs <*> mapM dsType m_k)
+  (:[]) <$> (DDataFamilyD n <$> mapM dsTvbVis tvbs <*> mapM dsType m_k)
 #if __GLASGOW_HASKELL__ >= 807
 dsDec (DataInstD cxt mtvbs lhs mk cons derivings) =
   case unfoldType lhs of
@@ -780,10 +780,10 @@ dsDec (TypeDataD n tys mk cons) =
 
 -- | Desugar a 'DataD', 'NewtypeD', or 'TypeDataD'.
 dsDataDec :: DsMonad q
-          => DataFlavor -> Cxt -> Name -> [TyVarBndrUnit]
+          => DataFlavor -> Cxt -> Name -> [TyVarBndrVis]
           -> Maybe Kind -> [Con] -> [DerivingClause] -> q [DDec]
 dsDataDec nd cxt n tvbs mk cons derivings = do
-  tvbs' <- mapM dsTvbUnit tvbs
+  tvbs' <- mapM dsTvbVis tvbs
   let h98_tvbs = case mk of
                    -- If there's an explicit return kind, we're dealing with a
                    -- GADT, so this argument goes unused in dsCon.
@@ -804,6 +804,7 @@ dsDataInstDec nd cxt n mtvbs tys mk cons derivings = do
   tys'   <- mapM dsTypeArg tys
   let lhs' = applyDType (DConT n) tys'
       h98_tvbs =
+        changeDTVFlags defaultBndrFlag $
         case (mk, mtvbs') of
           -- If there's an explicit return kind, we're dealing with a
           -- GADT, so this argument goes unused in dsCon.
@@ -829,7 +830,7 @@ dsFamilyResultSig (TyVarSig tvb) = DTyVarSig <$> dsTvbUnit tvb
 -- | Desugar a @TypeFamilyHead@
 dsTypeFamilyHead :: DsMonad q => TypeFamilyHead -> q DTypeFamilyHead
 dsTypeFamilyHead (TypeFamilyHead n tvbs result inj)
-  = DTypeFamilyHead n <$> mapM dsTvbUnit tvbs
+  = DTypeFamilyHead n <$> mapM dsTvbVis tvbs
                       <*> dsFamilyResultSig result
                       <*> pure inj
 
@@ -947,10 +948,10 @@ dsTopLevelLetDec = fmap (map DLetDec . fst) . dsLetDec
 -- we require passing these as arguments. (If we desugar an actual GADT
 -- constructor, these arguments are ignored.)
 dsCon :: DsMonad q
-      => [DTyVarBndrUnit] -- ^ The universally quantified type variables
-                          --   (used if desugaring a non-GADT constructor).
-      -> DType            -- ^ The original data declaration's type
-                          --   (used if desugaring a non-GADT constructor).
+      => [DTyVarBndrVis] -- ^ The universally quantified type variables
+                         --   (used if desugaring a non-GADT constructor).
+      -> DType           -- ^ The original data declaration's type
+                         --   (used if desugaring a non-GADT constructor).
       -> Con -> q [DCon]
 dsCon univ_dtvbs data_type con = do
   dcons' <- dsCon' con
@@ -1291,6 +1292,14 @@ dsTvbUnit = dsTvb
 dsTvbUnit = dsTvb ()
 #endif
 
+-- | Desugar a 'TyVarBndrVis'.
+dsTvbVis :: DsMonad q => TyVarBndrVis -> q DTyVarBndrVis
+#if __GLASGOW_HASKELL__ >= 900
+dsTvbVis = dsTvb
+#else
+dsTvbVis = dsTvb BndrReq
+#endif
+
 -- | Desugar a @Cxt@
 dsCxt :: DsMonad q => Cxt -> q DCxt
 dsCxt = concatMapM dsPred
@@ -1548,6 +1557,38 @@ dTyVarBndrToDType :: DTyVarBndr flag -> DType
 dTyVarBndrToDType (DPlainTV a _)    = DVarT a
 dTyVarBndrToDType (DKindedTV a _ k) = DVarT a `DSigT` k
 
+-- | Convert a 'DTyVarBndrVis' to a 'DTypeArg'. That is, convert a binder with a
+-- 'BndrReq' visibility to a 'DTANormal' and a binder with 'BndrInvis'
+-- visibility to a 'DTyArg'.
+--
+-- If given a 'DKindedTV', the resulting 'DTypeArg' will omit the kind
+-- signature. Use 'dTyVarBndrVisToDTypeArgWithSig' if you want to preserve the
+-- kind signature.
+dTyVarBndrVisToDTypeArg :: DTyVarBndrVis -> DTypeArg
+dTyVarBndrVisToDTypeArg bndr =
+  case dtvbFlag bndr of
+    BndrReq   -> DTANormal bndr_ty
+    BndrInvis -> DTyArg bndr_ty
+  where
+    bndr_ty = case bndr of
+                DPlainTV a _    -> DVarT a
+                DKindedTV a _ _ -> DVarT a
+
+-- | Convert a 'DTyVarBndrVis' to a 'DTypeArg'. That is, convert a binder with a
+-- 'BndrReq' visibility to a 'DTANormal' and a binder with 'BndrInvis'
+-- visibility to a 'DTyArg'.
+--
+-- If given a 'DKindedTV', the resulting 'DTypeArg' will preserve the kind
+-- signature. Use 'dTyVarBndrVisToDTypeArg' if you want to omit the kind
+-- signature.
+dTyVarBndrVisToDTypeArgWithSig :: DTyVarBndrVis -> DTypeArg
+dTyVarBndrVisToDTypeArgWithSig bndr =
+  case dtvbFlag bndr of
+    BndrReq   -> DTANormal bndr_ty
+    BndrInvis -> DTyArg bndr_ty
+  where
+    bndr_ty = dTyVarBndrToDType bndr
+
 -- | Extract the underlying 'DType' or 'DKind' from a 'DTypeArg'. This forgets
 -- information about whether a type is a normal argument or not, so use with
 -- caution.
@@ -1557,9 +1598,9 @@ probablyWrongUnDTypeArg (DTyArg k)    = k
 
 -- Take a data type name (which does not belong to a data family) and
 -- apply it to its type variable binders to form a DType.
-nonFamilyDataReturnType :: Name -> [DTyVarBndrUnit] -> DType
+nonFamilyDataReturnType :: Name -> [DTyVarBndrVis] -> DType
 nonFamilyDataReturnType con_name =
-  applyDType (DConT con_name) . map (DTANormal . dTyVarBndrToDType)
+  applyDType (DConT con_name) . map dTyVarBndrVisToDTypeArg
 
 -- Take a data family name and apply it to its argument types to form a
 -- data family instance DType.
@@ -1703,6 +1744,10 @@ toposortKindVarsOfTvbs tvbs =
 dtvbName :: DTyVarBndr flag -> Name
 dtvbName (DPlainTV n _)    = n
 dtvbName (DKindedTV n _ _) = n
+
+dtvbFlag :: DTyVarBndr flag -> flag
+dtvbFlag (DPlainTV _ flag)    = flag
+dtvbFlag (DKindedTV _ flag _) = flag
 
 -- @mk_qual_do_name mb_mod orig_name@ will simply return @orig_name@ if
 -- @mb_mod@ is Nothing. If @mb_mod@ is @Just mod_@, then a new 'Name' will be

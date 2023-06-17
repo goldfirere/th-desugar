@@ -19,7 +19,7 @@ module Language.Haskell.TH.Desugar.Util (
   stripPlainTV_maybe,
   thirdOf3, splitAtList, extractBoundNamesDec,
   extractBoundNamesPat,
-  tvbToType, tvbToTypeWithSig, tvbToTANormalWithSig,
+  tvbToType, tvbToTypeWithSig,
   nameMatches, thdOf3, liftFst, liftSnd, firstMatch, firstMatchM,
   tupleNameDegree_maybe,
   unboxedSumNameDegree_maybe, unboxedTupleNameDegree_maybe, splitTuple_maybe,
@@ -28,6 +28,7 @@ module Language.Haskell.TH.Desugar.Util (
   unSigType, unfoldType, ForallTelescope(..), FunArgs(..), VisFunArg(..),
   filterVisFunArgs, ravelType, unravelType,
   TypeArg(..), applyType, filterTANormals, probablyWrongUnTypeArg,
+  tyVarBndrVisToTypeArg, tyVarBndrVisToTypeArgWithSig,
   bindIP,
   DataFlavor(..)
   ) where
@@ -126,11 +127,6 @@ tvbToType = VarT . tvName
 -- (if it has one).
 tvbToTypeWithSig :: TyVarBndr_ flag -> Type
 tvbToTypeWithSig = elimTV VarT (\n k -> SigT (VarT n) k)
-
--- | Convert a 'TyVarBndr' into a 'TypeArg' (specifically, a 'TANormal'),
--- preserving the kind signature (if it has one).
-tvbToTANormalWithSig :: TyVarBndr_ flag -> TypeArg
-tvbToTANormalWithSig = TANormal . tvbToTypeWithSig
 
 -- | Do two names name the same thing?
 nameMatches :: Name -> Name -> Bool
@@ -435,6 +431,36 @@ filterTANormals = mapMaybe getTANormal
     getTANormal :: TypeArg -> Maybe Type
     getTANormal (TANormal t) = Just t
     getTANormal (TyArg {})   = Nothing
+
+-- | Convert a 'TyVarBndrVis' to a 'TypeArg'. That is, convert a binder with a
+-- 'BndrReq' visibility to a 'TANormal' and a binder with 'BndrInvis'
+-- visibility to a 'TyArg'.
+--
+-- If given a 'KindedTV', the resulting 'TypeArg' will omit the kind signature.
+-- Use 'tyVarBndrVisToTypeArgWithSig' if you want to preserve the kind
+-- signature.
+tyVarBndrVisToTypeArg :: TyVarBndrVis -> TypeArg
+tyVarBndrVisToTypeArg bndr =
+  case tvFlag bndr of
+    BndrReq   -> TANormal bndr_ty
+    BndrInvis -> TyArg bndr_ty
+  where
+    bndr_ty = tvbToType bndr
+
+-- | Convert a 'TyVarBndrVis' to a 'TypeArg'. That is, convert a binder with a
+-- 'BndrReq' visibility to a 'TANormal' and a binder with 'BndrInvis'
+-- visibility to a 'TyArg'.
+--
+-- If given a 'KindedTV', the resulting 'TypeArg' will preserve the kind
+-- signature. Use 'tyVarBndrVisToTypeArg' if you want to omit the kind
+-- signature.
+tyVarBndrVisToTypeArgWithSig :: TyVarBndrVis -> TypeArg
+tyVarBndrVisToTypeArgWithSig bndr =
+  case tvFlag bndr of
+    BndrReq   -> TANormal bndr_ty
+    BndrInvis -> TyArg bndr_ty
+  where
+    bndr_ty = tvbToTypeWithSig bndr
 
 -- | Extract the underlying 'Type' or 'Kind' from a 'TypeArg'. This forgets
 -- information about whether a type is a normal argument or not, so use with

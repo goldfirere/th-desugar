@@ -8,9 +8,16 @@ rae@cs.brynmawr.edu
              MultiParamTypeClasses, FunctionalDependencies,
              FlexibleInstances, DataKinds, CPP, RankNTypes,
              StandaloneDeriving, DefaultSignatures,
-             ConstraintKinds, RoleAnnotations, DeriveAnyClass #-}
+             ConstraintKinds, RoleAnnotations, DeriveAnyClass,
+             TypeApplications #-}
 #if __GLASGOW_HASKELL__ >= 801
 {-# LANGUAGE DerivingStrategies #-}
+#endif
+#if __GLASGOW_HASKELL__ >= 810
+{-# LANGUAGE StandaloneKindSignatures #-}
+#endif
+#if __GLASGOW_HASKELL__ >= 907
+{-# LANGUAGE TypeAbstractions #-}
 #endif
 
 {-# OPTIONS_GHC -Wno-orphans -Wno-incomplete-patterns
@@ -21,6 +28,7 @@ module DsDec where
 import qualified Splices as S
 import Splices ( dsDecSplice, unqualify )
 
+import qualified Language.Haskell.TH.Datatype.TyVarBndr as THAbs
 import Language.Haskell.TH.Desugar
 import Language.Haskell.TH.Syntax ( qReport )
 
@@ -67,9 +75,13 @@ $(return $ decsToTH [S.ds_dectest17])
 $(dsDecSplice S.dectest18)
 #endif
 
+#if __GLASGOW_HASKELL__ >= 907
+$(dsDecSplice S.dectest19)
+#endif
+
 $(do decs <- S.rec_sel_test
      withLocalDeclarations decs $ do
-       [DDataD nd [] name [DPlainTV tvbName ()] k cons []] <- dsDecs decs
+       [DDataD nd [] name [DPlainTV tvbName THAbs.BndrReq] k cons []] <- dsDecs decs
        recsels <- getRecordSelectors cons
        let num_sels = length recsels `div` 2 -- ignore type sigs
        when (num_sels /= S.rec_sel_test_num_sels) $
@@ -82,5 +94,5 @@ $(do decs <- S.rec_sel_test
                  fields' = zip stricts types
              in
              DCon tvbs cxt con_name (DNormalC False fields') rty
-           plaindata = [DDataD nd [] name [DPlainTV tvbName ()] k (map unrecord cons) []]
+           plaindata = [DDataD nd [] name [DPlainTV tvbName THAbs.BndrReq] k (map unrecord cons) []]
        return (decsToTH plaindata ++ map letDecToTH recsels))
