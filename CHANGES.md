@@ -5,6 +5,8 @@ Version next [????.??.??]
 -------------------------
 * Fix a bug in which infix data family declaration would mistakenly be rejected
   when reified locally.
+* Fix a bug in which data types that use visible dependent quantification would
+  produce ill-scoped code when desugared.
 
 Version 1.15 [2023.03.12]
 -------------------------
