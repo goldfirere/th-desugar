@@ -26,6 +26,8 @@ import Control.Monad.Zip
 import Data.Data (Data)
 import Data.Either (lefts)
 import Data.Foldable as F hiding (concat, notElem)
+import Data.Function (on)
+import qualified Data.List as L
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (isJust, mapMaybe)
@@ -959,7 +961,7 @@ dsCon univ_dtvbs data_type con = do
             expl_dtvbs = changeDTVFlags SpecifiedSpec univ_dtvbs ++
                          ex_dtvbs
             impl_dtvbs = changeDTVFlags SpecifiedSpec $
-                         toposortTyVarsOf $ mapMaybe extractTvbKind expl_dtvbs in
+                         toposortKindVarsOfTvbs expl_dtvbs in
         DCon (impl_dtvbs ++ expl_dtvbs) dcxt n fields data_type
       Just gadt_type ->
         let univ_ex_dtvbs = dtvbs in
@@ -1678,6 +1680,25 @@ toposortTyVarsOf tys =
 
   in map ascribeWithKind $
      scopedSort freeVars
+
+-- | Take a telescope of 'DTyVarBndr's, find the free variables in their kinds,
+-- and sort them in reverse topological order to ensure that they are well
+-- scoped. Because the argument list is assumed to be telescoping, kind
+-- variables that are bound earlier in the list are not returned. For example,
+-- this:
+--
+-- @
+-- 'toposortKindVarsOfTvbs' [a :: k, b :: Proxy a]
+-- @
+--
+-- Will return @[k]@, not @[k, a]@, since @a@ is bound earlier by @a :: k@.
+toposortKindVarsOfTvbs :: [DTyVarBndr flag] -> [DTyVarBndrUnit]
+toposortKindVarsOfTvbs tvbs =
+  foldr (\tvb kvs ->
+          foldMap (\t -> toposortTyVarsOf [t]) (extractTvbKind tvb) `L.union`
+          L.deleteBy ((==) `on` dtvbName) tvb kvs)
+        []
+        (changeDTVFlags () tvbs)
 
 dtvbName :: DTyVarBndr flag -> Name
 dtvbName (DPlainTV n _)    = n

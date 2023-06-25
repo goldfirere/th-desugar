@@ -22,6 +22,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE QuantifiedConstraints #-}
 #endif
 
+#if __GLASGOW_HASKELL__ < 806
+{-# LANGUAGE TypeInType #-}
+#endif
+
 #if __GLASGOW_HASKELL__ >= 809
 {-# LANGUAGE StandaloneKindSignatures #-}
 #endif
@@ -600,6 +604,22 @@ test_t171 =
          Just (DVarI _ actual_ty _) <- dsReify getT1
          expected_ty `eqTHSplice` actual_ty)
 
+-- A regression test for #188, which ensures that it produces the correct answer
+-- for an unusual telescope like:
+--
+--   ... forall (a1 :: a2). forall (a2 :: a1). ...
+--
+-- Here, a2 is free in the kind of a1 (the first `forall`), but then the second
+-- `forall` binds another a2 that shadows what was already in scope. In this
+-- example, `toposortKindVarsOfTvbs [(a1 :: a2), (a2 :: a1)]` should return
+-- [a2].
+test_t188 :: Bool
+test_t188 =
+  let a1 = mkName "a1"
+      a2 = mkName "a2" in
+  toposortKindVarsOfTvbs [DKindedTV a1 () (DVarT a2), DKindedTV a2 () (DVarT a1)]
+    == [DPlainTV a2 ()]
+
 -- Unit tests for functions that compute free variables (e.g., fvDType)
 test_fvs :: [Bool]
 test_fvs =
@@ -822,6 +842,8 @@ main = hspec $ do
 #endif
 
     it "locally reifies GADT record selector types with explicit foralls correctly" $ test_t171
+
+    it "computes free kind variables correctly in a telescope that uses shadowing" $ test_t188
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')

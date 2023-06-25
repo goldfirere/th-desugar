@@ -96,7 +96,8 @@ module Language.Haskell.TH.Desugar (
   unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
   unboxedTupleDegree_maybe, unboxedTupleNameDegree_maybe,
   isTypeKindName, typeKindName, bindIP,
-  mkExtraDKindBinders, dTyVarBndrToDType, changeDTVFlags, toposortTyVarsOf,
+  mkExtraDKindBinders, dTyVarBndrToDType, changeDTVFlags,
+  toposortTyVarsOf, toposortKindVarsOfTvbs,
 
   -- ** 'FunArgs' and 'VisFunArg'
   FunArgs(..), ForallTelescope(..), VisFunArg(..),

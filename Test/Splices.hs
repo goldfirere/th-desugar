@@ -29,6 +29,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE QuantifiedConstraints #-}
 #endif
 
+#if __GLASGOW_HASKELL__ < 806
+{-# LANGUAGE TypeInType #-}
+#endif
+
 #if __GLASGOW_HASKELL__ >= 807
 {-# LANGUAGE ImplicitParams #-}
 #endif
@@ -676,6 +680,9 @@ reifyDecs = [d|
   -- A regression test for #184
   data family x ^^^ y
   data instance x ^^^ y = R40 x y
+
+  -- A regression test for #188
+  data R41 a (x :: Maybe a) = R42
   |]
 
 reifyDecsNames :: [Name]
@@ -695,6 +702,7 @@ reifyDecsNames = map mkName
   , "R36", "R37", "R38", "R39"
 #endif
   , "R40"
+  , "R41", "R42"
   ]
 
 simplCaseTests :: [Q Exp]
