@@ -65,6 +65,17 @@ import Data.Proxy
 import Prelude as P
 #endif
 
+#if __GLASGOW_HASKELL__ >= 906
+import GHC.Tuple ( Solo(MkSolo) )
+#elif __GLASGOW_HASKELL__ >= 900
+import GHC.Tuple ( Solo(Solo) )
+#endif
+
+#if __GLASGOW_HASKELL__ >= 908
+import qualified FakeTuples
+import GHC.Tuple ( Tuple0, Tuple1, Tuple2, Tuple3, Unit )
+#endif
+
 -- |
 -- Convert a HUnit test suite to a spec.  This can be used to run existing
 -- HUnit tests with Hspec.
@@ -604,6 +615,36 @@ test_t171 =
          Just (DVarI _ actual_ty _) <- dsReify getT1
          expected_ty `eqTHSplice` actual_ty)
 
+-- Unit tests for tupleNameDegree_maybe. These also act as a regression test for
+-- #187.
+test_t187 :: [Bool]
+test_t187 =
+  map (\(s, expected) -> tupleNameDegree_maybe s == expected)
+    [ (''(),                Just 0)
+    , (''(,),               Just 2)
+    , (''(,,),              Just 3)
+    , (''Maybe,             Nothing)
+#if __GLASGOW_HASKELL__ >= 900
+    , (''Solo,              Just 1)
+#if __GLASGOW_HASKELL__ >= 906
+    , ('MkSolo,             Just 1)
+#else
+    , ('Solo,               Just 1)
+#endif
+#endif
+#if __GLASGOW_HASKELL__ >= 908
+    , (''Unit,              Just 0)
+    , (''Tuple0,            Just 0)
+    , (''Tuple1,            Just 1)
+    , (''Tuple2,            Just 2)
+    , (''Tuple3,            Just 3)
+    , (''FakeTuples.Tuple0, Nothing)
+    , (''FakeTuples.Tuple1, Nothing)
+    , (''FakeTuples.Tuple2, Nothing)
+    , (''FakeTuples.Tuple3, Nothing)
+#endif
+    ]
+
 -- A regression test for #188, which ensures that it produces the correct answer
 -- for an unusual telescope like:
 --
@@ -842,6 +883,9 @@ main = hspec $ do
 #endif
 
     it "locally reifies GADT record selector types with explicit foralls correctly" $ test_t171
+
+    zipWithM (\b n -> it ("recognizes tuple names with tupleDegree_maybe correctly " ++ show n) b)
+      test_t187 [1..]
 
     it "computes free kind variables correctly in a telescope that uses shadowing" $ test_t188
 
