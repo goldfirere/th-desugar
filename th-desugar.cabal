@@ -1,5 +1,5 @@
 name:           th-desugar
-version:        1.15
+version:        1.16
 cabal-version:  >= 1.10
 synopsis:       Functions to desugar Template Haskell
 homepage:       https://github.com/goldfirere/th-desugar
@@ -83,6 +83,7 @@ test-suite spec
   main-is:            Run.hs
   other-modules:      Dec
                       DsDec
+                      FakeTuples
                       ReifyTypeCUSKs
                       ReifyTypeSigs
                       Splices
@@ -91,6 +92,7 @@ test-suite spec
 
   build-depends:
       base >= 4 && < 5,
+      ghc-prim,
       template-haskell,
       containers >= 0.5,
       mtl >= 2.1,

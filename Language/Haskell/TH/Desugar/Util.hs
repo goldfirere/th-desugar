@@ -21,9 +21,8 @@ module Language.Haskell.TH.Desugar.Util (
   extractBoundNamesPat,
   tvbToType, tvbToTypeWithSig, tvbToTANormalWithSig,
   nameMatches, thdOf3, liftFst, liftSnd, firstMatch, firstMatchM,
-  unboxedSumDegree_maybe, unboxedSumNameDegree_maybe,
-  tupleDegree_maybe, tupleNameDegree_maybe, unboxedTupleDegree_maybe,
-  unboxedTupleNameDegree_maybe, splitTuple_maybe,
+  tupleNameDegree_maybe,
+  unboxedSumNameDegree_maybe, unboxedTupleNameDegree_maybe, splitTuple_maybe,
   topEverywhereM, isInfixDataCon,
   isTypeKindName, typeKindName,
   unSigType, unfoldType, ForallTelescope(..), FunArgs(..), VisFunArg(..),
@@ -50,6 +49,17 @@ import Data.Maybe
 import GHC.Classes ( IP )
 import GHC.Generics ( Generic )
 import Unsafe.Coerce ( unsafeCoerce )
+
+#if __GLASGOW_HASKELL__ >= 906
+import GHC.Tuple ( Solo(MkSolo) )
+#elif __GLASGOW_HASKELL__ >= 900
+import GHC.Tuple ( Solo(Solo) )
+#endif
+
+#if __GLASGOW_HASKELL__ >= 908
+import GHC.Tuple ( Tuple0, Unit )
+import Text.Read ( readMaybe )
+#endif
 
 ----------------------------------------
 -- TH manipulations
@@ -139,25 +149,73 @@ nameMatches n1@(Name occ1 flav1) n2@(Name occ2 flav2)
   | otherwise
   = n1 == n2
 
--- | Extract the degree of a tuple
-tupleDegree_maybe :: String -> Maybe Int
-tupleDegree_maybe s = do
-  '(' : s1 <- return s
-  (commas, ")") <- return $ span (== ',') s1
-  let degree
-        | "" <- commas = 0
-        | otherwise    = length commas + 1
-  return degree
-
--- | Extract the degree of a tuple name
+-- | Extract the degree of a tuple 'Name'.
+--
+-- In addition to recognizing tuple syntax (e.g., @''(,,)@), this also
+-- recognizes the following:
+--
+-- * @''Unit@ (for 0-tuples)
+--
+-- * @''Solo@/@'MkSolo@ (for 1-tuples)
+--
+-- * @''Tuple<N>@ (for <N>-tuples)
+--
+-- In recent versions of GHC, @''()@ is a synonym for @''Unit@, @''(,)@ is a
+-- synonym for @''Tuple2@, and so on. As a result, we must check for @''Unit@
+-- and @''Tuple<N>@ in 'tupleDegree_maybe' to be thorough. (There is no special
+-- tuple syntax for @''Solo@/@'MkSolo@, but we check them here as well for the
+-- sake of completeness.)
 tupleNameDegree_maybe :: Name -> Maybe Int
-tupleNameDegree_maybe = tupleDegree_maybe . nameBase
+tupleNameDegree_maybe name
+  -- First, check for Solo/MkSolo...
+#if __GLASGOW_HASKELL__ >= 900
+  | name == ''Solo = Just 1
+#if __GLASGOW_HASKELL__ >= 906
+  | name == 'MkSolo = Just 1
+#else
+  | name == 'Solo = Just 1
+#endif
+#endif
+#if __GLASGOW_HASKELL__ >= 908
+  -- ...then, check for Unit...
+  | name == ''Unit = Just 0
+  -- ...then, check for Tuple<N>. It is theoretically possible for the supplied
+  -- Name to be a user-defined data type named Tuple<N>, rather than the actual
+  -- tuple types defined in GHC.Tuple. As such, we check that the package and
+  -- module for the supplied Name does in fact come from ghc-prim:GHC.Tuple as
+  -- a sanity check.
+  | -- We use Tuple0 here simply because it is a convenient identifier from
+    -- GHC.Tuple. We could just as well use any other identifier from GHC.Tuple,
+    -- however.
+    namePackage name == namePackage ''Tuple0
+  , nameModule name == nameModule ''Tuple0
+  , 'T':'u':'p':'l':'e':n <- nameBase (name)
+    -- This relies on the Read Int instance. This is more permissive than what
+    -- we need, since there are valid Int strings (e.g., "-1") that do not have
+    -- corresponding Tuple<N> names (e.g., "Tuple-1" is not a data type in
+    -- GHC.Tuple). As such, we depend on the assumption that the input string
+    -- does in fact come from GHC.Tuple, which we check above.
+  = readMaybe n
+#endif
+  -- ...otherwise, fall back on tuple syntax.
+  | otherwise
+  = tuple_syntax_degree_maybe (nameBase name)
+  where
+    -- Extract the degree of a string using tuple syntax (e.g., @''(,,)@).
+    tuple_syntax_degree_maybe :: String -> Maybe Int
+    tuple_syntax_degree_maybe s = do
+      '(' : s1 <- return s
+      (commas, ")") <- return $ span (== ',') s1
+      let degree
+            | "" <- commas = 0
+            | otherwise    = length commas + 1
+      return degree
 
 -- | Extract the degree of an unboxed sum
 unboxedSumDegree_maybe :: String -> Maybe Int
 unboxedSumDegree_maybe = unboxedSumTupleDegree_maybe '|'
 
--- | Extract the degree of an unboxed sum name
+-- | Extract the degree of an unboxed sum 'Name'.
 unboxedSumNameDegree_maybe :: Name -> Maybe Int
 unboxedSumNameDegree_maybe = unboxedSumDegree_maybe . nameBase
 
@@ -175,7 +233,7 @@ unboxedSumTupleDegree_maybe sep s = do
         | otherwise  = length seps + 1
   return degree
 
--- | Extract the degree of an unboxed tuple name
+-- | Extract the degree of an unboxed tuple 'Name'.
 unboxedTupleNameDegree_maybe :: Name -> Maybe Int
 unboxedTupleNameDegree_maybe = unboxedTupleDegree_maybe . nameBase
 

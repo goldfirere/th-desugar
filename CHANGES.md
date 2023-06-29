@@ -1,8 +1,24 @@
 `th-desugar` release notes
 ==========================
 
-Version next [????.??.??]
+Version 1.16 [????.??.??]
 -------------------------
+* The `tupleNameDegree_maybe` function now returns:
+  * `Just 0` when the argument is `''Unit`
+  * `Just 1` when the argument is `''Solo` or `'MkSolo`
+  * `Just <N>` when the argument is `''Tuple<N>`
+  This is primarily motivated by the fact that with GHC 9.8 or later, `''()` is
+  syntactic sugar for `''Unit`, `''(,)` is syntactic sugar for `Tuple2`, and so
+  on. We also include cases for `''Solo` and `'MkSolo` for the sake of
+  completeness, even though they do not have any special syntactic sugar.
+* The `tupleDegree_maybe`, `unboxedSumDegree_maybe`, and
+  `unboxedTupleDegree_maybe` functions have been removed. Their only use sites
+  were in the `tupleNameDegree_maybe`, `unboxedSumNameDegree_maybe`, and
+  `unboxedTupleNameDegree_maybe` functions, respectively. Moreover,
+  `tupleDegree_maybe`'s semantics were questionable, considering that it could
+  potentially return `Just <N>` for a custom data type named `Tuple<N>`, even
+  if the custom data type has no relation to the `Tuple<N>` types defined in
+  `GHC.Tuple`.
 * Fix a bug in which infix data family declaration would mistakenly be rejected
   when reified locally.
 * Fix a bug in which data types that use visible dependent quantification would
