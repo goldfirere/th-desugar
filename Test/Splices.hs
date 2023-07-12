@@ -59,6 +59,8 @@ rae@cs.brynmawr.edu
 module Splices where
 
 import qualified Data.List as L
+import qualified Data.List.NonEmpty as NE
+import Data.List.NonEmpty (NonEmpty(..))
 import Data.Char
 import qualified Data.Kind as Kind (Type)
 import GHC.Exts
@@ -132,10 +134,11 @@ assumeStarT = everywhere (assume_spec_t . assume_vis_t . assume_unit_t)
 dropTrailing0s :: Data a => a -> a
 dropTrailing0s = everywhere (mkT (mkName . frob . nameBase))
   where
-    frob str
-      | head str == 'r' = str
-      | head str == 'R' = str
-      | otherwise       = L.dropWhileEnd isDigit str
+    frob str =
+      case str of
+        'r':_ -> str
+        'R':_ -> str
+        _     -> L.dropWhileEnd isDigit str
 
 -- Because th-desugar does not support linear types, we must pretend like
 -- MulArrowT does not exist for testing purposes.
@@ -179,11 +182,11 @@ test13_sig = [| show (read "[10, 11, 12]" :: [Int]) |]
 data Record = MkRecord1 { field1 :: Bool, field2 :: Int }
             | MkRecord2 { field2 :: Int, field3 :: Char }
 
-test14_record = [| let r1 = [MkRecord1 { field2 = 5, field1 = False }, MkRecord2 { field2 = 6, field3 = 'q' }]
-                       r2 = map (\r -> r { field2 = 18 }) r1
-                       r3 = (head r2) { field1 = True } in
-                   map (\case MkRecord1 { field2 = some_int, field1 = some_bool } -> show some_int ++ show some_bool
-                              MkRecord2 { field2 = some_int, field3 = some_char } -> show some_int ++ show some_char) (r3 : r2) |]
+test14_record = [| let r1 = MkRecord1 { field2 = 5, field1 = False } :| [MkRecord2 { field2 = 6, field3 = 'q' }]
+                       r2 = fmap (\r -> r { field2 = 18 }) r1
+                       r3 = (NE.head r2) { field1 = True } in
+                   fmap (\case MkRecord1 { field2 = some_int, field1 = some_bool } -> show some_int ++ show some_bool
+                               MkRecord2 { field2 = some_int, field3 = some_char } -> show some_int ++ show some_char) (NE.cons r3 r2) |]
 
 test15_litp = [| map (\case { 5 -> True ; _ -> False }) [5,6] |]
 test16_tupp = [| map (\(x,y,z) -> x + y + z) [(1,2,3),(4,5,6)] |]
@@ -222,8 +225,8 @@ test27_kisig = [| let f :: Proxy (a :: Bool) -> ()
 test28_tupt = [| let f :: (a,b) -> a
                      f (a,_) = a in
                  map f [(1,'a'),(2,'b')] |]
-test29_listt = [| let f :: [[a]] -> a
-                      f = head . head in
+test29_listt = [| let f :: [[Int]] -> [[Int]]
+                      f = map (map (+1)) in
                   map f [ [[1]], [[2]] ] |]
 test30_promoted = [| let f :: Proxy '() -> Proxy '[Int, Bool] -> ()
                          f _ _ = () in
