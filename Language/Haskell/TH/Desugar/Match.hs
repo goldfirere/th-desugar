@@ -20,6 +20,8 @@ import qualified Control.Monad as Monad
 import Data.Data
 import qualified Data.Foldable as F
 import Data.Generics
+import qualified Data.List.NonEmpty as NE
+import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.Set as S
 import qualified Data.Map as Map
 import Language.Haskell.TH.Instances ()
@@ -89,11 +91,17 @@ simplCaseExp :: DsMonad q
              -> [DClause]
              -> q DExp
 simplCaseExp vars clauses =
-  do let eis = [ EquationInfo pats (\_ -> rhs) |
+  do let eis = [ EquationInfo (to_ne_pats pats) (\_ -> rhs) |
                  DClause pats rhs <- clauses ]
      matchResultToDExp `liftM` simplCase vars eis
+  where
+    to_ne_pats :: [DPat] -> NonEmpty DPat
+    to_ne_pats pats =
+      case pats of
+        p:ps -> p:|ps
+        [] -> error "Clause encountered with no patterns -- should never happen"
 
-data EquationInfo = EquationInfo [DPat] MatchResult  -- like DClause, but with a hole
+data EquationInfo = EquationInfo (NonEmpty DPat) MatchResult  -- like DClause, but with a hole
 
 -- analogous to GHC's match (in deSugar/Match.lhs)
 simplCase :: DsMonad q
@@ -103,35 +111,35 @@ simplCase :: DsMonad q
 simplCase [] clauses = return (foldr1 (.) match_results)
   where
     match_results = [ mr | EquationInfo _ mr <- clauses ]
-simplCase vars@(v:_) clauses = do
+simplCase (v:vs) clauses = do
   (aux_binds, tidy_clauses) <- mapAndUnzipM (tidyClause v) clauses
   let grouped = groupClauses tidy_clauses
   match_results <- match_groups grouped
   return (adjustMatchResult (foldr (.) id aux_binds) $
           foldr1 (.) match_results)
   where
-    match_groups :: DsMonad q => [[(PatGroup, EquationInfo)]] -> q [MatchResult]
+    match_groups :: DsMonad q => [NonEmpty (PatGroup, EquationInfo)] -> q [MatchResult]
     match_groups [] = matchEmpty v
     match_groups gs = mapM match_group gs
 
-    match_group :: DsMonad q => [(PatGroup, EquationInfo)] -> q MatchResult
-    match_group [] = error "Internal error in th-desugar (match_group)"
-    match_group eqns@((group,_) : _) =
+    match_group :: DsMonad q => NonEmpty (PatGroup, EquationInfo) -> q MatchResult
+    match_group eqns@((group,_) :| _) =
       case group of
-        PgCon _ -> matchConFamily vars (subGroup [(c,e) | (PgCon c, e) <- eqns])
-        PgLit _ -> matchLiterals  vars (subGroup [(l,e) | (PgLit l, e) <- eqns])
-        PgBang  -> matchBangs     vars (drop_group eqns)
-        PgAny   -> matchVariables vars (drop_group eqns)
+        PgCon _ -> matchConFamily vars $ subGroup [(c,e) | (PgCon c, e) <- NE.toList eqns]
+        PgLit _ -> matchLiterals  vars $ subGroup [(l,e) | (PgLit l, e) <- NE.toList eqns]
+        PgBang  -> matchBangs     vars $ drop_group eqns
+        PgAny   -> matchVariables vars $ drop_group eqns
 
-    drop_group = map snd
+    drop_group :: NonEmpty (PatGroup, EquationInfo) -> NonEmpty EquationInfo
+    drop_group = fmap snd
+
+    vars = v:|vs
 
 -- analogous to GHC's tidyEqnInfo
 tidyClause :: DsMonad q => Name -> EquationInfo -> q (DExp -> DExp, EquationInfo)
-tidyClause _ (EquationInfo [] _) =
-  error "Internal error in th-desugar: no patterns in tidyClause."
-tidyClause v (EquationInfo (pat : pats) body) = do
+tidyClause v (EquationInfo (pat :| pats) body) = do
   (wrap, pat') <- tidy1 v pat
-  return (wrap, EquationInfo (pat' : pats) body)
+  return (wrap, EquationInfo (pat' :| pats) body)
 
 tidy1 :: DsMonad q
       => Name   -- the name of the variable that ...
@@ -184,10 +192,10 @@ mkSelectorDecs pat name
   | OS.null binders
   = return []
 
-  | OS.size binders == 1
+  | [binder] <- F.toList binders
   = do val_var <- newUniqueName "var"
        err_var <- newUniqueName "err"
-       bind    <- mk_bind val_var err_var (head $ F.toList binders)
+       bind    <- mk_bind val_var err_var binder
        return [DValD (DVarP val_var) (DVarE name),
                DValD (DVarP err_var) (DVarE 'error `DAppE`
                                        (DLitE $ StringL "Irrefutable match failed")),
@@ -221,7 +229,7 @@ mkSelectorDecs pat name
     mk_tuple_pats elt_name i = replicate i DWildP ++ DVarP elt_name : replicate (tuple_size - i - 1) DWildP
 
     mk_bind scrut_var err_var bndr_var = do
-      rhs_mr <- simplCase [scrut_var] [EquationInfo [pat] (\_ -> DVarE bndr_var)]
+      rhs_mr <- simplCase [scrut_var] [EquationInfo (pat:|[]) (\_ -> DVarE bndr_var)]
       return (DValD (DVarP bndr_var) (rhs_mr (DVarE err_var)))
 
 data PatGroup
@@ -231,9 +239,9 @@ data PatGroup
   | PgBang
 
 -- like GHC's groupEquations
-groupClauses :: [EquationInfo] -> [[(PatGroup, EquationInfo)]]
+groupClauses :: [EquationInfo] -> [NonEmpty (PatGroup, EquationInfo)]
 groupClauses clauses
-  = runs same_gp [(patGroup (firstPat clause), clause) | clause <- clauses]
+  = NE.groupBy same_gp [(patGroup (firstPat clause), clause) | clause <- clauses]
   where
     same_gp :: (PatGroup, EquationInfo) -> (PatGroup, EquationInfo) -> Bool
     (pg1,_) `same_gp` (pg2,_) = pg1 `sameGroup` pg2
@@ -254,18 +262,20 @@ sameGroup (PgCon _) (PgCon _) = True
 sameGroup (PgLit _) (PgLit _) = True
 sameGroup _         _         = False
 
-subGroup :: Ord a => [(a, EquationInfo)] -> [[EquationInfo]]
+-- Precondition: the input list contains at least one element.
+subGroup :: Ord a => [(a, EquationInfo)] -> NonEmpty (NonEmpty EquationInfo)
 subGroup group
-  = map reverse $ Map.elems $ foldl accumulate Map.empty group
+  = case map NE.reverse $ Map.elems $ foldl accumulate Map.empty group of
+      e:es -> e:|es
+      [] -> error "Internal error in th-desugar (subGroup)"
   where
     accumulate pg_map (pg, eqn)
       = case Map.lookup pg pg_map of
-          Just eqns -> Map.insert pg (eqn:eqns) pg_map
-          Nothing   -> Map.insert pg [eqn]      pg_map
+          Just eqns -> Map.insert pg (NE.cons eqn eqns) pg_map
+          Nothing   -> Map.insert pg (eqn :| [])        pg_map
 
 firstPat :: EquationInfo -> DPat
-firstPat (EquationInfo (pat : _) _) = pat
-firstPat _ = error "Clause encountered with no patterns -- should never happen"
+firstPat (EquationInfo (pat :| _) _) = pat
 
 data CaseAlt = CaseAlt { alt_con  :: Name         -- con name
                        , _alt_args :: [Name]       -- bound var names
@@ -273,15 +283,14 @@ data CaseAlt = CaseAlt { alt_con  :: Name         -- con name
                        }
 
 -- from GHC's MatchCon.lhs
-matchConFamily :: DsMonad q => [Name] -> [[EquationInfo]] -> q MatchResult
-matchConFamily (var:vars) groups
+matchConFamily :: DsMonad q => NonEmpty Name -> NonEmpty (NonEmpty EquationInfo) -> q MatchResult
+matchConFamily (var:|vars) groups
   = do alts <- mapM (matchOneCon vars) groups
        mkDataConCase var alts
-matchConFamily [] _ = error "Internal error in th-desugar (matchConFamily)"
 
 -- like matchOneConLike from MatchCon
-matchOneCon :: DsMonad q => [Name] -> [EquationInfo] -> q CaseAlt
-matchOneCon vars eqns@(eqn1 : _)
+matchOneCon :: DsMonad q => [Name] -> NonEmpty EquationInfo -> q CaseAlt
+matchOneCon vars eqns@(eqn1 :| _)
   = do arg_vars <- selectMatchVars (pat_args pat1)
        match_result <- match_group arg_vars
 
@@ -297,19 +306,27 @@ matchOneCon vars eqns@(eqn1 : _)
 
     match_group :: DsMonad q => [Name] -> q MatchResult
     match_group arg_vars
-      = simplCase (arg_vars ++ vars) (map shift eqns)
+      = simplCase (arg_vars ++ vars) $ NE.toList $ fmap shift eqns
 
-    shift (EquationInfo (DConP _ _ args : pats) exp) = EquationInfo (args ++ pats) exp
+    shift (EquationInfo (DConP _ _ args :| pats) exp)
+      = EquationInfo (to_ne_pats (args ++ pats)) exp
     shift _ = error "Internal error in th-desugar (shift)"
-matchOneCon _ _ = error "Internal error in th-desugar (matchOneCon)"
 
-mkDataConCase :: DsMonad q => Name -> [CaseAlt] -> q MatchResult
+    to_ne_pats :: [DPat] -> NonEmpty DPat
+    to_ne_pats pats =
+      case pats of
+        p:ps -> p:|ps
+        [] -> error "Internal error in th-desugar (matchOneCon.to_ne_pats)"
+
+mkDataConCase :: DsMonad q => Name -> NonEmpty CaseAlt -> q MatchResult
 mkDataConCase var case_alts = do
-  all_ctors <- get_all_ctors (alt_con $ head case_alts)
+  all_ctors <- get_all_ctors (alt_con $ NE.head case_alts)
   return $ \fail ->
-    let matches = map (mk_alt fail) case_alts in
+    let matches = fmap (mk_alt fail) case_alt_list in
     DCaseE (DVarE var) (matches ++ mk_default all_ctors fail)
   where
+    case_alt_list = NE.toList case_alts
+
     mk_alt fail (CaseAlt con args body_fn)
       = let body = body_fn fail in
         DMatch (DConP con [] (map DVarP args)) body
@@ -317,7 +334,7 @@ mkDataConCase var case_alts = do
     mk_default all_ctors fail | exhaustive_case all_ctors = []
                               | otherwise       = [DMatch DWildP fail]
 
-    mentioned_ctors = S.fromList $ map alt_con case_alts
+    mentioned_ctors = S.fromList $ map alt_con case_alt_list
     exhaustive_case all_ctors = all_ctors `S.isSubsetOf` mentioned_ctors
 
     get_all_ctors :: DsMonad q => Name -> q (S.Set Name)
@@ -337,42 +354,39 @@ matchEmpty var = return [mk_seq]
   where
     mk_seq fail = DCaseE (DVarE var) [DMatch DWildP fail]
 
-matchLiterals :: DsMonad q => [Name] -> [[EquationInfo]] -> q MatchResult
-matchLiterals (var:vars) sub_groups
+matchLiterals :: DsMonad q => NonEmpty Name -> NonEmpty (NonEmpty EquationInfo) -> q MatchResult
+matchLiterals (var:|vars) sub_groups
   = do alts <- mapM match_group sub_groups
        return (mkCoPrimCaseMatchResult var alts)
   where
-    match_group :: DsMonad q => [EquationInfo] -> q (Lit, MatchResult)
+    match_group :: DsMonad q => NonEmpty EquationInfo -> q (Lit, MatchResult)
     match_group eqns
-      = do let lit = case firstPat (head eqns) of
+      = do let lit = case firstPat (NE.head eqns) of
                        DLitP lit' -> lit'
                        _          -> error $ "Internal error in th-desugar "
                                           ++ "(matchLiterals.match_group)"
-           match_result <- simplCase vars (shiftEqns eqns)
+           match_result <- simplCase vars $ NE.toList $ shiftEqns eqns
            return (lit, match_result)
-matchLiterals [] _ = error "Internal error in th-desugar (matchLiterals)"
 
 mkCoPrimCaseMatchResult :: Name -- Scrutinee
-                        -> [(Lit, MatchResult)]
+                        -> NonEmpty (Lit, MatchResult)
                         -> MatchResult
 mkCoPrimCaseMatchResult var match_alts = mk_case
   where
-    mk_case fail = let alts = map (mk_alt fail) match_alts in
+    mk_case fail = let alts = NE.toList $ fmap (mk_alt fail) match_alts in
                    DCaseE (DVarE var) (alts ++ [DMatch DWildP fail])
     mk_alt fail (lit, body_fn)
       = DMatch (DLitP lit) (body_fn fail)
 
-matchBangs :: DsMonad q => [Name] -> [EquationInfo] -> q MatchResult
-matchBangs (var:vars) eqns
-  = do match_result <- simplCase (var:vars) $
-                       map (decomposeFirstPat getBangPat) eqns
+matchBangs :: DsMonad q => NonEmpty Name -> NonEmpty EquationInfo -> q MatchResult
+matchBangs (var:|vars) eqns
+  = do match_result <- simplCase (var:vars) $ NE.toList $
+                       fmap (decomposeFirstPat getBangPat) eqns
        return (mkEvalMatchResult var match_result)
-matchBangs [] _ = error "Internal error in th-desugar (matchBangs)"
 
 decomposeFirstPat :: (DPat -> DPat) -> EquationInfo -> EquationInfo
-decomposeFirstPat extractpat (EquationInfo (pat:pats) body)
-  = EquationInfo (extractpat pat : pats) body
-decomposeFirstPat _ _ = error "Internal error in th-desugar (decomposeFirstPat)"
+decomposeFirstPat extractpat (EquationInfo (pat:|pats) body)
+  = EquationInfo (extractpat pat :| pats) body
 
 getBangPat :: DPat -> DPat
 getBangPat (DBangP p) = p
@@ -382,15 +396,19 @@ mkEvalMatchResult :: Name -> MatchResult -> MatchResult
 mkEvalMatchResult var body_fn fail
   = foldl DAppE (DVarE 'seq) [DVarE var, body_fn fail]
 
-matchVariables :: DsMonad q => [Name] -> [EquationInfo] -> q MatchResult
-matchVariables (_:vars) eqns = simplCase vars (shiftEqns eqns)
-matchVariables _ _ = error "Internal error in th-desugar (matchVariables)"
+matchVariables :: DsMonad q => NonEmpty Name -> NonEmpty EquationInfo -> q MatchResult
+matchVariables (_:|vars) eqns = simplCase vars $ NE.toList $ shiftEqns eqns
 
-shiftEqns :: [EquationInfo] -> [EquationInfo]
-shiftEqns = map shift
+shiftEqns :: NonEmpty EquationInfo -> NonEmpty EquationInfo
+shiftEqns = fmap shift
   where
-    shift (EquationInfo pats rhs) = EquationInfo (tail pats) rhs
+    shift (EquationInfo pats rhs) = EquationInfo (to_ne_pats (NE.tail pats)) rhs
 
+    to_ne_pats :: [DPat] -> NonEmpty DPat
+    to_ne_pats pats =
+      case pats of
+        p:ps -> p:|ps
+        [] -> error "Internal error in th-desugar (shiftEqns.to_ne_pats)"
 
 adjustMatchResult :: (DExp -> DExp) -> MatchResult -> MatchResult
 adjustMatchResult wrap mr fail = wrap $ mr fail
@@ -405,9 +423,3 @@ selectMatchVar (DBangP pat)  = selectMatchVar pat
 selectMatchVar (DTildeP pat) = selectMatchVar pat
 selectMatchVar (DVarP var)   = newUniqueName ('_' : nameBase var)
 selectMatchVar _             = newUniqueName "_pat"
-
--- like GHC's runs
-runs :: (a -> a -> Bool) -> [a] -> [[a]]
-runs _ [] = []
-runs p (x:xs) = case span (p x) xs of
-                  (first, rest) -> (x:first) : (runs p rest)
