@@ -801,8 +801,16 @@ test_matchTy =
   , matchTy NoIgnore (DConT ''Int) (DConT ''Bool) == Nothing
   , matchTy NoIgnore (DConT ''Int) (DConT ''Int) == Just M.empty
   , matchTy NoIgnore (DConT ''Int) (DVarT a) == Nothing
+    -- Test `DSigT` with both `IgnoreKinds` options
   , matchTy NoIgnore (DVarT a `DSigT` DConT ''Bool) (DConT ''Int) == Nothing
   , matchTy YesIgnore (DVarT a `DSigT` DConT ''Bool) (DConT ''Int)
+    == Just (M.singleton a (DConT ''Int))
+    -- Test `DAppKindT` with both `IgnoreKinds` options
+  , matchTy NoIgnore (DConT ''Proxy `DAppKindT` DConT ''Bool `DAppT` DVarT a)
+                     (DConT ''Proxy `DAppT` DConT ''Int)
+    == Nothing
+  , matchTy YesIgnore (DConT ''Proxy `DAppKindT` DConT ''Bool `DAppT` DVarT a)
+                      (DConT ''Proxy `DAppT` DConT ''Int)
     == Just (M.singleton a (DConT ''Int))
   ]
   where
