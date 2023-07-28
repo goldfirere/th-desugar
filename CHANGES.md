@@ -19,6 +19,8 @@ Version 1.16 [????.??.??]
   potentially return `Just <N>` for a custom data type named `Tuple<N>`, even
   if the custom data type has no relation to the `Tuple<N>` types defined in
   `GHC.Tuple`.
+* The `matchTy` function now looks through visible kind applications (i.e.,
+  `DAppKindT`s) whenever `YesIgnoreKinds` is given.
 * Fix a bug in which infix data family declaration would mistakenly be rejected
   when reified locally.
 * Fix a bug in which data types that use visible dependent quantification would

@@ -116,12 +116,17 @@ data IgnoreKinds = YesIgnore | NoIgnore
 matchTy :: IgnoreKinds -> DType -> DType -> Maybe DSubst
 matchTy _   (DVarT var_name) arg = Just $ M.singleton var_name arg
   -- if a pattern has a kind signature, it's really easy to get
-  -- this wrong.
+  -- the following two cases wrong.
 matchTy ign (DSigT ty _ki) arg = case ign of
   YesIgnore -> matchTy ign ty arg
   NoIgnore  -> Nothing
-  -- but we can safely ignore kind signatures on the target
-matchTy ign pat (DSigT ty _ki) = matchTy ign pat ty
+matchTy ign (DAppKindT ty _ki) arg = case ign of
+  YesIgnore -> matchTy ign ty arg
+  NoIgnore  -> Nothing
+  -- but we can safely ignore kind signatures on the target,
+  -- as in the following two cases.
+matchTy ign pat (DSigT     ty _ki) = matchTy ign pat ty
+matchTy ign pat (DAppKindT ty _ki) = matchTy ign pat ty
 matchTy _   (DForallT {}) _ =
   error "Cannot match a forall in a pattern"
 matchTy _   _ (DForallT {}) =
