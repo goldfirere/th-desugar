@@ -34,6 +34,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE TypeData #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 907
+{-# LANGUAGE TypeAbstractions #-}
+#endif
+
 module Main where
 
 import Prelude hiding ( exp )

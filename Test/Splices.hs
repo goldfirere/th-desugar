@@ -53,6 +53,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE TypeData #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 907
+{-# LANGUAGE TypeAbstractions #-}
+#endif
+
 {-# OPTIONS_GHC -Wno-missing-signatures -Wno-type-defaults
                 -Wno-name-shadowing #-}
 
