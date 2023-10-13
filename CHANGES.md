@@ -1,7 +1,7 @@
 `th-desugar` release notes
 ==========================
 
-Version 1.16 [????.??.??]
+Version 1.16 [2023.10.13]
 -------------------------
 * Support GHC 9.8.
 * Require `th-abstraction-0.6` or later.
