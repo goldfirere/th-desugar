@@ -24,7 +24,7 @@ rae@cs.brynmawr.edu
 
 module Language.Haskell.TH.Desugar (
   -- * Desugared data types
-  DExp(..), DLetDec(..), DPat(..),
+  DExp(..), DLetDec(..), NamespaceSpecifier(..), DPat(..),
   DType(..), DForallTelescope(..), DKind, DCxt, DPred,
   DTyVarBndr(..), DTyVarBndrSpec, DTyVarBndrUnit, Specificity(..),
   DTyVarBndrVis,

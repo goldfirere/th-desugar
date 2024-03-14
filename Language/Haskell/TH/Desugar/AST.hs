@@ -111,9 +111,23 @@ data DClause = DClause [DPat] DExp
 data DLetDec = DFunD Name [DClause]
              | DValD DPat DExp
              | DSigD Name DType
-             | DInfixD Fixity Name
+             | DInfixD Fixity NamespaceSpecifier Name
              | DPragmaD DPragma
              deriving (Eq, Show, Data, Generic, Lift)
+
+#if __GLASGOW_HASKELL__ < 909
+-- | Same as @NamespaceSpecifier@ from TH; defined here for backwards
+-- compatibility.
+data NamespaceSpecifier
+  = NoNamespaceSpecifier   -- ^ Name may be everything; If there are two
+                           --   names in different namespaces, then consider both
+  | TypeNamespaceSpecifier -- ^ Name should be a type-level entity, such as a
+                           --   data type, type alias, type family, type class,
+                           --   or type variable
+  | DataNamespaceSpecifier -- ^ Name should be a term-level entity, such as a
+                           --   function, data constructor, or pattern synonym
+  deriving (Eq, Ord, Show, Data, Generic, Lift)
+#endif
 
 -- | Corresponds to TH's @Dec@ type.
 data DDec = DLetDec DLetDec
