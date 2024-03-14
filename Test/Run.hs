@@ -436,7 +436,7 @@ test_t132 =
            --
            -- We define this by hand to avoid GHC#17608 on pre-9.0 GHCs.
            decs = sweeten [ DClassD [] c [DPlainTV a THAbs.BndrReq] []
-                            [ DLetDec (DInfixD fixity m)
+                            [ DLetDec (DInfixD fixity NoNamespaceSpecifier m)
                             , DLetDec (DSigD m (DVarT a))
                             ]
                           ]

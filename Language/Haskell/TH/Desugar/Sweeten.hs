@@ -218,7 +218,12 @@ letDecToTH :: DLetDec -> Dec
 letDecToTH (DFunD name clauses) = FunD name (map clauseToTH clauses)
 letDecToTH (DValD pat exp)      = ValD (patToTH pat) (NormalB (expToTH exp)) []
 letDecToTH (DSigD name ty)      = SigD name (typeToTH ty)
-letDecToTH (DInfixD f name)     = InfixD f name
+letDecToTH (DInfixD f _ns_spec name) =
+  InfixD f
+#if __GLASGOW_HASKELL__ >= 909
+         _ns_spec
+#endif
+         name
 letDecToTH (DPragmaD prag)      = PragmaD (pragmaToTH prag)
 
 conToTH :: DCon -> Con

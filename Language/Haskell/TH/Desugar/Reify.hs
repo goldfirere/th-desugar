@@ -242,7 +242,11 @@ reifyInDecs n decs = snd `fmap` firstMatch (reifyInDec n decs) decs
 reifyFixityInDecs :: Name -> [Dec] -> Maybe Fixity
 reifyFixityInDecs n = firstMatch match_fixity
   where
-    match_fixity (InfixD fixity n')        | n `nameMatches` n'
+    match_fixity (InfixD fixity
+#if __GLASGOW_HASKELL__ >= 909
+                         _
+#endif
+                         n')               | n `nameMatches` n'
                                            = Just fixity
     match_fixity (ClassD _ _ _ _ sub_decs) = firstMatch match_fixity sub_decs
     match_fixity _                         = Nothing
