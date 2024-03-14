@@ -1,8 +1,9 @@
 `th-desugar` release notes
 ==========================
 
-Version next [????.??.??]
+Version 1.17 [????.??.??]
 -------------------------
+* Support GHC 9.10.
 * `extractBoundNamesDPat` no longer extracts type variables from constructor
   patterns. That this function ever did extract type variables was a mistake,
   and the new behavior of `extractBoundNamesDPat` brings it in line with the
