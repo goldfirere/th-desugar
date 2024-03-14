@@ -4,6 +4,8 @@
 Version 1.17 [????.??.??]
 -------------------------
 * Support GHC 9.10.
+* Add support namespace identifiers in fixity declarations. As part of these
+  changes, the `DInfixD` data constructor now has a `NamespaceSpecifier` field.
 * `extractBoundNamesDPat` no longer extracts type variables from constructor
   patterns. That this function ever did extract type variables was a mistake,
   and the new behavior of `extractBoundNamesDPat` brings it in line with the

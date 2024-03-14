@@ -79,6 +79,10 @@ $(dsDecSplice S.dectest18)
 $(dsDecSplice S.dectest19)
 #endif
 
+#if __GLASGOW_HASKELL__ >= 909
+$(dsDecSplice S.dectest20)
+#endif
+
 $(do decs <- S.rec_sel_test
      withLocalDeclarations decs $ do
        [DDataD nd [] name [DPlainTV tvbName THAbs.BndrReq] k cons []] <- dsDecs decs
