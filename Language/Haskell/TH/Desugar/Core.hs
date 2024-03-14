@@ -898,7 +898,13 @@ dsLetDec (ValD pat body where_decs) = do
 dsLetDec (SigD name ty) = do
   ty' <- dsType ty
   return ([DSigD name ty'], id)
-dsLetDec (InfixD fixity name) = return ([DInfixD fixity name], id)
+#if __GLASGOW_HASKELL__ >= 909
+dsLetDec (InfixD fixity ns_spec name) =
+  return ([DInfixD fixity ns_spec name], id)
+#else
+dsLetDec (InfixD fixity name) =
+  return ([DInfixD fixity NoNamespaceSpecifier name], id)
+#endif
 dsLetDec (PragmaD prag) = do
   prag' <- dsPragma prag
   return ([DPragmaD prag'], id)

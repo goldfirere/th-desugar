@@ -545,6 +545,16 @@ dectest19 = [d| type Dec19 :: forall k. k -> Kind.Type
                 data Dec19 @k (a :: k) = MkDec19 k (Proxy a) |]
 #endif
 
+#if __GLASGOW_HASKELL__ >= 909
+dectest20 = [d| infixr 3 data !@#
+                infixr 3 type !@#
+
+                (!@#) :: Bool -> Bool -> Bool
+                (!@#) = (&&)
+
+                type family (!@#) :: Bool -> Bool -> Bool |]
+#endif
+
 instance_test = [d| instance (Show a, Show b) => Show (a -> b) where
                        show _ = "function" |]
 

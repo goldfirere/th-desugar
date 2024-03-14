@@ -54,6 +54,10 @@ $(S.dectest18)
 $(S.dectest19)
 #endif
 
+#if __GLASGOW_HASKELL__ >= 909
+$(S.dectest20)
+#endif
+
 $(fmap unqualify S.instance_test)
 
 $(fmap unqualify S.imp_inst_test1)
