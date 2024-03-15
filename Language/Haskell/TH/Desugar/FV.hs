@@ -41,14 +41,15 @@ fvDType = go
 
 -- | Extract the term variables bound by a 'DPat'.
 --
--- This does /not/ extract any type variables bound by pattern signatures.
+-- This does /not/ extract any type variables bound by pattern signatures or
+-- constructor patterns.
 extractBoundNamesDPat :: DPat -> OSet Name
 extractBoundNamesDPat = go
   where
     go :: DPat -> OSet Name
     go (DLitP _)          = OS.empty
     go (DVarP n)          = OS.singleton n
-    go (DConP _ tys pats) = foldMap fvDType tys <> foldMap go pats
+    go (DConP _ _ pats) = foldMap go pats
     go (DTildeP p)        = go p
     go (DBangP p)         = go p
     go (DSigP p _)        = go p
