@@ -481,7 +481,10 @@ nameOccursIn n = everything (||) $ mkQ False (== n)
 allNamesIn :: Data a => a -> [Name]
 allNamesIn = everything (++) $ mkQ [] (:[])
 
--- | Extract the names bound in a @Stmt@
+-- | Extract the names bound in a @Stmt@.
+--
+-- This does /not/ extract any type variables bound by pattern signatures or
+-- constructor patterns.
 extractBoundNamesStmt :: Stmt -> OSet Name
 extractBoundNamesStmt (BindS pat _) = extractBoundNamesPat pat
 extractBoundNamesStmt (LetS decs)   = foldMap extractBoundNamesDec decs
@@ -492,12 +495,18 @@ extractBoundNamesStmt (RecS stmtss) = foldMap extractBoundNamesStmt stmtss
 #endif
 
 -- | Extract the names bound in a @Dec@ that could appear in a @let@ expression.
+--
+-- This does /not/ extract any type variables bound by pattern signatures or
+-- constructor patterns.
 extractBoundNamesDec :: Dec -> OSet Name
 extractBoundNamesDec (FunD name _)  = OS.singleton name
 extractBoundNamesDec (ValD pat _ _) = extractBoundNamesPat pat
 extractBoundNamesDec _              = OS.empty
 
--- | Extract the names bound in a @Pat@
+-- | Extract the names bound in a @Pat@.
+--
+-- This does /not/ extract any type variables bound by pattern signatures or
+-- constructor patterns.
 extractBoundNamesPat :: Pat -> OSet Name
 extractBoundNamesPat (LitP _)              = OS.empty
 extractBoundNamesPat (VarP name)           = OS.singleton name
