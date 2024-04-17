@@ -266,6 +266,9 @@ dsExp (LamCasesE clauses) = do
 dsExp (TypedBracketE exp) = DTypedBracketE <$> dsExp exp
 dsExp (TypedSpliceE exp)  = DTypedSpliceE <$> dsExp exp
 #endif
+#if __GLASGOW_HASKELL__ >= 909
+dsExp (TypeE ty) = DTypeE <$> dsType ty
+#endif
 
 -- | Convert a 'DClause' to a 'DMatch' by bundling all of the clause's patterns
 -- into a match on a single unboxed tuple pattern. That is, convert this:
@@ -649,6 +652,9 @@ dsPat (SigP pat ty) = DSigP <$> dsPat pat <*> dsType ty
 dsPat (UnboxedSumP pat alt arity) =
   DConP (unboxedSumDataName alt arity) [] <$> ((:[]) <$> dsPat pat)
 #endif
+#if __GLASGOW_HASKELL__ >= 909
+dsPat (TypeP ty) = DTypeP <$> dsType ty
+#endif
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
 
@@ -660,6 +666,7 @@ dPatToDExp (DConP name tys pats) = foldl DAppE (foldl DAppTypeE (DConE name) tys
 dPatToDExp (DTildeP pat) = dPatToDExp pat
 dPatToDExp (DBangP pat) = dPatToDExp pat
 dPatToDExp (DSigP pat ty) = DSigE (dPatToDExp pat) ty
+dPatToDExp (DTypeP ty) = DTypeE ty
 dPatToDExp DWildP = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
@@ -671,6 +678,7 @@ removeWilds (DConP con_name tys pats) = DConP con_name tys <$> mapM removeWilds 
 removeWilds (DTildeP pat) = DTildeP <$> removeWilds pat
 removeWilds (DBangP pat) = DBangP <$> removeWilds pat
 removeWilds (DSigP pat ty) = DSigP <$> removeWilds pat <*> pure ty
+removeWilds (DTypeP ty) = pure $ DTypeP ty
 removeWilds DWildP = DVarP <$> newUniqueName "wild"
 
 -- | Desugar @Info@
@@ -1529,6 +1537,7 @@ isUniversalPattern (DTildeP {})  = return True
 isUniversalPattern (DBangP pat)  = isUniversalPattern pat
 isUniversalPattern (DSigP pat _) = isUniversalPattern pat
 isUniversalPattern DWildP        = return True
+isUniversalPattern (DTypeP _)    = return True
 
 -- | Apply one 'DExp' to a list of arguments
 applyDExp :: DExp -> [DExp] -> DExp

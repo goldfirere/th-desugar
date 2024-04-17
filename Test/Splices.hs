@@ -57,6 +57,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE TypeAbstractions #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 909
+{-# LANGUAGE RequiredTypeArguments #-}
+#endif
+
 {-# OPTIONS_GHC -Wno-missing-signatures -Wno-type-defaults
                 -Wno-name-shadowing #-}
 
@@ -389,6 +393,20 @@ test57_typed_th_bracket =
 
 test58_typed_th_splice =
   typedSpliceE (typedBracketE [| 'y' |])
+#endif
+
+#if __GLASGOW_HASKELL__ >= 909
+test59_embedded_types_keyword =
+  [| let idv :: forall a -> a -> a
+         idv (type a) (x :: a) = x :: a
+
+     in idv (type Bool) True |]
+
+test60_embedded_types_no_keyword =
+  [| let idv :: forall a -> a -> a
+         idv a (x :: a) = x :: a
+
+     in idv Bool True |]
 #endif
 
 type family TFExpand x
@@ -855,5 +873,9 @@ test_exprs = [ test1_sections
 #if __GLASGOW_HASKELL__ >= 907
              , test57_typed_th_bracket
              , test58_typed_th_splice
+#endif
+#if __GLASGOW_HASKELL__ >= 909
+             , test59_embedded_types_keyword
+             , test60_embedded_types_no_keyword
 #endif
              ]
