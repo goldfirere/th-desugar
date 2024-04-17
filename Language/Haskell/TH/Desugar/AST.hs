@@ -50,6 +50,7 @@ data DPat = DLitP Lit
           | DSigP DPat DType
           | DWildP
           | DTypeP DType
+          | DInvisP DType
           deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Type@ type, used to represent

@@ -654,11 +654,12 @@ dsPat (UnboxedSumP pat alt arity) =
 #endif
 #if __GLASGOW_HASKELL__ >= 909
 dsPat (TypeP ty) = DTypeP <$> dsType ty
+dsPat (InvisP ty) = DInvisP <$> dsType ty
 #endif
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
 
--- | Convert a 'DPat' to a 'DExp'. Fails on 'DWildP'.
+-- | Convert a 'DPat' to a 'DExp'. Fails on 'DWildP' and 'DInvisP'.
 dPatToDExp :: DPat -> DExp
 dPatToDExp (DLitP lit) = DLitE lit
 dPatToDExp (DVarP name) = DVarE name
@@ -668,6 +669,7 @@ dPatToDExp (DBangP pat) = dPatToDExp pat
 dPatToDExp (DSigP pat ty) = DSigE (dPatToDExp pat) ty
 dPatToDExp (DTypeP ty) = DTypeE ty
 dPatToDExp DWildP = error "Internal error in th-desugar: wildcard in rhs of as-pattern"
+dPatToDExp (DInvisP {}) = error "Internal error in th-desugar: invisible type pattern in rhs of as-pattern"
 
 -- | Remove all wildcards from a pattern, replacing any wildcard with a fresh
 --   variable
@@ -679,6 +681,7 @@ removeWilds (DTildeP pat) = DTildeP <$> removeWilds pat
 removeWilds (DBangP pat) = DBangP <$> removeWilds pat
 removeWilds (DSigP pat ty) = DSigP <$> removeWilds pat <*> pure ty
 removeWilds (DTypeP ty) = pure $ DTypeP ty
+removeWilds (DInvisP ty) = pure $ DInvisP ty
 removeWilds DWildP = DVarP <$> newUniqueName "wild"
 
 -- | Desugar @Info@
@@ -1538,6 +1541,7 @@ isUniversalPattern (DBangP pat)  = isUniversalPattern pat
 isUniversalPattern (DSigP pat _) = isUniversalPattern pat
 isUniversalPattern DWildP        = return True
 isUniversalPattern (DTypeP _)    = return True
+isUniversalPattern (DInvisP _)   = return True
 
 -- | Apply one 'DExp' to a list of arguments
 applyDExp :: DExp -> [DExp] -> DExp

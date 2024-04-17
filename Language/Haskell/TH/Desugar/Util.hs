@@ -537,6 +537,7 @@ extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
 #endif
 #if __GLASGOW_HASKELL__ >= 909
 extractBoundNamesPat (TypeP _)             = OS.empty
+extractBoundNamesPat (InvisP _)            = OS.empty
 #endif
 
 ----------------------------------------
