@@ -553,6 +553,10 @@ dectest20 = [d| infixr 3 data !@#
                 (!@#) = (&&)
 
                 type family (!@#) :: Bool -> Bool -> Bool |]
+
+dectest21 = [d| {-# SCC dec21 "dec21" #-}
+                dec21 :: a -> a
+                dec21 x = x |]
 #endif
 
 instance_test = [d| instance (Show a, Show b) => Show (a -> b) where

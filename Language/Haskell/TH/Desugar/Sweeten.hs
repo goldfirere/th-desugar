@@ -279,6 +279,11 @@ pragmaToTH (DOpaqueP n) = OpaqueP n
 #else
 pragmaToTH (DOpaqueP {}) = error "OPAQUE pragmas only supported in GHC 9.4+"
 #endif
+#if __GLASGOW_HASKELL__ >= 909
+pragmaToTH (DSCCP nm mstr) = SCCP nm mstr
+#else
+pragmaToTH (DSCCP {}) = error "SCCP pragmas only supported in GHC 9.10+"
+#endif
 
 ruleBndrToTH :: DRuleBndr -> RuleBndr
 ruleBndrToTH (DRuleVar n) = RuleVar n

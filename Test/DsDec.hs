@@ -81,6 +81,7 @@ $(dsDecSplice S.dectest19)
 
 #if __GLASGOW_HASKELL__ >= 909
 $(dsDecSplice S.dectest20)
+$(dsDecSplice S.dectest21)
 #endif
 
 $(do decs <- S.rec_sel_test
