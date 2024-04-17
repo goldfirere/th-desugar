@@ -407,6 +407,12 @@ test60_embedded_types_no_keyword =
          idv a (x :: a) = x :: a
 
      in idv Bool True |]
+
+test61_invis_type_pat =
+  [| let f :: a -> a
+         f @a = id @a
+
+     in f @Bool True |]
 #endif
 
 type family TFExpand x
@@ -877,5 +883,6 @@ test_exprs = [ test1_sections
 #if __GLASGOW_HASKELL__ >= 909
              , test59_embedded_types_keyword
              , test60_embedded_types_no_keyword
+             , test61_invis_type_pat
 #endif
              ]

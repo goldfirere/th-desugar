@@ -56,6 +56,13 @@ data DPat = DLitP Lit
             -- expressions. See the \"Known limitations\" section of the
             -- @th-desugar@ @README@ for more details.
           | DTypeP DType
+            -- | Note that @th-desugar@ only has partial support for desugaring
+            -- invisible type patterns. In particular, @th-desugar@ supports
+            -- desugaring invisible type patterns in function clauses, but not
+            -- in lambda expressions or @\\cases@ expressions. See the \"Known
+            -- limitations\" section of the @th-desugar@ @README@ for more
+            -- details.
+          | DInvisP DType
           deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Type@ type, used to represent

@@ -211,3 +211,26 @@ declarations, which are fully supported. See also [this `th-desugar`
 issue](https://github.com/goldfirere/th-desugar/issues/210), which proposes a
 different approach to desugaring that would allow all of the examples above to
 be accepted.
+
+## Limited support for invisible type patterns
+
+In GHC 9.10 or later, the `TypeAbstractions` language extension allows one to
+write definitions with invisible type patterns, e.g.,
+
+```hs
+f :: a -> a
+f @a = id @a
+```
+
+`th-desugar` supports writing patterns like `@a` via the `DInvisP` data
+constructor of `DPat`. Be warned, however, that `th-desugar` only supports
+desugaring `DInvisP` in the clauses of function declarations, such as the
+declaration of `f` above. As a result, `th-desugar` does not support desugaring
+`DInvisP` in any other position, such as lambda expressions or `\cases`
+expressions.
+
+Ultimately, this limitation has the same underlying cause as `th-desugar`'s
+limitations surrounding embedded types in patterns (see the "Limited support
+for embedded types in patterns" section above). As a result, the same
+workaround applies: convert uses of lambdas and `LambdaCase` to function
+declarations, which are fully supported.

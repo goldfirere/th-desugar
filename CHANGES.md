@@ -14,6 +14,10 @@ Version 1.17 [????.??.??]
   clauses of function declarations, but not in lambda expressions, `\case`
   expressions, or `\cases` expressions. See the "Known limitations" section of
   the `th-desugar` `README` for full details.
+* Add partial support for invisible type patterns via the new `DInvisP` data
+  constructor. Just like with `DTypeP`, `th-desugar` only supports the use of
+  `DInvisP` in the clauses of function declarations. See the "Known limitations"
+  section of the `th-desugar` `README` for full details.
 * `extractBoundNamesDPat` no longer extracts type variables from constructor
   patterns. That this function ever did extract type variables was a mistake,
   and the new behavior of `extractBoundNamesDPat` brings it in line with the
