@@ -164,6 +164,7 @@ tidy1 v (DBangP pat) =
     DSigP p _ -> tidy1 v (DBangP p) -- discard sig under !
     DWildP    -> return (id, DBangP pat)  -- no change
     DTypeP _  -> return (id, DBangP pat)  -- no change
+    DInvisP _ -> return (id, DBangP pat)  -- no change
 tidy1 v (DSigP pat ty)
   | no_tyvars_ty ty = tidy1 v pat
   -- The match-flattener doesn't know how to deal with patterns that mention
@@ -181,6 +182,7 @@ tidy1 v (DSigP pat ty)
     no_tyvar_ty t         = gmapQl (&&) True no_tyvars_ty t
 tidy1 _ DWildP = return (id, DWildP)
 tidy1 _ (DTypeP ty) = return (id, DTypeP ty)
+tidy1 _ (DInvisP ty) = return (id, DInvisP ty)
 
 wrapBind :: Name -> Name -> DExp -> DExp
 wrapBind new old
@@ -260,6 +262,7 @@ patGroup (DBangP {})     = PgBang
 patGroup (DSigP{})       = error "Internal error in th-desugar (patGroup DSigP)"
 patGroup DWildP          = PgAny
 patGroup (DTypeP {})     = PgAny
+patGroup (DInvisP {})    = PgAny
 
 sameGroup :: PatGroup -> PatGroup -> Bool
 sameGroup PgAny     PgAny     = True

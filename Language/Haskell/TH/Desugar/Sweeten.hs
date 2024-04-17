@@ -96,9 +96,12 @@ patToTH (DSigP pat ty)      = SigP (patToTH pat) (typeToTH ty)
 patToTH DWildP              = WildP
 #if __GLASGOW_HASKELL__ >= 909
 patToTH (DTypeP ty)         = TypeP (typeToTH ty)
+patToTH (DInvisP ty)        = InvisP (typeToTH ty)
 #else
 patToTH (DTypeP {})         =
   error "Embedded type patterns supported only in GHC 9.10+"
+patToTH (DInvisP {})        =
+  error "Invisible type patterns supported only in GHC 9.10+"
 #endif
 
 decsToTH :: [DDec] -> [Dec]

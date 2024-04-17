@@ -55,6 +55,7 @@ extractBoundNamesDPat = go
     go (DSigP p _)      = go p
     go DWildP           = OS.empty
     go (DTypeP _)       = OS.empty
+    go (DInvisP _)      = OS.empty
 
 -----
 -- Binding forms

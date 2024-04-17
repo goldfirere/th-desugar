@@ -248,6 +248,7 @@ flattenDValD (DValD pat exp) = do
         DSigP pa ty -> DSigP (wildify name y pa) ty
         DWildP -> DWildP
         DTypeP ty -> DTypeP ty
+        DInvisP ty -> DInvisP ty
 
 flattenDValD other_dec = return [other_dec]
 

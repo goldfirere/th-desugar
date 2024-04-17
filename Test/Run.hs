@@ -187,6 +187,7 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #if __GLASGOW_HASKELL__ >= 909
              , "embedded_types_keyword" ~: $test59_embedded_types_keyword @=? $(dsSplice test59_embedded_types_keyword)
              , "embedded_types_no_keyword" ~: $test60_embedded_types_no_keyword @=? $(dsSplice test60_embedded_types_no_keyword)
+             , "invis_type_pat" ~: $test61_invis_type_pat @=? $(dsSplice test61_invis_type_pat)
 #endif
              ]
 
