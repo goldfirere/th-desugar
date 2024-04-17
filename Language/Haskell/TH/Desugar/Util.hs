@@ -483,8 +483,8 @@ allNamesIn = everything (++) $ mkQ [] (:[])
 
 -- | Extract the names bound in a @Stmt@.
 --
--- This does /not/ extract any type variables bound by pattern signatures or
--- constructor patterns.
+-- This does /not/ extract any type variables bound by pattern signatures,
+-- constructor patterns, or type patterns.
 extractBoundNamesStmt :: Stmt -> OSet Name
 extractBoundNamesStmt (BindS pat _) = extractBoundNamesPat pat
 extractBoundNamesStmt (LetS decs)   = foldMap extractBoundNamesDec decs
@@ -496,8 +496,8 @@ extractBoundNamesStmt (RecS stmtss) = foldMap extractBoundNamesStmt stmtss
 
 -- | Extract the names bound in a @Dec@ that could appear in a @let@ expression.
 --
--- This does /not/ extract any type variables bound by pattern signatures or
--- constructor patterns.
+-- This does /not/ extract any type variables bound by pattern signatures,
+-- constructor patterns, or type patterns.
 extractBoundNamesDec :: Dec -> OSet Name
 extractBoundNamesDec (FunD name _)  = OS.singleton name
 extractBoundNamesDec (ValD pat _ _) = extractBoundNamesPat pat
@@ -505,8 +505,8 @@ extractBoundNamesDec _              = OS.empty
 
 -- | Extract the names bound in a @Pat@.
 --
--- This does /not/ extract any type variables bound by pattern signatures or
--- constructor patterns.
+-- This does /not/ extract any type variables bound by pattern signatures,
+-- constructor patterns, or type patterns.
 extractBoundNamesPat :: Pat -> OSet Name
 extractBoundNamesPat (LitP _)              = OS.empty
 extractBoundNamesPat (VarP name)           = OS.singleton name
@@ -534,6 +534,9 @@ extractBoundNamesPat (SigP pat _)          = extractBoundNamesPat pat
 extractBoundNamesPat (ViewP _ pat)         = extractBoundNamesPat pat
 #if __GLASGOW_HASKELL__ >= 801
 extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
+#endif
+#if __GLASGOW_HASKELL__ >= 909
+extractBoundNamesPat (TypeP _)             = OS.empty
 #endif
 
 ----------------------------------------

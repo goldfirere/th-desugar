@@ -61,6 +61,7 @@ scExp e@(DVarE {}) = return e
 scExp e@(DConE {}) = return e
 scExp e@(DLitE {}) = return e
 scExp e@(DStaticE {}) = return e
+scExp e@(DTypeE {}) = return e
 
 -- | Like 'scExp', but for a 'DLetDec'.
 scLetDec :: DsMonad q => DLetDec -> q DLetDec
@@ -162,6 +163,7 @@ tidy1 v (DBangP pat) =
     DBangP p  -> tidy1 v (DBangP p) -- discard ! under !
     DSigP p _ -> tidy1 v (DBangP p) -- discard sig under !
     DWildP    -> return (id, DBangP pat)  -- no change
+    DTypeP _  -> return (id, DBangP pat)  -- no change
 tidy1 v (DSigP pat ty)
   | no_tyvars_ty ty = tidy1 v pat
   -- The match-flattener doesn't know how to deal with patterns that mention
@@ -178,6 +180,7 @@ tidy1 v (DSigP pat ty)
     no_tyvar_ty (DVarT{}) = False
     no_tyvar_ty t         = gmapQl (&&) True no_tyvars_ty t
 tidy1 _ DWildP = return (id, DWildP)
+tidy1 _ (DTypeP ty) = return (id, DTypeP ty)
 
 wrapBind :: Name -> Name -> DExp -> DExp
 wrapBind new old
@@ -256,6 +259,7 @@ patGroup (DTildeP {})    = error "Internal error in th-desugar (patGroup DTildeP
 patGroup (DBangP {})     = PgBang
 patGroup (DSigP{})       = error "Internal error in th-desugar (patGroup DSigP)"
 patGroup DWildP          = PgAny
+patGroup (DTypeP {})     = PgAny
 
 sameGroup :: PatGroup -> PatGroup -> Bool
 sameGroup PgAny     PgAny     = True

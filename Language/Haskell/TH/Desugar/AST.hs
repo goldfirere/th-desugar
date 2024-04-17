@@ -37,6 +37,7 @@ data DExp = DVarE Name
           | DStaticE DExp
           | DTypedBracketE DExp
           | DTypedSpliceE DExp
+          | DTypeE DType
           deriving (Eq, Show, Data, Generic, Lift)
 
 
@@ -48,6 +49,7 @@ data DPat = DLitP Lit
           | DBangP DPat
           | DSigP DPat DType
           | DWildP
+          | DTypeP DType
           deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Type@ type, used to represent
