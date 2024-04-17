@@ -8,6 +8,12 @@ Version 1.17 [????.??.??]
   changes, the `DInfixD` data constructor now has a `NamespaceSpecifier` field.
 * Add support for `SCC` declarations via the new `DSCCP` data constructor for
   the `DPragma` data type.
+* Add partial support for embedded types in expressions (via the new `DTypeE`
+  data constructor) and in patterns (via the new `DTypeP` data constructor).
+  This is only partial support because the use of `DTypeP` is supported in the
+  clauses of function declarations, but not in lambda expressions, `\case`
+  expressions, or `\cases` expressions. See the "Known limitations" section of
+  the `th-desugar` `README` for full details.
 * `extractBoundNamesDPat` no longer extracts type variables from constructor
   patterns. That this function ever did extract type variables was a mistake,
   and the new behavior of `extractBoundNamesDPat` brings it in line with the

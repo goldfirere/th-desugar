@@ -37,6 +37,7 @@ data DExp = DVarE Name
           | DStaticE DExp
           | DTypedBracketE DExp
           | DTypedSpliceE DExp
+          | DTypeE DType
           deriving (Eq, Show, Data, Generic, Lift)
 
 
@@ -48,6 +49,13 @@ data DPat = DLitP Lit
           | DBangP DPat
           | DSigP DPat DType
           | DWildP
+            -- | Note that @th-desugar@ only has partial support for desugaring
+            -- embedded type patterns. In particular, @th-desugar@ supports
+            -- desugaring embedded type patterns in function clauses, but not
+            -- in lambda expressions, @\\case@ expressions, or @\\cases@
+            -- expressions. See the \"Known limitations\" section of the
+            -- @th-desugar@ @README@ for more details.
+          | DTypeP DType
           deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Type@ type, used to represent

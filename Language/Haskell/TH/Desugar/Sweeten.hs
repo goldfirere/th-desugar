@@ -72,6 +72,12 @@ expToTH (DTypedBracketE {})  =
 expToTH (DTypedSpliceE {})   =
   error "Typed Template Haskell splices supported only in GHC 9.8+"
 #endif
+#if __GLASGOW_HASKELL__ >= 909
+expToTH (DTypeE ty)          = TypeE (typeToTH ty)
+#else
+expToTH (DTypeE {})          =
+  error "Embedded type expressions supported only in GHC 9.10+"
+#endif
 
 matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []
@@ -88,6 +94,12 @@ patToTH (DTildeP pat)       = TildeP (patToTH pat)
 patToTH (DBangP pat)        = BangP (patToTH pat)
 patToTH (DSigP pat ty)      = SigP (patToTH pat) (typeToTH ty)
 patToTH DWildP              = WildP
+#if __GLASGOW_HASKELL__ >= 909
+patToTH (DTypeP ty)         = TypeP (typeToTH ty)
+#else
+patToTH (DTypeP {})         =
+  error "Embedded type patterns supported only in GHC 9.10+"
+#endif
 
 decsToTH :: [DDec] -> [Dec]
 decsToTH = map decToTH

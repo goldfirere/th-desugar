@@ -38,6 +38,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE TypeAbstractions #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 909
+{-# LANGUAGE RequiredTypeArguments #-}
+#endif
+
 module Main where
 
 import Prelude hiding ( exp )
@@ -179,6 +183,10 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
 #if __GLASGOW_HASKELL__ >= 907
              , "typed_th_bracket" ~: $$($test57_typed_th_bracket) @=? $$($(dsSplice test57_typed_th_bracket))
              , "typed_th_splice" ~: $test58_typed_th_splice @=? $(dsSplice test58_typed_th_splice)
+#endif
+#if __GLASGOW_HASKELL__ >= 909
+             , "embedded_types_keyword" ~: $test59_embedded_types_keyword @=? $(dsSplice test59_embedded_types_keyword)
+             , "embedded_types_no_keyword" ~: $test60_embedded_types_no_keyword @=? $(dsSplice test60_embedded_types_no_keyword)
 #endif
              ]
 
