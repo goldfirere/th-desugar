@@ -8,7 +8,7 @@ Utility functions for th-desugar package.
 
 {-# LANGUAGE CPP, DeriveDataTypeable, DeriveGeneric, DeriveLift, RankNTypes,
              ScopedTypeVariables, TupleSections, AllowAmbiguousTypes,
-             TemplateHaskellQuotes, TypeApplications #-}
+             TemplateHaskellQuotes, TypeApplications, MagicHash #-}
 
 module Language.Haskell.TH.Desugar.Util (
   newUniqueName,
@@ -60,6 +60,10 @@ import GHC.Tuple ( Solo(Solo) )
 #if __GLASGOW_HASKELL__ >= 908
 import GHC.Tuple ( Tuple0, Unit )
 import Text.Read ( readMaybe )
+#endif
+
+#if __GLASGOW_HASKELL__ >= 910
+import GHC.Types ( Solo#, Sum2#, Tuple0#, Unit# )
 #endif
 
 ----------------------------------------
@@ -185,7 +189,7 @@ tupleNameDegree_maybe name
     -- however.
     namePackage name == namePackage ''Tuple0
   , nameModule name == nameModule ''Tuple0
-  , 'T':'u':'p':'l':'e':n <- nameBase (name)
+  , 'T':'u':'p':'l':'e':n <- nameBase name
     -- This relies on the Read Int instance. This is more permissive than what
     -- we need, since there are valid Int strings (e.g., "-1") that do not have
     -- corresponding Tuple<N> names (e.g., "Tuple-1" is not a data type in
@@ -212,8 +216,36 @@ unboxedSumDegree_maybe :: String -> Maybe Int
 unboxedSumDegree_maybe = unboxedSumTupleDegree_maybe '|'
 
 -- | Extract the degree of an unboxed sum 'Name'.
+--
+-- In addition to recognizing unboxed sum syntax (e.g., @''(#||#)@), this also
+-- recognizes @''Sum<N>#@ (for unboxed <N>-ary sum type constructors). In recent
+-- versions of GHC, @''Sum2#@ is a synonym for @''(#|#)@, @''Sum3#@ is a synonym
+-- for @''(#||#)@, and so on. As a result, we must check for @''Sum<N>#@ in
+-- 'unboxedSumNameDegree_maybe' to be thorough.
 unboxedSumNameDegree_maybe :: Name -> Maybe Int
-unboxedSumNameDegree_maybe = unboxedSumDegree_maybe . nameBase
+unboxedSumNameDegree_maybe name
+#if __GLASGOW_HASKELL__ >= 910
+  -- Check for Sum<N>#. It is theoretically possible for the supplied
+  -- Name to be a user-defined data type named Sum<N>#, rather than the actual
+  -- unboxed sum types defined in GHC.Types. As such, we check that the package
+  -- and module for the supplied Name does in fact come from ghc-prim:GHC.Types
+  -- as a sanity check.
+  | -- We use Sum2# here simply because it is a convenient identifier from
+    -- GHC.Types. We could just as well use any other identifier from GHC.Types,
+    -- however.
+    namePackage name == namePackage ''Sum2#
+  , nameModule name == nameModule ''Sum2#
+  , 'S':'u':'m':n:"#" <- nameBase name
+    -- This relies on the Read Int instance. This is more permissive than what
+    -- we need, since there are valid Int strings (e.g., "-1") that do not have
+    -- corresponding Sum<N># names (e.g., "Sum-1#" is not a data type in
+    -- GHC.Types). As such, we depend on the assumption that the input string
+    -- does in fact come from GHC.Types, which we check above.
+  = readMaybe [n]
+#endif
+  -- ...otherwise, fall back on unboxed sum syntax.
+  | otherwise
+  = unboxedSumDegree_maybe (nameBase name)
 
 -- | Extract the degree of an unboxed tuple
 unboxedTupleDegree_maybe :: String -> Maybe Int
@@ -230,8 +262,49 @@ unboxedSumTupleDegree_maybe sep s = do
   return degree
 
 -- | Extract the degree of an unboxed tuple 'Name'.
+--
+-- In addition to recognizing unboxed tuple syntax (e.g., @''(#,,#)@), this also
+-- recognizes the following:
+--
+-- * @''Unit#@ (for unboxed 0-tuples)
+--
+-- * @''Solo#@/@'Solo#@ (for unboxed 1-tuples)
+--
+-- * @''Tuple<N>#@ (for unboxed <N>-tuples)
+--
+-- In recent versions of GHC, @''(##)@ is a synonym for @''Unit#@, @''(#,#)@ is
+-- a synonym for @''Tuple2#@, and so on. As a result, we must check for
+-- @''Unit#@, and @''Tuple<N>@ in 'unboxedTupleNameDegree_maybe' to be thorough.
+-- (There is no special unboxed tuple type constructor for @''Solo#@/@'Solo#@,
+-- but we check them here as well for the sake of completeness.)
 unboxedTupleNameDegree_maybe :: Name -> Maybe Int
-unboxedTupleNameDegree_maybe = unboxedTupleDegree_maybe . nameBase
+unboxedTupleNameDegree_maybe name
+#if __GLASGOW_HASKELL__ >= 910
+  -- First, check for Solo#...
+  | name == ''Solo# = Just 1
+  -- ...then, check for Unit#...
+  | name == ''Unit# = Just 0
+  -- ...then, check for Tuple<N>#. It is theoretically possible for the supplied
+  -- Name to be a user-defined data type named Tuple<N>#, rather than the actual
+  -- unboxed tuple types defined in GHC.Types. As such, we check that the
+  -- package and module for the supplied Name does in fact come from
+  -- ghc-prim:GHC.Types as a sanity check.
+  | -- We use Tuple0# here simply because it is a convenient identifier from
+    -- GHC.Types. We could just as well use any other identifier from GHC.Types,
+    -- however.
+    namePackage name == namePackage ''Tuple0#
+  , nameModule name == nameModule ''Tuple0#
+  , 'T':'u':'p':'l':'e':n:"#" <- nameBase name
+    -- This relies on the Read Int instance. This is more permissive than what
+    -- we need, since there are valid Int strings (e.g., "-1") that do not have
+    -- corresponding Tuple<N># names (e.g., "Tuple-1#" is not a data type in
+    -- GHC.Types). As such, we depend on the assumption that the input string
+    -- does in fact come from GHC.Types, which we check above.
+  = readMaybe [n]
+#endif
+  -- ...otherwise, fall back on unboxed tuple syntax.
+  | otherwise
+  = unboxedTupleDegree_maybe (nameBase name)
 
 -- | If the argument is a tuple type, return the components
 splitTuple_maybe :: Type -> Maybe [Type]
