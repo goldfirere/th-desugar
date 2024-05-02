@@ -85,6 +85,7 @@ test-suite spec
   main-is:            Run.hs
   other-modules:      Dec
                       DsDec
+                      FakeSums
                       FakeTuples
                       ReifyTypeCUSKs
                       ReifyTypeSigs

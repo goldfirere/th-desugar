@@ -22,6 +22,17 @@ Version 1.17 [????.??.??]
   patterns. That this function ever did extract type variables was a mistake,
   and the new behavior of `extractBoundNamesDPat` brings it in line with the
   behavior `extractBoundNamesPat`.
+* The `unboxedTupleNameDegree_maybe` function now returns:
+  * `Just 0` when the argument is `''Unit#`
+  * `Just 1` when the argument is `''Solo#`
+  * `Just <N>` when the argument is `''Tuple<N>#`
+  This is primarily motivated by the fact that with GHC 9.10 or later, `''(##)`
+  is syntactic sugar for `''Unit#`, `''(#,#)` is syntactic sugar for `Tuple2#`,
+  and so on.
+* The `unboxedSumNameDegree_maybe` function now returns `Just n` when the
+  argument is `Sum<N>#`. This is primarily motivated by the fact that with GHC
+  9.10 or later, `''(#|#)` is syntactic sugar for `Sum2#`, `''(#||#)` is
+  syntactic sugar for `Sum3#`, and so on.
 * Add `Foldable` and `Traversable` instances for `DTyVarBndrSpec`.
 
 Version 1.16 [2023.10.13]

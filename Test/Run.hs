@@ -10,7 +10,7 @@ rae@cs.brynmawr.edu
              FlexibleInstances, ExistentialQuantification,
              ScopedTypeVariables, GADTs, ViewPatterns, TupleSections,
              TypeOperators, PartialTypeSignatures, PatternSynonyms,
-             TypeApplications #-}
+             TypeApplications, MagicHash #-}
 {-# OPTIONS -Wno-incomplete-patterns -Wno-overlapping-patterns
             -Wno-unused-matches -Wno-type-defaults
             -Wno-missing-signatures -Wno-unused-do-bind
@@ -84,6 +84,11 @@ import GHC.Tuple ( Solo(Solo) )
 #if __GLASGOW_HASKELL__ >= 908
 import qualified FakeTuples
 import GHC.Tuple ( Tuple0, Tuple1, Tuple2, Tuple3, Unit )
+#endif
+
+#if __GLASGOW_HASKELL__ >= 910
+import qualified FakeSums
+import GHC.Types (Solo#, Sum2#, Sum3#, Sum4#, Tuple0#, Tuple1#, Tuple2#, Tuple3#, Unit#)
 #endif
 
 -- |
@@ -680,6 +685,45 @@ test_t188 =
   toposortKindVarsOfTvbs [DKindedTV a1 () (DVarT a2), DKindedTV a2 () (DVarT a1)]
     == [DPlainTV a2 ()]
 
+-- Unit tests for unboxedTupleNameDegree_maybe and unboxedSumNameDegree_maybe.
+-- These also act as a regression test for #213.
+test_t213 :: [Bool]
+test_t213 =
+  map (\(s, expected) -> unboxedTupleNameDegree_maybe s == expected)
+    [ (''(##),               Just 0)
+    , (''(#,#),              Just 2)
+    , (''(#,,#),             Just 3)
+    , (''Maybe,              Nothing)
+#if __GLASGOW_HASKELL__ >= 910
+    , (''Unit#,              Just 0)
+    , (''Tuple0#,            Just 0)
+    , (''Solo#,              Just 1)
+    , (''Tuple1#,            Just 1)
+    , (''Tuple2#,            Just 2)
+    , (''Tuple3#,            Just 3)
+    , (''FakeTuples.Tuple0#, Nothing)
+    , (''FakeTuples.Tuple1#, Nothing)
+    , (''FakeTuples.Tuple2#, Nothing)
+    , (''FakeTuples.Tuple3#, Nothing)
+#endif
+    ]
+#if __GLASGOW_HASKELL__ >= 802
+  ++
+  map (\(s, expected) -> unboxedSumNameDegree_maybe s == expected)
+    [ (unboxedSumTypeName 2, Just 2)
+    , (unboxedSumTypeName 3, Just 3)
+    , (unboxedSumTypeName 4, Just 4)
+#if __GLASGOW_HASKELL__ >= 910
+    , (''Sum2#,              Just 2)
+    , (''Sum3#,              Just 3)
+    , (''Sum4#,              Just 4)
+    , (''FakeSums.Sum2#,     Nothing)
+    , (''FakeSums.Sum3#,     Nothing)
+    , (''FakeSums.Sum4#,     Nothing)
+#endif
+    ]
+#endif
+
 -- Unit tests for functions that compute free variables (e.g., fvDType)
 test_fvs :: [Bool]
 test_fvs =
@@ -918,6 +962,9 @@ main = hspec $ do
       test_t187 [1..]
 
     it "computes free kind variables correctly in a telescope that uses shadowing" $ test_t188
+
+    zipWithM (\b n -> it ("recognizes unboxed {tuple,sum} names with unboxed{Tuple,Sum}Degree_maybe correctly " ++ show n) b)
+      test_t213 [1..]
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')
