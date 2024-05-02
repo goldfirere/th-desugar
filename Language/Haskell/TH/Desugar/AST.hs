@@ -6,7 +6,7 @@ Defines the desugared Template Haskell AST. The desugared types and
 constructors are prefixed with a D.
 -}
 
-{-# LANGUAGE CPP, DeriveDataTypeable, DeriveFunctor, DeriveGeneric, DeriveLift #-}
+{-# LANGUAGE CPP, DeriveDataTypeable, DeriveTraversable, DeriveGeneric, DeriveLift #-}
 
 module Language.Haskell.TH.Desugar.AST where
 
@@ -103,7 +103,7 @@ type DCxt = [DPred]
 data DTyVarBndr flag
   = DPlainTV Name flag
   | DKindedTV Name flag DKind
-  deriving (Eq, Show, Data, Generic, Functor, Lift)
+  deriving (Eq, Show, Data, Generic, Functor, Foldable, Traversable, Lift)
 
 -- | Corresponds to TH's @TyVarBndrSpec@
 type DTyVarBndrSpec = DTyVarBndr Specificity
