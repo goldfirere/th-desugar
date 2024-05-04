@@ -24,7 +24,8 @@ rae@cs.brynmawr.edu
 
 module Language.Haskell.TH.Desugar (
   -- * Desugared data types
-  DExp(..), DLetDec(..), NamespaceSpecifier(..), DPat(..),
+  DExp(..), pattern DLamE, pattern DCaseE,
+  DLetDec(..), NamespaceSpecifier(..), DPat(..),
   DType(..), DForallTelescope(..), DKind, DCxt, DPred,
   DTyVarBndr(..), DTyVarBndrSpec, DTyVarBndrUnit, Specificity(..),
   DTyVarBndrVis,
@@ -100,7 +101,8 @@ module Language.Haskell.TH.Desugar (
   getDataD, dataConNameToDataName, dataConNameToCon,
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
   mkTypeName, mkDataName, newUniqueName,
-  mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE, mkDLamEFromDPats,
+  mkTupleDExp, mkTupleDPat, maybeDLetE, maybeDCaseE, maybeDCasesE,
+  dCaseE, dCasesE, dLamE, dLamCaseE, mkDLamEFromDPats,
   tupleNameDegree_maybe,
   unboxedSumNameDegree_maybe, unboxedTupleNameDegree_maybe,
   isTypeKindName, typeKindName, bindIP,
@@ -234,7 +236,7 @@ flattenDValD (DValD pat exp) = do
       y <- newUniqueName "y"
       let pat'  = wildify name y pat
           match = DMatch pat' (DVarE y)
-          cas   = DCaseE (DVarE x) [match]
+          cas   = dCaseE (DVarE x) [match]
       return $ DValD (DVarP name) cas
 
     wildify name y p =

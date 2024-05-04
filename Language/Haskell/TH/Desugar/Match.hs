@@ -40,18 +40,17 @@ import Language.Haskell.TH.Desugar.Reify
 -- a 'DLitPa', or a 'DWildPa'.
 scExp :: DsMonad q => DExp -> q DExp
 scExp (DAppE e1 e2) = DAppE <$> scExp e1 <*> scExp e2
-scExp (DLamE names exp) = DLamE names <$> scExp exp
-scExp (DCaseE scrut matches)
-  | DVarE name <- scrut
-  = simplCaseExp [name] clauses
-  | otherwise
-  = do scrut_name <- newUniqueName "scrut"
-       case_exp <- simplCaseExp [scrut_name] clauses
-       return $ DLetE [DValD (DVarP scrut_name) scrut] case_exp
-  where
-    clauses = map match_to_clause matches
-    match_to_clause (DMatch pat exp) = DClause [pat] exp
-
+scExp (DLamCasesE clauses) = do
+  -- Per the Haddocks for DLamCasesE, an empty list of clauses indicates that
+  -- the overall `\cases` expression takes one argument. Otherwise, we look at
+  -- the first clause to see how many arguments the expression takes, as each
+  -- clause is required to have the same number of patterns.
+  let num_args =
+        case clauses of
+          [] -> 1
+          DClause pats _ : _ -> length pats
+  clause' <- scClauses num_args clauses
+  pure $ DLamCasesE [clause']
 scExp (DLetE decs body) = DLetE <$> mapM scLetDec decs <*> scExp body
 scExp (DSigE exp ty) = DSigE <$> scExp exp <*> pure ty
 scExp (DAppTypeE exp ty) = DAppTypeE <$> scExp exp <*> pure ty
@@ -65,18 +64,35 @@ scExp e@(DTypeE {}) = return e
 
 -- | Like 'scExp', but for a 'DLetDec'.
 scLetDec :: DsMonad q => DLetDec -> q DLetDec
-scLetDec (DFunD name clauses@(DClause pats1 _ : _)) = do
-  arg_names <- mapM (const (newUniqueName "_arg")) pats1
-  clauses' <- mapM sc_clause_rhs clauses
-  case_exp <- simplCaseExp arg_names clauses'
-  return $ DFunD name [DClause (map DVarP arg_names) case_exp]
-  where
-    sc_clause_rhs (DClause pats exp) = DClause pats <$> scExp exp
+scLetDec (DFunD name clauses) = do
+  -- `DFunD`s are expected to have a non-empty list of clauses where each clause
+  -- has a number of patterns equal to the number of arguments.
+  let num_args =
+        case clauses of
+          [] -> error $ "The `" ++ nameBase name ++
+                        "` function has no clauses -- should never happen"
+          DClause pats _ : _ -> length pats
+  clause' <- scClauses num_args clauses
+  pure $ DFunD name [clause']
 scLetDec (DValD pat exp) = DValD pat <$> scExp exp
 scLetDec (DPragmaD prag) = DPragmaD <$> scLetPragma prag
 scLetDec dec@(DSigD {}) = return dec
 scLetDec dec@(DInfixD {}) = return dec
-scLetDec dec@(DFunD _ []) = return dec
+
+-- | Convert a list of 'DClause's into a single 'DClause', where the right-hand
+-- side of the output 'DClause' matches on all of the patterns of the input
+-- 'DClause's without using nested pattern matching.
+scClauses ::
+     DsMonad q
+  => Int -- ^ The number of arguments in each 'DClause'.
+  -> [DClause] -> q DClause
+scClauses num_args clauses = do
+  arg_names <- replicateM num_args (newUniqueName "_arg")
+  clauses' <- mapM sc_clause_rhs clauses
+  case_exp <- simplCaseExp arg_names clauses'
+  pure $ DClause (map DVarP arg_names) case_exp
+  where
+    sc_clause_rhs (DClause pats exp) = DClause pats <$> scExp exp
 
 scLetPragma :: DsMonad q => DPragma -> q DPragma
 scLetPragma = topEverywhereM scExp -- Only topEverywhereM because scExp already recurses on its own
@@ -227,7 +243,7 @@ mkSelectorDecs pat name
                   -> q DExp
     mk_projection tup_name i = do
       var_name <- newUniqueName "proj"
-      return $ DCaseE (DVarE tup_name) [DMatch (DConP (tupleDataName tuple_size) [] (mk_tuple_pats var_name i))
+      return $ dCaseE (DVarE tup_name) [DMatch (DConP (tupleDataName tuple_size) [] (mk_tuple_pats var_name i))
                                                (DVarE var_name)]
 
     mk_tuple_pats :: Name   -- of the projected element
@@ -332,7 +348,7 @@ mkDataConCase var case_alts = do
   all_ctors <- get_all_ctors (alt_con $ NE.head case_alts)
   return $ \fail ->
     let matches = fmap (mk_alt fail) case_alt_list in
-    DCaseE (DVarE var) (matches ++ mk_default all_ctors fail)
+    dCaseE (DVarE var) (matches ++ mk_default all_ctors fail)
   where
     case_alt_list = NE.toList case_alts
 
@@ -361,7 +377,7 @@ mkDataConCase var case_alts = do
 matchEmpty :: DsMonad q => Name -> q [MatchResult]
 matchEmpty var = return [mk_seq]
   where
-    mk_seq fail = DCaseE (DVarE var) [DMatch DWildP fail]
+    mk_seq fail = dCaseE (DVarE var) [DMatch DWildP fail]
 
 matchLiterals :: DsMonad q => NonEmpty Name -> NonEmpty (NonEmpty EquationInfo) -> q MatchResult
 matchLiterals (var:|vars) sub_groups
@@ -383,7 +399,7 @@ mkCoPrimCaseMatchResult :: Name -- Scrutinee
 mkCoPrimCaseMatchResult var match_alts = mk_case
   where
     mk_case fail = let alts = NE.toList $ fmap (mk_alt fail) match_alts in
-                   DCaseE (DVarE var) (alts ++ [DMatch DWildP fail])
+                   dCaseE (DVarE var) (alts ++ [DMatch DWildP fail])
     mk_alt fail (lit, body_fn)
       = DMatch (DLitP lit) (body_fn fail)
 

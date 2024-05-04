@@ -6,7 +6,7 @@ Defines the desugared Template Haskell AST. The desugared types and
 constructors are prefixed with a D.
 -}
 
-{-# LANGUAGE CPP, DeriveDataTypeable, DeriveTraversable, DeriveGeneric, DeriveLift #-}
+{-# LANGUAGE CPP, DeriveDataTypeable, DeriveTraversable, DeriveGeneric, DeriveLift, PatternSynonyms, ViewPatterns #-}
 
 module Language.Haskell.TH.Desugar.AST where
 
@@ -30,8 +30,24 @@ data DExp = DVarE Name
           | DLitE Lit
           | DAppE DExp DExp
           | DAppTypeE DExp DType
-          | DLamE [Name] DExp
-          | DCaseE DExp [DMatch]
+            -- | A @\\cases@ expression. In the spirit of making 'DExp' minimal,
+            -- @th-desugar@ will desugar lambda expressions, @case@ expressions,
+            -- @\\case@ expressions, and @\\cases@ expressions to 'DLamCasesE'.
+            -- (See also the 'dLamE', 'dCaseE', and 'dLamCaseE' functions for
+            -- constructing these expressions in terms of 'DLamCasesE'.)
+            --
+            -- A 'DLamCasesE' value should obey the following invariants:
+            --
+            -- * Each 'DClause' should have exactly the same number of visible
+            --   arguments in its list of 'DPat's.
+            --
+            -- * If the list of 'DClause's is empty, then the overall expression
+            --   should have exactly one argument. Note that this is a
+            --   difference in behavior from how @\\cases@ expressions work, as
+            --   @\\cases@ is required to have at least one clause. For this
+            --   reason, @th-desugar@ will sweeten @DLamCasesE []@ to
+            --   @\\case{}@.
+          | DLamCasesE [DClause]
           | DLetE [DLetDec] DExp
           | DSigE DExp DType
           | DStaticE DExp
@@ -40,6 +56,112 @@ data DExp = DVarE Name
           | DTypeE DType
           deriving (Eq, Show, Data, Generic, Lift)
 
+-- | A 'DLamCasesE' value with exactly one 'DClause' where all 'DPat's are
+-- 'DVarP's. This pattern synonym is provided for backwards compatibility with
+-- older versions of @th-desugar@ in which 'DLamE' was a data constructor of
+-- 'DExp'. This pattern synonym is deprecated and will be removed in a future
+-- release of @th-desugar@.
+pattern DLamE :: [Name] -> DExp -> DExp
+pattern DLamE vars rhs <- (dLamE_maybe -> Just (vars, rhs))
+  where
+    DLamE vars rhs = DLamCasesE [DClause (map DVarP vars) rhs]
+{-# DEPRECATED DLamE "Use `dLamE` or `DLamCasesE` instead." #-}
+
+-- | Return @'Just' (pats, rhs)@ if the supplied 'DExp' is a 'DLamCasesE' value
+-- with exactly one 'DClause' where all 'DPat's are 'DVarP's, where @pats@ is
+-- the list of 'DVarP' 'Name's and @rhs@ is the expression on the right-hand
+-- side of the 'DClause'. Otherwise, return 'Nothing'.
+dLamE_maybe :: DExp -> Maybe ([Name], DExp)
+dLamE_maybe (DLamCasesE [DClause pats rhs]) = do
+  vars <- traverse dVarP_maybe pats
+  Just (vars, rhs)
+dLamE_maybe _ = Nothing
+
+-- | Return @'Just' var@ if the supplied 'DPat' is a 'DVarP' value, where @var@
+-- is the 'DVarP' 'Name'. Otherwise, return 'Nothing'.
+dVarP_maybe :: DPat -> Maybe Name
+dVarP_maybe (DVarP n) = Just n
+dVarP_maybe _         = Nothing
+
+-- | An application of a 'DLamCasesE' to some argument, where each 'DClause' in
+-- the 'DLamCasesE' value has exactly one 'DPat'. This pattern synonym is
+-- provided for backwards compatibility with older versions of @th-desugar@ in
+-- which 'DCaseE' was a data constructor of 'DExp'. This pattern synonym is
+-- deprecated and will be removed in a future release of @th-desugar@.
+pattern DCaseE :: DExp -> [DMatch] -> DExp
+pattern DCaseE scrut matches <- (dCaseE_maybe -> Just (scrut, matches))
+  where
+    DCaseE scrut matches = DAppE (dLamCaseE matches) scrut
+{-# DEPRECATED DCaseE "Use `dCaseE` or `DLamCasesE` instead." #-}
+
+-- | Return @'Just' (scrut, matches)@ if the supplied 'DExp' is a 'DLamCasesE'
+-- value applied to some argument, where each 'DClause' in the 'DLamCasesE'
+-- value has exactly one 'DPat'. Otherwise, return 'Nothing'.
+dCaseE_maybe :: DExp -> Maybe (DExp, [DMatch])
+dCaseE_maybe (DAppE (DLamCasesE clauses) scrut) = do
+  matches <- traverse dMatch_maybe clauses
+  Just (scrut, matches)
+dCaseE_maybe _  = Nothing
+
+-- | Construct a 'DExp' value that is equivalent to writing a @case@ expression.
+-- Under the hood, this uses @\\cases@ ('DLamCasesE'). For instance, given this
+-- code:
+--
+-- @
+-- case scrut of
+--   pat_1 -> rhs_1
+--   ...
+--   pat_n -> rhs_n
+-- @
+--
+-- The following @\\cases@ expression will be created under the hood:
+--
+-- @
+-- (\\cases
+--   pat_1 -> rhs_1
+--   ...
+--   pat_n -> rhs_n) scrut
+-- @
+dCaseE :: DExp -> [DMatch] -> DExp
+dCaseE scrut matches = DAppE (dLamCaseE matches) scrut
+
+-- | Construct a 'DExp' value that is equivalent to writing a lambda expression.
+-- Under the hood, this uses @\\cases@ ('DLamCasesE'). For instance, given this
+-- code:
+--
+-- @
+-- \\var_1 ... var_n -> rhs
+-- @
+--
+-- The following @\\cases@ expression will be created under the hood:
+--
+-- @
+-- \\cases var_1 ... var_n -> rhs
+-- @
+dLamE :: [DPat] -> DExp -> DExp
+dLamE pats rhs = DLamCasesE [DClause pats rhs]
+
+-- | Construct a 'DExp' value that is equivalent to writing a @\\case@
+-- expression. Under the hood, this uses @\\cases@ ('DLamCasesE'). For instance,
+-- given this code:
+--
+-- @
+-- \\case
+--   pat_1 -> rhs_1
+--   ...
+--   pat_n -> rhs_n
+-- @
+--
+-- The following @\\cases@ expression will be created under the hood:
+--
+-- @
+-- \\cases
+--   pat_1 -> rhs_1
+--   ...
+--   pat_n -> rhs_n
+-- @
+dLamCaseE :: [DMatch] -> DExp
+dLamCaseE = DLamCasesE . map dMatchToDClause
 
 -- | Corresponds to TH's @Pat@ type.
 data DPat = DLitP Lit
@@ -49,19 +171,7 @@ data DPat = DLitP Lit
           | DBangP DPat
           | DSigP DPat DType
           | DWildP
-            -- | Note that @th-desugar@ only has partial support for desugaring
-            -- embedded type patterns. In particular, @th-desugar@ supports
-            -- desugaring embedded type patterns in function clauses, but not
-            -- in lambda expressions, @\\case@ expressions, or @\\cases@
-            -- expressions. See the \"Known limitations\" section of the
-            -- @th-desugar@ @README@ for more details.
           | DTypeP DType
-            -- | Note that @th-desugar@ only has partial support for desugaring
-            -- invisible type patterns. In particular, @th-desugar@ supports
-            -- desugaring invisible type patterns in function clauses, but not
-            -- in lambda expressions or @\\cases@ expressions. See the \"Known
-            -- limitations\" section of the @th-desugar@ @README@ for more
-            -- details.
           | DInvisP DType
           deriving (Eq, Show, Data, Generic, Lift)
 
@@ -115,12 +225,37 @@ type DTyVarBndrUnit = DTyVarBndr ()
 type DTyVarBndrVis = DTyVarBndr BndrVis
 
 -- | Corresponds to TH's @Match@ type.
+--
+-- Note that while @Match@ appears in the TH AST, 'DMatch' does not appear
+-- directly in the @th-desugar@ AST. This is because TH's 'Match' is used in
+-- lambda (@LamE@) and @case@ (@CaseE@) expressions, but @th-desugar@ does not
+-- have counterparts to @LamE@ and @CaseE@ in the 'DExp' data type. Instead,
+-- 'DExp' only has a @\\cases@ ('DLamCasesE') construct, which uses 'DClause'
+-- instead of 'DMatch'.
+--
+-- As such, 'DMatch' only plays a \"vestigial\" role in @th-desugar@ for
+-- constructing 'DLamCasesE' values that look like lambda or @case@ expressions.
+-- For example, 'DMatch' appears in the type signatures for 'dLamE' and
+-- 'dCaseE', which convert the supplied 'DMatch'es to 'DClause's under the hood.
 data DMatch = DMatch DPat DExp
   deriving (Eq, Show, Data, Generic, Lift)
 
 -- | Corresponds to TH's @Clause@ type.
 data DClause = DClause [DPat] DExp
   deriving (Eq, Show, Data, Generic, Lift)
+
+-- | Convert a 'DMatch' to a 'DClause', where the 'DClause' contains a single
+-- pattern taken from the 'DMatch'.
+dMatchToDClause :: DMatch -> DClause
+dMatchToDClause (DMatch pat rhs) = DClause [pat] rhs
+
+-- | Return @'Just' match@ if the supplied 'DClause' has exactly one 'DPat',
+-- where @match@ matches on that 'DPat'. Otherwise, return 'Nothing'.
+dMatch_maybe :: DClause -> Maybe DMatch
+dMatch_maybe (DClause pats rhs) =
+  case pats of
+    [pat] -> Just (DMatch pat rhs)
+    _     -> Nothing
 
 -- | Declarations as used in a @let@ statement.
 data DLetDec = DFunD Name [DClause]

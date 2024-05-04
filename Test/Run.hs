@@ -193,6 +193,14 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "embedded_types_keyword" ~: $test59_embedded_types_keyword @=? $(dsSplice test59_embedded_types_keyword)
              , "embedded_types_no_keyword" ~: $test60_embedded_types_no_keyword @=? $(dsSplice test60_embedded_types_no_keyword)
              , "invis_type_pat" ~: $test61_invis_type_pat @=? $(dsSplice test61_invis_type_pat)
+             , "embedded_types_lambda_keyword" ~: $test62_embedded_types_lambda_keyword @=? $(dsSplice test62_embedded_types_lambda_keyword)
+             , "embedded_types_case_keyword" ~: $test63_embedded_types_case_keyword @=? $(dsSplice test63_embedded_types_case_keyword)
+             , "embedded_types_cases_keyword" ~: $test64_embedded_types_cases_keyword @=? $(dsSplice test64_embedded_types_cases_keyword)
+             , "embedded_types_lambda_no_keyword" ~: $test65_embedded_types_lambda_no_keyword @=? $(dsSplice test65_embedded_types_lambda_no_keyword)
+             , "embedded_types_case_no_keyword" ~: $test66_embedded_types_case_no_keyword @=? $(dsSplice test66_embedded_types_case_no_keyword)
+             , "embedded_types_cases_no_keyword" ~: $test67_embedded_types_cases_no_keyword @=? $(dsSplice test67_embedded_types_cases_no_keyword)
+             , "invis_type_pat_lambda" ~: $test68_invis_type_pat_lambda @=? $(dsSplice test68_invis_type_pat_lambda)
+             , "invis_type_pat_cases" ~: $test69_invis_type_pat_cases @=? $(dsSplice test69_invis_type_pat_cases)
 #endif
              ]
 

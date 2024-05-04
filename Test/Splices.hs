@@ -413,6 +413,55 @@ test61_invis_type_pat =
          f @a = id @a
 
      in f @Bool True |]
+
+test62_embedded_types_lambda_keyword =
+  [| let idv :: forall a -> a -> a
+         idv = \(type a) (x :: a) -> x :: a
+
+     in idv (type Bool) True |]
+
+test63_embedded_types_case_keyword =
+  [| let idv :: forall a -> a -> a
+         idv = \case
+           (type a) -> id @a
+
+     in idv (type Bool) True |]
+
+test64_embedded_types_cases_keyword =
+  [| let idv :: forall a -> a -> a
+         idv = \cases
+           (type a) (x :: a) -> x :: a
+
+     in idv (type Bool) True |]
+
+test65_embedded_types_lambda_no_keyword =
+  [| let idv :: forall a -> a -> a
+         idv = \a (x :: a) -> x :: a
+
+     in idv Bool True |]
+
+test66_embedded_types_case_no_keyword =
+  [| let idv :: forall a -> a -> a
+         idv = \case
+           a -> id @a
+
+     in idv Bool True |]
+
+test67_embedded_types_cases_no_keyword =
+  [| let idv :: forall a -> a -> a
+         idv = \cases
+           a (x :: a) -> x :: a
+
+     in idv Bool True |]
+
+aux :: (forall a. a -> a) -> (forall a. a -> a)
+aux f x = f x
+
+test68_invis_type_pat_lambda =
+  [| aux (\ @a (x :: a) -> x :: a) @Bool True |]
+
+test69_invis_type_pat_cases =
+  [| aux (\cases @a (x :: a) -> x :: a) @Bool True |]
 #endif
 
 type family TFExpand x
@@ -884,5 +933,13 @@ test_exprs = [ test1_sections
              , test59_embedded_types_keyword
              , test60_embedded_types_no_keyword
              , test61_invis_type_pat
+             , test62_embedded_types_lambda_keyword
+             , test63_embedded_types_case_keyword
+             , test64_embedded_types_cases_keyword
+             , test65_embedded_types_lambda_no_keyword
+             , test66_embedded_types_case_no_keyword
+             , test67_embedded_types_cases_no_keyword
+             , test68_invis_type_pat_lambda
+             , test69_invis_type_pat_cases
 #endif
              ]
