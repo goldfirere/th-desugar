@@ -3,9 +3,33 @@
 
 Version 1.18 [????.??.??]
 -------------------------
-* The `dsMatches` function now requires a `MatchContext` argument, which
-  determines what kind of "`Non-exhaustive patterns in ...`" error it raises
-  when reaching a fallthrough case for non-exhaustive matches.
+* The `DLamE` and `DCaseE` data constructors (as well as the related
+  `mkDLamEFromDPats` function) are now deprecated in favor of the new
+  `DLamCasesE` data constructor. `DLamE`, `DCaseE`, and `mkDLamEFromDPats` will
+  be removed in a future release of `th-desugar`, so users are encouraged to
+  migrate. For more details on how to migrate your code, see [this
+  document](https://github.com/goldfirere/th-desugar/blob/master/docs/LambdaCaseMigration.md).
+* The type of the `dsMatches` function has changed:
+
+  ```diff
+  -dsMatches :: DsMonad q => Name         -> [Match] -> q [DMatch]
+  -dsMatches :: DsMonad q => MatchContext -> [Match] -> q [DMatch]
+  ```
+
+  In particular:
+
+  * `dsMatches` function no longer includes a `Name` argument for the
+    variable being scrutinized, as the new approach that `th-desugar` uses to
+    desugar `Match`es no longer requires this.
+  * `dsMatches` now requires a `MatchContext` argument, which
+    determines what kind of "`Non-exhaustive patterns in ...`" error it raises
+    when reaching a fallthrough case for non-exhaustive matches.
+* Add a `maybeDCasesE :: MatchContext -> [DExp] -> [DClause] -> DExp` function.
+  `maybeDCasesE` is similar to `maybeDCaseE` except that it matches on multiple
+  expressions (using `\\cases`) instead of matching on a single expression.
+* Add support for desugaring higher-order uses of embedded type patterns (e.g.,
+  `\(type a) (x :: a) -> x :: a`) and invisible type patterns (e.g.,
+  `\ @a (x :: a) -> x :: a`).
 
 Version 1.17 [2024.05.12]
 -------------------------

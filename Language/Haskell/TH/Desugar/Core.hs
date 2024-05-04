@@ -73,7 +73,7 @@ dsExp (InfixE Nothing op (Just rhs)) = do
   lhsName <- newUniqueName "lhs"
   op' <- dsExp op
   rhs' <- dsExp rhs
-  return $ DLamE [lhsName] (foldl DAppE op' [DVarE lhsName, rhs'])
+  return $ dLamE [DVarP lhsName] (foldl DAppE op' [DVarE lhsName, rhs'])
 dsExp (InfixE (Just lhs) op (Just rhs)) =
   DAppE <$> (DAppE <$> dsExp op <*> dsExp lhs) <*> dsExp rhs
 dsExp (UInfixE _ _ _) =
@@ -82,11 +82,10 @@ dsExp (ParensE exp) = dsExp exp
 dsExp (LamE pats exp) = do
   exp' <- dsExp exp
   (pats', exp'') <- dsPatsOverExp pats exp'
-  mkDLamEFromDPats pats' exp''
+  return $ dLamE pats' exp''
 dsExp (LamCaseE matches) = do
-  x <- newUniqueName "x"
-  matches' <- dsMatches (LamCaseAlt LamCase) x matches
-  return $ DLamE [x] (DCaseE (DVarE x) matches')
+  matches' <- dsMatches (LamCaseAlt LamCase) matches
+  return $ dLamCaseE matches'
 dsExp (TupE exps) = dsTup tupleDataName exps
 dsExp (UnboxedTupE exps) = dsTup unboxedTupleDataName exps
 dsExp (CondE e1 e2 e3) =
@@ -106,17 +105,10 @@ dsExp (LetE decs exp) = do
   (decs', ip_binder) <- dsLetDecs decs
   exp' <- dsExp exp
   return $ DLetE decs' $ ip_binder exp'
-    -- the following special case avoids creating a new "let" when it's not
-    -- necessary. See #34.
-dsExp (CaseE (VarE scrutinee) matches) = do
-  matches' <- dsMatches CaseAlt scrutinee matches
-  return $ DCaseE (DVarE scrutinee) matches'
 dsExp (CaseE exp matches) = do
-  scrutinee <- newUniqueName "scrutinee"
   exp' <- dsExp exp
-  matches' <- dsMatches CaseAlt scrutinee matches
-  return $ DLetE [DValD (DVarP scrutinee) exp'] $
-           DCaseE (DVarE scrutinee) matches'
+  matches' <- dsMatches CaseAlt matches
+  return $ dCaseE exp' matches'
 #if __GLASGOW_HASKELL__ >= 900
 dsExp (DoE mb_mod stmts) = dsDoStmts mb_mod stmts
 #else
@@ -182,7 +174,7 @@ dsExp (RecUpdE exp field_exps) = do
   let all_matches
         | length filtered_cons == length cons = matches
         | otherwise                           = matches ++ [error_match]
-  return $ DCaseE exp' all_matches
+  return $ dCaseE exp' all_matches
   where
     extract_first_arg :: DsMonad q => Type -> q Type
     extract_first_arg (AppT (AppT ArrowT arg) _) = return arg
@@ -252,15 +244,7 @@ dsExp (ProjectionE fields) =
     comp acc f = DVarE '(.) `DAppE` mkGetFieldProj f `DAppE` acc
 #endif
 #if __GLASGOW_HASKELL__ >= 903
-dsExp (LamCasesE clauses) = do
-  clauses' <- dsClauses (LamCaseAlt LamCases) clauses
-  numArgs <-
-    case clauses' of
-      (DClause pats _:_) -> return $ length pats
-      [] -> fail "\\cases expression must have at least one alternative"
-  args <- replicateM numArgs (newUniqueName "x")
-  return $ DLamE args $ DCaseE (mkUnboxedTupleDExp (map DVarE args))
-                               (map dClauseToUnboxedTupleMatch clauses')
+dsExp (LamCasesE clauses) = DLamCasesE <$> dsClauses (LamCaseAlt LamCases) clauses
 #endif
 #if __GLASGOW_HASKELL__ >= 907
 dsExp (TypedBracketE exp) = DTypedBracketE <$> dsExp exp
@@ -307,10 +291,10 @@ ds_tup tuple_data_name mb_exps = do
   section_exps <- mapM ds_section_exp mb_exps
   let section_vars = lefts section_exps
       tup_body     = mk_tup_body section_exps
-  if null section_vars
-     then return tup_body -- If this isn't a tuple section,
-                          -- don't create a lambda.
-     else mkDLamEFromDPats (map DVarP section_vars) tup_body
+  pure $
+    if null section_vars
+    then tup_body -- If this isn't a tuple section, don't create a lambda.
+    else dLamE (map DVarP section_vars) tup_body
   where
     -- If dealing with an empty field in a tuple section (Nothing), create a
     -- unique name and return Left. These names will be used to construct the
@@ -331,47 +315,53 @@ ds_tup tuple_data_name mb_exps = do
     apply_tup_body f (Left n)  = f `DAppE` DVarE n
     apply_tup_body f (Right e) = f `DAppE` e
 
--- | Convert a list of 'DPat' arguments and a 'DExp' body into a 'DLamE'. This
--- is needed since 'DLamE' takes a list of 'Name's for its bound variables
--- instead of 'DPat's, so some reorganization is needed.
+-- | Construct a 'DExp' value that is equivalent to writing a lambda expression.
+-- Under the hood, this uses @\\cases@ ('DLamCasesE').
+--
+-- @'mkDLamEFromDPats' pats exp@ is equivalent to writing
+-- @pure ('dLamE' pats exp)@. As such, 'mkDLamEFromDPats' is deprecated in favor
+-- of 'dLamE', and 'mkDLamEFromDPats' will be removed in a future @th-desugar@
+-- release.
 mkDLamEFromDPats :: Quasi q => [DPat] -> DExp -> q DExp
-mkDLamEFromDPats pats exp
-  | Just names <- mapM stripDVarP_maybe pats
-  = return $ DLamE names exp
-  | otherwise
-  = do arg_names <- replicateM (length pats) (newUniqueName "arg")
-       let scrutinee = mkUnboxedTupleDExp (map DVarE arg_names)
-           match     = DMatch (mkUnboxedTupleDPat pats) exp
-       return $ DLamE arg_names (DCaseE scrutinee [match])
-  where
-    stripDVarP_maybe :: DPat -> Maybe Name
-    stripDVarP_maybe (DVarP n) = Just n
-    stripDVarP_maybe _          = Nothing
+mkDLamEFromDPats pats exp = pure $ dLamE pats exp
+{-# DEPRECATED mkDLamEFromDPats "Use `dLamE` or `DLamCasesE` instead." #-}
 
 #if __GLASGOW_HASKELL__ >= 902
 mkGetFieldProj :: String -> DExp
 mkGetFieldProj field = DVarE 'getField `DAppTypeE` DLitT (StrTyLit field)
 #endif
 
--- | Desugar a list of matches for a @case@ statement
+-- | Desugar a list of matches for a @case@ or @\\case@ expression.
 dsMatches :: DsMonad q
           => MatchContext -- ^ The context in which the matches arise
-          -> Name         -- ^ Name of the scrutinee, which must be a bare var
-          -> [Match]      -- ^ Matches of the @case@ statement
+          -> [Match]      -- ^ Matches of the @case@ or @\\case@ expression
           -> q [DMatch]
-dsMatches mc scr = go
+dsMatches _ [] = pure []
+-- Include a special case for guard-less matches to make the desugared output
+-- a little nicer. See Note [Desugaring clauses compactly (when possible)].
+dsMatches mc (Match pat (NormalB exp) where_decs : rest) = do
+  rest' <- dsMatches mc rest
+  exp' <- dsExp exp
+  (where_decs', ip_binder) <- dsLetDecs where_decs
+  let exp_with_wheres = maybeDLetE where_decs' (ip_binder exp')
+  (pats', exp'') <- dsPatOverExp pat exp_with_wheres
+  pure $ DMatch pats' exp'' : rest'
+dsMatches mc matches@(Match _ _ _ : _) = do
+  scrutinee_name <- newUniqueName "scrutinee"
+  let scrutinee = DVarE scrutinee_name
+  matches' <- foldrM (ds_match scrutinee) [] matches
+  pure [DMatch (DVarP scrutinee_name) (dCaseE scrutinee matches')]
   where
-    go :: DsMonad q => [Match] -> q [DMatch]
-    go [] = return []
-    go (Match pat body where_decs : rest) = do
-      rest' <- go rest
-      let failure = maybeDCaseE mc (DVarE scr) rest'
-      exp' <- dsBody body where_decs failure
-      (pat', exp'') <- dsPatOverExp pat exp'
+    ds_match :: DsMonad q => DExp -> Match -> [DMatch] -> q [DMatch]
+    ds_match scrutinee (Match pat body where_decs) failure_matches = do
+      let failure_exp = maybeDCaseE mc scrutinee failure_matches
+      exp <- dsBody body where_decs failure_exp
+      (pat', exp') <- dsPatOverExp pat exp
       uni_pattern <- isUniversalPattern pat' -- incomplete attempt at #6
+      let match = DMatch pat' exp'
       if uni_pattern
-      then return [DMatch pat' exp'']
-      else return (DMatch pat' exp'' : rest')
+      then return [match]
+      else return (match : failure_matches)
 
 -- | Desugar a @Body@
 dsBody :: DsMonad q
@@ -388,6 +378,39 @@ dsBody (GuardedB guarded_exps) decs failure = do
   guarded_exp' <- dsGuards guarded_exps failure
   return $ maybeDLetE decs' $ ip_binder guarded_exp'
 
+-- | Construct a 'DExp' value that is equivalent to writing a @case@ expression
+-- that scrutinizes multiple values at once. Under the hood, this uses
+-- @\\cases@ ('DLamCasesE'). For instance, given this code:
+--
+-- @
+-- case (scrut_1, ..., scrut_n) of
+--   (pat_1_1, ..., pat_1_n) -> rhs_1
+--   ...
+--   (pat_m_1, ..., pat_m_n) -> rhs_n
+-- @
+--
+-- The following @\\cases@ expression will be created under the hood:
+--
+-- @
+-- (\\cases
+--   pat_1_1 ... pat_1_n -> rhs_1
+--   ...
+--   pat_m_1 ... pat_m_n -> rhs_n) scrut_1 ... scrut_n
+-- @
+--
+-- In other words, this creates a 'DLamCasesE' value and then applies it to
+-- argument values.
+--
+-- Preconditions:
+--
+-- * If the list of 'DClause's is non-empty, then the number of patterns in each
+--   'DClause' must be equal to the number of 'DExp' arguments.
+--
+-- * If the list of 'DClause's is empty, then there must be exactly one 'DExp'
+--   argument.
+dCasesE :: [DExp] -> [DClause] -> DExp
+dCasesE scruts clauses = applyDExp (DLamCasesE clauses) scruts
+
 -- | If decs is non-empty, delcare them in a let:
 maybeDLetE :: [DLetDec] -> DExp -> DExp
 maybeDLetE [] exp   = exp
@@ -396,7 +419,16 @@ maybeDLetE decs exp = DLetE decs exp
 -- | If matches is non-empty, make a case statement; otherwise make an error statement
 maybeDCaseE :: MatchContext -> DExp -> [DMatch] -> DExp
 maybeDCaseE mc _     []      = mkErrorMatchExpr mc
-maybeDCaseE _  scrut matches = DCaseE scrut matches
+maybeDCaseE _  scrut matches = dCaseE scrut matches
+
+-- | If the list of clauses is non-empty, make a @\\cases@ expression and apply
+-- it using the expressions as arguments. Otherwise, make an error statement.
+--
+-- Precondition: if the list of 'DClause's is non-empty, then the number of
+-- patterns in each 'DClause' must be equal to the number of 'DExp' arguments.
+maybeDCasesE :: MatchContext -> [DExp] -> [DClause] -> DExp
+maybeDCasesE mc _      []      = mkErrorMatchExpr mc
+maybeDCasesE _  scruts clauses = dCasesE scruts clauses
 
 -- | Desugar guarded expressions
 dsGuards :: DsMonad q
@@ -422,7 +454,7 @@ dsGuardStmts (BindS pat exp : rest) success failure = do
   success' <- dsGuardStmts rest success failure
   (pat', success'') <- dsPatOverExp pat success'
   exp' <- dsExp exp
-  return $ DCaseE exp' [DMatch pat' success'', DMatch DWildP failure]
+  return $ dCaseE exp' [DMatch pat' success'', DMatch DWildP failure]
 dsGuardStmts (LetS decs : rest) success failure = do
   (decs', ip_binder) <- dsLetDecs decs
   success' <- dsGuardStmts rest success failure
@@ -440,7 +472,7 @@ dsGuardStmts [NoBindS exp] success _failure
 dsGuardStmts (NoBindS exp : rest) success failure = do
   exp' <- dsExp exp
   success' <- dsGuardStmts rest success failure
-  return $ DCaseE exp' [ DMatch (DConP 'True  [] []) success'
+  return $ dCaseE exp' [ DMatch (DConP 'True  [] []) success'
                        , DMatch (DConP 'False [] []) failure ]
 dsGuardStmts (ParS _ : _) _ _ = impossible "Parallel comprehension in a pattern guard."
 #if __GLASGOW_HASKELL__ >= 807
@@ -489,7 +521,7 @@ dsComp (NoBindS exp : rest) = do
 dsComp (ParS stmtss : rest) = do
   (pat, exp) <- dsParComp stmtss
   rest' <- dsComp rest
-  DAppE (DAppE (DVarE '(>>=)) exp) <$> mkDLamEFromDPats [pat] rest'
+  return $ DAppE (DAppE (DVarE '(>>=)) exp) (dLamE [pat] rest')
 #if __GLASGOW_HASKELL__ >= 807
 dsComp (RecS {} : _) = fail "th-desugar currently does not support RecursiveDo"
 #endif
@@ -506,15 +538,14 @@ dsBindS :: forall q. DsMonad q
 dsBindS mb_mod bind_arg_exp success_pat success_exp ctxt = do
   bind_arg_exp' <- dsExp bind_arg_exp
   (success_pat', success_exp') <- dsPatOverExp success_pat success_exp
-  is_univ_pat <- isUniversalPattern success_pat'
+  is_univ_pat <- isUniversalPattern success_pat' -- incomplete attempt at #6
   let bind_into = DAppE (DAppE (DVarE bind_name) bind_arg_exp')
   if is_univ_pat
-     then bind_into <$> mkDLamEFromDPats [success_pat'] success_exp'
-     else do arg_name  <- newUniqueName "arg"
-             fail_name <- mk_fail_name
-             return $ bind_into $ DLamE [arg_name] $ DCaseE (DVarE arg_name)
-               [ DMatch success_pat' success_exp'
-               , DMatch DWildP $
+     then return $ bind_into $ dLamE [success_pat'] success_exp'
+     else do fail_name <- mk_fail_name
+             return $ bind_into $ DLamCasesE
+               [ DClause [success_pat'] success_exp'
+               , DClause [DWildP] $
                  DVarE fail_name `DAppE`
                    DLitE (StringL $ "Pattern match failure in " ++ ctxt)
                ]
@@ -1109,8 +1140,9 @@ dsClauses :: DsMonad q
           -> [Clause]     -- ^ Clauses to desugar
           -> q [DClause]
 dsClauses _ [] = return []
+-- Include a special case for guard-less clauses to make the desugared output
+-- a little nicer. See Note [Desugaring clauses compactly (when possible)].
 dsClauses mc (Clause pats (NormalB exp) where_decs : rest) = do
-  -- this case is necessary to maintain the roundtrip property.
   rest' <- dsClauses mc rest
   exp' <- dsExp exp
   (where_decs', ip_binder) <- dsLetDecs where_decs
@@ -1119,21 +1151,21 @@ dsClauses mc (Clause pats (NormalB exp) where_decs : rest) = do
   return $ DClause pats' exp'' : rest'
 dsClauses mc clauses@(Clause outer_pats _ _ : _) = do
   arg_names <- replicateM (length outer_pats) (newUniqueName "arg")
-  let scrutinee = mkUnboxedTupleDExp (map DVarE arg_names)
-  clause <- DClause (map DVarP arg_names) <$>
-              (DCaseE scrutinee <$> foldrM (clause_to_dmatch scrutinee) [] clauses)
-  return [clause]
+  let scrutinees = map DVarE arg_names
+  clauses' <- foldrM (ds_clause scrutinees) [] clauses
+  pure [DClause (map DVarP arg_names) (dCasesE scrutinees clauses')]
   where
-    clause_to_dmatch :: DsMonad q => DExp -> Clause -> [DMatch] -> q [DMatch]
-    clause_to_dmatch scrutinee (Clause pats body where_decs) failure_matches = do
-      let failure_exp = maybeDCaseE mc scrutinee failure_matches
+    ds_clause :: DsMonad q => [DExp] -> Clause -> [DClause] -> q [DClause]
+    ds_clause scrutinees (Clause pats body where_decs) failure_clauses = do
+      let failure_exp = maybeDCasesE mc scrutinees failure_clauses
       exp <- dsBody body where_decs failure_exp
       (pats', exp') <- dsPatsOverExp pats exp
+      -- incomplete attempt at #6
       uni_pats <- fmap getAll $ concatMapM (fmap All . isUniversalPattern) pats'
-      let match = DMatch (mkUnboxedTupleDPat pats') exp'
+      let clause = DClause pats' exp'
       if uni_pats
-      then return [match]
-      else return (match : failure_matches)
+      then return [clause]
+      else return (clause : failure_clauses)
 
 -- | The context of a pattern match. This is used to produce
 -- @Non-exhaustive patterns in...@ messages that are tailored to specific
@@ -1179,6 +1211,94 @@ mkErrorMatchExpr mc =
 
     pp_lam_case_variant LamCase  = "\\case"
     pp_lam_case_variant LamCases = "\\cases"
+
+{-
+Note [Desugaring clauses compactly (when possible)]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In the general case, th-desugar's approach to desugaring clauses with guards
+requires binding an extra variable. For example, consider this code:
+
+  \case
+    A x | x == "hello" -> x
+    B y -> y
+    _   -> ""
+
+As part of desugaring, th-desugar will get rid of the guards by rewriting the
+code to something that looks closer to this:
+
+  \scrutinee ->
+    case scrutinee of
+      A x ->
+        if x == "hello"
+        then x
+        else case scrutinee of
+               B y -> y
+               _   -> ""
+      B y -> y
+      _   -> ""
+
+(The fully desugared output would then translate the lambda and `case`
+expressions to `\cases` expressions, but let's put that aside for now. We'll
+come back to this in a bit.)
+
+Note the `scrutinee` argument, which is now explicitly named. Binding the
+argument to a name is important because we need to further match on it when the
+`x == "hello"` guard fails to match.
+
+This approach gets the job done, but it does add a some amount of extra
+clutter. We take steps to avoid this clutter where possible. Consider this
+simpler example:
+
+  \case
+    A x -> x
+    B y -> y
+    _   -> ""
+
+If we were to desugar this example using the same approach as above, we'd end
+up with something like this:
+
+  \scrutinee ->
+    case scrutinee of
+      A x -> x
+      B y -> y
+      _   -> ""
+
+Recall that th-desugar will desugar lambda and `case` expressions to `\cases`
+exprressions. As such, the fully desugared output would be:
+
+  \cases
+    scrutinee ->
+      (\cases
+        A x -> x
+        B y -> y
+        _   -> "") scrutinee
+
+This would technically work, but we would lose something along the way. By
+using this approach, we would transform something with a single `\case`
+expression to something with multiple `\cases` expressions. Moreover, the
+original expression never needed to give a name to the `scrutinee` variable, so
+it would be strange for the desugared output to require this extra clutter.
+
+Luckily, we can avoid the clutter by observing that the `scrutinee` variable
+can be eta-contracted away. More generally, if a set of clauses does not use
+any guards, then we don't bother explicitly binding a variable like
+`scrutinee`, as we never need to use it outside of the initial matching. This
+means that we can desugar the simpler example above to:
+
+  \cases
+    (A x) -> x
+    (B y) -> y
+    _     -> ""
+
+Ahh. Much nicer.
+
+Of course, the flip side is that we /do/ need the extra `scrutinee` clutter
+when desugaring clauses involving guards. Personally, I'm not too bothered by
+this, as th-desugar's approach to desugaring guards already has various
+limitations (see the "Known limitations" section of the th-desugar README). As
+such, I'm not inclined to invest more effort into fixing this unless someone
+explicitly asks for it.
+-}
 
 -- | Desugar a type
 dsType :: DsMonad q => Type -> q DType

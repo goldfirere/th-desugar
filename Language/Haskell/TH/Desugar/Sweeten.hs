@@ -51,8 +51,6 @@ expToTH (DVarE n)            = VarE n
 expToTH (DConE n)            = ConE n
 expToTH (DLitE l)            = LitE l
 expToTH (DAppE e1 e2)        = AppE (expToTH e1) (expToTH e2)
-expToTH (DLamE names exp)    = LamE (map VarP names) (expToTH exp)
-expToTH (DCaseE exp matches) = CaseE (expToTH exp) (map matchToTH matches)
 expToTH (DLetE decs exp)     = LetE (map letDecToTH decs) (expToTH exp)
 expToTH (DSigE exp ty)       = SigE (expToTH exp) (typeToTH ty)
 expToTH (DStaticE exp)       = StaticE (expToTH exp)
@@ -62,6 +60,64 @@ expToTH (DAppTypeE exp ty)   = AppTypeE (expToTH exp) (typeToTH ty)
 -- In the event that we're on a version of Template Haskell without support for
 -- type applications, we will simply drop the applied type.
 expToTH (DAppTypeE exp _)    = expToTH exp
+#endif
+expToTH (DLamCasesE clauses)
+  -- In the source language, `\cases` expressions must have at least one clause.
+  -- As such, we adopt the convention that a DLamCasesE value with no clauses
+  -- shall sweeten to a `\case{}` expression. Unlike `\cases`, it is legal for
+  -- `\case` to have no clauses, and `\case{}` is assumed to have a single
+  -- argument.
+  | null clauses
+  = LamCaseE []
+#if __GLASGOW_HASKELL__ >= 904
+  -- If building with GHC 9.4 or later, sweetening a DLamCasesE value is as
+  -- simple as using LamCasesE...
+  | otherwise
+  = LamCasesE (map clauseToTH clauses)
+#else
+  -- ...but if we are building with a pre-9.4 version of GHC, we do not have
+  -- access to LamCasesE, making our life harder. We want to have at least
+  -- /some/ support for sweetening DLamCasesE values, since we desugar simpler
+  -- language constructs like lambda, `case`, and `\case` expressions to
+  -- DLamCasesE, and we'd like to be able to sweeten them back.
+  --
+  -- Therefore, we add special treatment for DLamCasesE values that look simpler
+  -- language constructs and sweeten these back to LamE, LamCaseE, etc. If we
+  -- encounter anything more complicated, we give up and raise an error.
+
+  -- Special case: if a DLamCasesE value has exactly one clause, we can sweeten
+  -- the DLamCasesE value as though it were a lambda expression (LamE).
+  | [DClause pats exp] <- clauses
+  = LamE (map patToTH pats) (expToTH exp)
+  -- Special case: if a DLamCasesE value's clauses each have exactly one
+  -- pattern, we can sweeten the DLamCasesE value as though it were a `\case`
+  -- expression (LamCaseE).
+  | Just matches <- traverse dMatch_maybe clauses
+  = LamCaseE (map matchToTH matches)
+  -- NB: You might wonder why there is not another special case that returns
+  -- CaseE for things that look like `case` expressions. This is because the
+  -- special case for LamCaseE above already suffices. Note that we desugar
+  -- `case` expressions to code that looks like this:
+  --
+  --   (\cases
+  --     pat_1 -> rhs_1
+  --     ...
+  --     pat_n -> rhs_n) scrut
+  --
+  -- That is, a value that looks like `DAppE (DLamCasesE ...) scrut`. Each
+  -- clause in the DLamCasesE value has exactly one pattern, however. Therefore,
+  -- because of the special treatment for LamCaseE above, this code would
+  -- sweeten to `AppE (LamCaseE ...) scrut`.
+
+  -- If we lack a special case for the DLamCasesE value, then we raise an error.
+  | otherwise
+  = error $ unlines
+      [ "Non-trivial \\cases expressions supported only in GHC 9.4+."
+      , "Here, \"non-trivial\" means that the \\cases expression cannot easily"
+      , "be rewritten to a lambda, case, or \\case expression without"
+      , "significantly rewriting the expression. Either rewrite the expression"
+      , "yourself or upgrade to a later version of GHC."
+      ]
 #endif
 #if __GLASGOW_HASKELL__ >= 907
 expToTH (DTypedBracketE exp) = TypedBracketE (expToTH exp)
