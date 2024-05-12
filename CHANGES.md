@@ -1,7 +1,7 @@
 `th-desugar` release notes
 ==========================
 
-Version 1.17 [????.??.??]
+Version 1.17 [2024.05.12]
 -------------------------
 * Support GHC 9.10.
 * Add support namespace identifiers in fixity declarations. As part of these
