@@ -648,6 +648,9 @@ test_t187 =
     , (''(,),               Just 2)
     , (''(,,),              Just 3)
     , (''Maybe,             Nothing)
+    , (tupleTypeName 0,     Just 0)
+    , (tupleTypeName 2,     Just 2)
+    , (tupleTypeName 3,     Just 3)
 #if __GLASGOW_HASKELL__ >= 900
     , (''Solo,              Just 1)
 #if __GLASGOW_HASKELL__ >= 906
@@ -690,21 +693,26 @@ test_t188 =
 test_t213 :: [Bool]
 test_t213 =
   map (\(s, expected) -> unboxedTupleNameDegree_maybe s == expected)
-    [ (''(##),               Just 0)
-    , (''(#,#),              Just 2)
-    , (''(#,,#),             Just 3)
-    , (''Maybe,              Nothing)
+    [ (''(##),                 Just 0)
+    , (''(#,#),                Just 2)
+    , (''(#,,#),               Just 3)
+    , (''Maybe,                Nothing)
+#if __GLASGOW_HASKELL__ >= 802
+    , (unboxedTupleTypeName 0, Just 0)
+#endif
+    , (unboxedTupleTypeName 2, Just 2)
+    , (unboxedTupleTypeName 3, Just 3)
 #if __GLASGOW_HASKELL__ >= 910
-    , (''Unit#,              Just 0)
-    , (''Tuple0#,            Just 0)
-    , (''Solo#,              Just 1)
-    , (''Tuple1#,            Just 1)
-    , (''Tuple2#,            Just 2)
-    , (''Tuple3#,            Just 3)
-    , (''FakeTuples.Tuple0#, Nothing)
-    , (''FakeTuples.Tuple1#, Nothing)
-    , (''FakeTuples.Tuple2#, Nothing)
-    , (''FakeTuples.Tuple3#, Nothing)
+    , (''Unit#,                Just 0)
+    , (''Tuple0#,              Just 0)
+    , (''Solo#,                Just 1)
+    , (''Tuple1#,              Just 1)
+    , (''Tuple2#,              Just 2)
+    , (''Tuple3#,              Just 3)
+    , (''FakeTuples.Tuple0#,   Nothing)
+    , (''FakeTuples.Tuple1#,   Nothing)
+    , (''FakeTuples.Tuple2#,   Nothing)
+    , (''FakeTuples.Tuple3#,   Nothing)
 #endif
     ]
 #if __GLASGOW_HASKELL__ >= 802
