@@ -234,3 +234,261 @@ limitations surrounding embedded types in patterns (see the "Limited support
 for embedded types in patterns" section above). As a result, the same
 workaround applies: convert uses of lambdas and `LambdaCase` to function
 declarations, which are fully supported.
+
+## Limitations of support for desugaring guards
+
+`th-desugar` supports guards in the sense that it will desugar guards to
+equivalent code that instead uses `case` expressions. For example, this code:
+
+```hs
+f (x, y)
+  | x == "hello" = x
+  | otherwise = y
+```
+
+Will be desugared to this code:
+
+```hs
+f arg =
+  case arg of
+    (x, y) ->
+      case x2 == "hello" of
+        True  -> x
+        False -> y
+```
+
+This has the advantage that it saves users from needing to care about the
+complexities of guards. It does have some drawbacks, however, which we describe
+below.
+
+### Desugaring guards can result in quadratic code size
+
+If you desugar this program involving guards:
+
+```hs
+data T = A Int | B Int | C Int
+
+f :: T -> T -> Maybe Int
+f (A x1) (A x2)
+  | x1 == x2
+  = Just x1
+f (B x1) (B x2)
+  | x1 == x2
+  = Just x1
+f (C x1) (C x2)
+  | x1 == x2
+  = Just x1
+f _ _ = Nothing
+```
+
+You will end up with:
+
+```hs
+f :: T -> T -> Maybe Int
+f arg1 arg2 =
+  case (# arg1, arg2 #) of
+    (# A x1, A x2 #) ->
+      case x1 == x2 of
+        True ->
+          Just x1
+        False ->
+          case (# arg1, arg2 #) of
+            (# B y1, B y2 #) ->
+              case y1 == y2 of
+                True ->
+                  Just y1
+                False ->
+                  case (# arg1, arg2 #) of
+                    (# C z1, C z2 #) ->
+                      case z1 == z2 of
+                        True ->
+                          Just z1
+                        False ->
+                          case (# arg1, arg2 #) of
+                            (# _, _ #) ->
+                              Nothing
+                    (# _, _ #) ->
+                      Nothing
+            (# C y1, C y2 #) ->
+              case y1 == y2 of
+                True ->
+                  Just y1
+                False ->
+                  case (# arg1, arg2 #) of
+                    (# _, _ #) ->
+                      Nothing
+            (# _, _ #) ->
+              Nothing
+    (# B x1, B x2 #) ->
+      case x1 == x2 of
+        True ->
+          Just x1
+        False ->
+          case (# arg1, arg2 #) of
+            (# C y1, C y2 #) ->
+              case y1 == y2 of
+                True ->
+                  Just y1
+                False ->
+                  case (# arg1, arg2 #) of
+                    (# _, _ #) ->
+                      Nothing
+            (# _, _ #) ->
+              Nothing
+    (# C x1, C x2 #) ->
+      case x1 == x2 of
+        True ->
+          Just x1
+        False ->
+          case (# arg1, arg2 #) of
+            (# _, _ #) ->
+              Nothing
+    (# _, _ #) ->
+      Nothing
+```
+
+That is signficantly more code. In the worst case, the algorithm that
+`th-desugar` uses for desugaring guards can lead to a quadratic increase in
+code size. One way to avoid this is avoid having incomplete guards that fall
+through to later clauses. That is, if you rewrite the original code to this:
+
+```hs
+f :: T -> T -> Maybe Int
+f (A x1) (A x2)
+  | x1 == x2
+  = Just x1
+  | otherwise
+  = Nothing
+f (B x1) (B x2)
+  | x1 == x2
+  = Just x1
+  | otherwise
+  = Nothing
+f (C x1) (C x2)
+  | x1 == x2
+  = Just x1
+  | otherwise
+  = Nothing
+```
+
+Then `th-desugar` will desugar it to:
+
+```hs
+f :: T -> T -> Maybe Int
+f arg1 arg2 =
+  case (# arg1, arg2 #) of
+    (# A x1, A x2 #) ->
+      case x1 == x2 of
+        True ->
+          Just x1
+        False ->
+          Nothing
+    (# B x1, B x2 #) ->
+      case x1 == x2 of
+        True ->
+          Just x1
+        False ->
+          Nothing
+    (# C x1, C x2 #) ->
+      case x1 == x2 of
+        True ->
+          Just x1
+        False ->
+          Nothing
+```
+
+This code, while still more verbose than the original, uses a constant amount
+of extra code per clause.
+
+### Desugaring guards can produce more warnings than the original code
+
+The approach that `th-desugar` uses to desugar guards can result in code that
+produces GHC compiler warnings (if `-fenable-th-splice-warnings` is enabled)
+where the original code does not. For example, consider the example from above:
+
+```hs
+data T = A Int | B Int | C Int
+
+f :: T -> T -> Maybe Int
+f (A x1) (A x2)
+  | x1 == x2
+  = Just x1
+f (B x1) (B x2)
+  | x1 == x2
+  = Just x1
+f (C x1) (C x2)
+  | x1 == x2
+  = Just x1
+f _ _ = Nothing
+```
+
+This code compiles without any GHC warnings. If you desugar this code using
+`th-desugar`, however, it will produce these warnings:
+
+```
+warning: [-Woverlapping-patterns]
+    Pattern match is redundant
+    In a case alternative: (# B y1, B y2 #) -> ...
+   |
+   |             (# B y1, B y2 #) ->
+   |             ^^^^^^^^^^^^^^^^^^^...
+
+warning: [-Woverlapping-patterns]
+    Pattern match is redundant
+    In a case alternative: (# C y1, C y2 #) -> ...
+   |
+   |             (# C y1, C y2 #) ->
+   |             ^^^^^^^^^^^^^^^^^^^...
+
+warning: [-Woverlapping-patterns]
+    Pattern match is redundant
+    In a case alternative: (# C y1, C y2 #) -> ...
+   |
+   |             (# C y1, C y2 #) ->
+   |             ^^^^^^^^^^^^^^^^^^^...
+```
+
+GHC is correct here: these matches are wholly redundant. `th-desugar` could
+potentially recognize this and perform a more sophisticated analysis to detect
+and remove such matches when desugaring guards, but it currently doesn't do
+such an analysis.
+
+## No support for view patterns
+
+`th-desugar` does not support desugaring view patterns. An alternative to using
+view patterns in the patterns of a function is to use pattern guards.
+Currently, there is not a viable workaround for using view patterns in pattern
+synonym definitions—see [this `th-desugar`
+issue](https://github.com/goldfirere/th-desugar/issues/174).
+
+## No support for `ApplicativeDo`
+
+`th-desugar` does not take the `ApplicativeDo` extension into account when
+desugaring `do` notation. For example, if you desugar this:
+
+```hs
+{-# LANGUAGE ApplicativeDo #-}
+
+f x y = do
+  x' <- x
+  y' <- y
+  return (x' ++ y')
+```
+
+Then `th-desugar` will translate the uses of `<-` in the `do` block to uses of
+`Monad` operations (e.g., `(>>=)`) rather than `Applicative` operations (e.g.,
+`(<*>)`). See [this `th-desugar`
+issue](https://github.com/goldfirere/th-desugar/issues/138).
+
+## No support for `RecursiveDo`
+
+`th-desugar` does not support the `RecursiveDo` extension at all, so it cannot
+desugar any uses of `mdo` expressions or `rec` statements.
+
+## No support for unresolved infix operators
+
+`th-desugar` does not support desugaring unresolved infix operators, such as
+`UInfixE`. You are unlikely to encounter this limitation when dealing with
+Template Haskell quotes, since quoted infix operators will translate to uses of
+`InfixE` rather than `UInfixE`. Rather, this limitation would only be
+encountered if you manually construct a Template Haskell `Exp` using `UInfixE`.
