@@ -85,7 +85,7 @@ dsExp (LamE pats exp) = do
   mkDLamEFromDPats pats' exp''
 dsExp (LamCaseE matches) = do
   x <- newUniqueName "x"
-  matches' <- dsMatches x matches
+  matches' <- dsMatches (LamCaseAlt LamCase) x matches
   return $ DLamE [x] (DCaseE (DVarE x) matches')
 dsExp (TupE exps) = dsTup tupleDataName exps
 dsExp (UnboxedTupE exps) = dsTup unboxedTupleDataName exps
@@ -109,12 +109,12 @@ dsExp (LetE decs exp) = do
     -- the following special case avoids creating a new "let" when it's not
     -- necessary. See #34.
 dsExp (CaseE (VarE scrutinee) matches) = do
-  matches' <- dsMatches scrutinee matches
+  matches' <- dsMatches CaseAlt scrutinee matches
   return $ DCaseE (DVarE scrutinee) matches'
 dsExp (CaseE exp matches) = do
   scrutinee <- newUniqueName "scrutinee"
   exp' <- dsExp exp
-  matches' <- dsMatches scrutinee matches
+  matches' <- dsMatches CaseAlt scrutinee matches
   return $ DLetE [DValD (DVarP scrutinee) exp'] $
            DCaseE (DVarE scrutinee) matches'
 #if __GLASGOW_HASKELL__ >= 900
@@ -253,7 +253,7 @@ dsExp (ProjectionE fields) =
 #endif
 #if __GLASGOW_HASKELL__ >= 903
 dsExp (LamCasesE clauses) = do
-  clauses' <- dsClauses CaseAlt clauses
+  clauses' <- dsClauses (LamCaseAlt LamCases) clauses
   numArgs <-
     case clauses' of
       (DClause pats _:_) -> return $ length pats
@@ -355,16 +355,17 @@ mkGetFieldProj field = DVarE 'getField `DAppTypeE` DLitT (StrTyLit field)
 
 -- | Desugar a list of matches for a @case@ statement
 dsMatches :: DsMonad q
-          => Name     -- ^ Name of the scrutinee, which must be a bare var
-          -> [Match]  -- ^ Matches of the @case@ statement
+          => MatchContext -- ^ The context in which the matches arise
+          -> Name         -- ^ Name of the scrutinee, which must be a bare var
+          -> [Match]      -- ^ Matches of the @case@ statement
           -> q [DMatch]
-dsMatches scr = go
+dsMatches mc scr = go
   where
     go :: DsMonad q => [Match] -> q [DMatch]
     go [] = return []
     go (Match pat body where_decs : rest) = do
       rest' <- go rest
-      let failure = maybeDCaseE CaseAlt (DVarE scr) rest'
+      let failure = maybeDCaseE mc (DVarE scr) rest'
       exp' <- dsBody body where_decs failure
       (pat', exp'') <- dsPatOverExp pat exp'
       uni_pattern <- isUniversalPattern pat' -- incomplete attempt at #6
@@ -1150,6 +1151,16 @@ data MatchContext
     -- ^ Guards in a multi-way if alternative
   | CaseAlt
     -- ^ Patterns and guards in a case alternative
+  | LamCaseAlt LamCaseVariant
+    -- ^ Patterns and guards in @\\case@ and @\\cases@
+
+-- | Which kind of lambda case are we dealing with? Compare this to GHC's
+-- @LamCaseVariant@ data type
+-- (https://gitlab.haskell.org/ghc/ghc/-/blob/81cf52bb301592ff3d043d03eb9a0d547891a3e1/compiler/Language/Haskell/Syntax/Expr.hs#L686-690)
+-- from which we take inspiration.
+data LamCaseVariant
+  = LamCase  -- ^ @\\case@
+  | LamCases -- ^ @\\cases@
 
 -- | Construct an expression that throws an error when encountering a pattern
 -- at runtime that is not covered by pattern matching.
@@ -1164,6 +1175,10 @@ mkErrorMatchExpr mc =
         RecUpd        -> "record update"
         MultiWayIfAlt -> "multi-way if"
         CaseAlt       -> "case"
+        LamCaseAlt lv -> pp_lam_case_variant lv
+
+    pp_lam_case_variant LamCase  = "\\case"
+    pp_lam_case_variant LamCases = "\\cases"
 
 -- | Desugar a type
 dsType :: DsMonad q => Type -> q DType
