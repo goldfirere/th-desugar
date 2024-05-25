@@ -1,6 +1,12 @@
 `th-desugar` release notes
 ==========================
 
+Version 1.18 [????.??.??]
+-------------------------
+* The `dsMatches` function now requires a `MatchContext` argument, which
+  determines what kind of "`Non-exhaustive patterns in ...`" error it raises
+  when reaching a fallthrough case for non-exhaustive matches.
+
 Version 1.17 [2024.05.12]
 -------------------------
 * Support GHC 9.10.

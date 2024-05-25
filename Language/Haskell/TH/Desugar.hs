@@ -57,6 +57,7 @@ module Language.Haskell.TH.Desugar (
   -- ** Secondary desugaring functions
   PatM, dsPred, dsPat, dsDec, dsDataDec, dsDataInstDec,
   DerivingClause, dsDerivClause, dsLetDec,
+  MatchContext(..), LamCaseVariant(..),
   dsMatches, dsBody, dsGuards, dsDoStmts, dsComp, dsClauses,
   dsBangType, dsVarBangType,
   dsTypeFamilyHead, dsFamilyResultSig,
