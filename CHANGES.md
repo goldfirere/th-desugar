@@ -31,6 +31,12 @@ Version 1.18 [????.??.??]
   `\(type a) (x :: a) -> x :: a`) and invisible type patterns (e.g.,
   `\ @a (x :: a) -> x :: a`).
 * Add a `Quote` instance for `DsM`.
+* Export `substTyVarBndr` from `Language.Haskell.TH.Desugar.Subst`.
+* Add a `Language.Haskell.TH.Desugar.Subst.Capturing` module. This exposes
+  mostly the same API as `Language.Haskell.TH.Desugar.Subst`, except that the
+  substitution functions in `Language.Haskell.TH.Desugar.Subst.Capturing` do
+  not avoid capture when subtituting into a @forall@ type. As a result, these
+  substitution functions are pure rather than monadic.
 
 Version 1.17 [2024.05.12]
 -------------------------

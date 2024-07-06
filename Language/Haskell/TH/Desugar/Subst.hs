@@ -7,7 +7,9 @@
 -- Stability   :  experimental
 -- Portability :  non-portable
 --
--- Capture-avoiding substitutions on 'DType's
+-- Capture-avoiding substitutions on 'DType's. (For non–capture-avoiding
+-- substitution functions, use "Language.Haskell.TH.Desugar.Subst.Capturing"
+-- instead.)
 --
 ----------------------------------------------------------------------------
 
@@ -15,7 +17,7 @@ module Language.Haskell.TH.Desugar.Subst (
   DSubst,
 
   -- * Capture-avoiding substitution
-  substTy, substForallTelescope, substTyVarBndrs,
+  substTy, substForallTelescope, substTyVarBndrs, substTyVarBndr,
   unionSubsts, unionMaybeSubsts,
 
   -- * Matching a type template against a type
@@ -27,13 +29,15 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Language.Haskell.TH.Desugar.AST
-import Language.Haskell.TH.Syntax
 import Language.Haskell.TH.Desugar.Util
+import Language.Haskell.TH.Syntax
 
--- | A substitution is just a map from names to types
+-- | A substitution is just a map from names to types.
 type DSubst = M.Map Name DType
 
--- | Capture-avoiding substitution on types
+-- | Capture-avoiding substitution on 'DType's. This function requires a 'Quasi'
+-- constraint because it may need to create fresh names in order to avoid
+-- capture when substituting into a @forall@ type (see 'substTyVarBndr').
 substTy :: Quasi q => DSubst -> DType -> q DType
 substTy vars (DForallT tele ty) = do
   (vars', tele') <- substForallTelescope vars tele
@@ -57,6 +61,10 @@ substTy _ ty@DArrowT    = return ty
 substTy _ ty@(DLitT _)  = return ty
 substTy _ ty@DWildCardT = return ty
 
+-- | Capture-avoiding substitution on 'DForallTelescope's. This returns a pair
+-- containing the new 'DSubst' as well as a new 'DForallTelescope' value, where
+-- the names have been renamed to avoid capture and the kinds have been
+-- substituted.
 substForallTelescope :: Quasi q => DSubst -> DForallTelescope
                      -> q (DSubst, DForallTelescope)
 substForallTelescope vars tele =
@@ -68,16 +76,25 @@ substForallTelescope vars tele =
       (vars', tvbs') <- substTyVarBndrs vars tvbs
       return (vars', DForallInvis tvbs')
 
+-- | Capture-avoiding substitution on a telescope of 'DTyVarBndr's. This returns
+-- a pair containing the new 'DSubst' as well as a new telescope of
+-- 'DTyVarBndr's, where the names have been renamed to avoid capture and the
+-- kinds have been substituted.
 substTyVarBndrs :: Quasi q => DSubst -> [DTyVarBndr flag]
                 -> q (DSubst, [DTyVarBndr flag])
-substTyVarBndrs = mapAccumLM substTvb
+substTyVarBndrs = mapAccumLM substTyVarBndr
 
-substTvb :: Quasi q => DSubst -> DTyVarBndr flag
+-- | Capture-avoiding substitution on a 'DTyVarBndr'. This uses the 'Quasi'
+-- constraint to create a new, fresh name (based on the name of the supplied
+-- 'DTyVarBndr'), update the 'DSubst' to map from the old name to the new name,
+-- and this also returns a 'DTyVarBndr' containing the new name and the kind of
+-- the supplied 'DTyVarBndr' (with the substitution applied).
+substTyVarBndr :: Quasi q => DSubst -> DTyVarBndr flag
          -> q (DSubst, DTyVarBndr flag)
-substTvb vars (DPlainTV n flag) = do
+substTyVarBndr vars (DPlainTV n flag) = do
   new_n <- qNewName (nameBase n)
   return (M.insert n (DVarT new_n) vars, DPlainTV new_n flag)
-substTvb vars (DKindedTV n flag k) = do
+substTyVarBndr vars (DKindedTV n flag k) = do
   new_n <- qNewName (nameBase n)
   k' <- substTy vars k
   return (M.insert n (DVarT new_n) vars, DKindedTV new_n flag k')
