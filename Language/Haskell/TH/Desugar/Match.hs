@@ -205,7 +205,34 @@ wrapBind new old
   | new == old = id
   | otherwise  = DLetE [DValD (DVarP new) (DVarE old)]
 
--- like GHC's mkSelectorBinds
+-- | Desugar a lazy pattern that bind multiple variables to code that extracts
+-- fields from tuples. For instance, this:
+--
+-- @
+-- data Pair a b = MkPair a b
+--
+-- f :: Pair a b -> Pair b a
+-- f ~(MkPair x y) = MkPair y x
+-- @
+--
+-- Desugars to this (roughly) when match-flattened:
+--
+-- @
+-- f :: Pair a b -> Pair b a
+-- f p =
+--   let tuple = case p of
+--                 MkPair x y -> (x, y)
+--
+--       x = case tuple of
+--             (x, _) -> x
+--
+--       y = case tuple of
+--             (_, y) -> x
+--
+--    in MkPair y x
+-- @
+--
+-- This takes heavy inspiration from GHC's own @mkSelectorBinds@ function.
 mkSelectorDecs :: DsMonad q
                => DPat      -- pattern to deconstruct
                -> Name      -- variable being matched against
