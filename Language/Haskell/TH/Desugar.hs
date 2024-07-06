@@ -109,6 +109,9 @@ module Language.Haskell.TH.Desugar (
   mkExtraDKindBinders, dTyVarBndrToDType, changeDTVFlags,
   mapDTVName, mapDTVKind,
   toposortTyVarsOf, toposortKindVarsOfTvbs,
+  ForAllTyFlag(..),
+  tvbForAllTyFlagsToSpecs, tvbForAllTyFlagsToBndrVis, matchUpSAKWithDecl,
+  dtvbForAllTyFlagsToSpecs, dtvbForAllTyFlagsToBndrVis, dMatchUpSAKWithDecl,
 
   -- ** 'FunArgs' and 'VisFunArg'
   FunArgs(..), ForallTelescope(..), VisFunArg(..),

@@ -39,6 +39,19 @@ Version 1.18 [????.??.??]
   substitution functions in `Language.Haskell.TH.Desugar.Subst.Capturing` do
   not avoid capture when subtituting into a @forall@ type. As a result, these
   substitution functions are pure rather than monadic.
+* Add `dMatchUpSAKWithDecl`, a function that matches up type variable binders
+  from a standalone kind signature to the corresponding type variable binders
+  in the type-level declaration's header:
+
+  * The type signature for `dMatchUpSAKWithDecl` returns
+    `[DTyVarBndr ForAllTyFlag]`, where `ForAllTyFlag` is a new data type that
+    generalizes both `Specificity` and `BndrVis`.
+  * Add `dtvbForAllTyFlagsToSpecs` and `dtvbForAllTyFlagsToBndrVis` functions,
+    which allow converting the results of calling `dMatchUpSAKWithDecl` to
+    `[DTyVarBndrSpec]` or `[DTyVarBndrVis]`, respectively.
+  * Also add `matchUpSAKWithDecl`, `tvbForAllTyFlagsToSpecs`, and
+    `tvbForAllTyFlagsToBndrVis` functions, which work over `TyVarBndr` instead
+    of `DTyVarBndr`.
 
 Version 1.17 [2024.05.12]
 -------------------------

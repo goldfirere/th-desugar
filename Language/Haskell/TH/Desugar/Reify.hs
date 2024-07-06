@@ -987,7 +987,7 @@ match_kind_sig n decs (ClassD _ n' tvbs _ sub_decs)
         cls_tvb_kind_map   =
           Map.fromList [ (tvName tvb, tvb_kind)
                        | (tvb, mb_vis_arg_ki) <- zip tvbs mb_vis_arg_kis
-                       , Just tvb_kind <- [mb_vis_arg_ki <|> tvb_kind_maybe tvb]
+                       , Just tvb_kind <- [mb_vis_arg_ki <|> extractTvbKind_maybe tvb]
                        ]
   = firstMatch (find_assoc_type_kind n cls_tvb_kind_map) sub_decs
 match_kind_sig n _ dec = find_kind_sig n dec
@@ -1029,7 +1029,7 @@ match_cusk n (ClassD _ n' tvbs _ sub_decs)
     all tvb_is_kinded tvbs
   , let cls_tvb_kind_map = Map.fromList [ (tvName tvb, tvb_kind)
                                         | tvb <- tvbs
-                                        , Just tvb_kind <- [tvb_kind_maybe tvb]
+                                        , Just tvb_kind <- [extractTvbKind_maybe tvb]
                                         ]
   = firstMatch (find_assoc_type_kind n cls_tvb_kind_map) sub_decs
 #if __GLASGOW_HASKELL__ >= 906
@@ -1165,13 +1165,10 @@ build_kind arg_kinds res_kind =
 #endif
 
 tvb_is_kinded :: TyVarBndr_ flag -> Bool
-tvb_is_kinded = isJust . tvb_kind_maybe
-
-tvb_kind_maybe :: TyVarBndr_ flag -> Maybe Kind
-tvb_kind_maybe = elimTV (\_ -> Nothing) (\_ k -> Just k)
+tvb_is_kinded = isJust . extractTvbKind_maybe
 
 vis_arg_kind_maybe :: VisFunArg -> Maybe Kind
-vis_arg_kind_maybe (VisFADep tvb) = tvb_kind_maybe tvb
+vis_arg_kind_maybe (VisFADep tvb) = extractTvbKind_maybe tvb
 vis_arg_kind_maybe (VisFAAnon k)  = Just k
 
 default_tvb :: TyVarBndr_ flag -> TyVarBndr_ flag
@@ -1183,7 +1180,7 @@ default_res_ki = fromMaybe StarT
 res_sig_to_kind :: FamilyResultSig -> Maybe Kind
 res_sig_to_kind NoSig          = Nothing
 res_sig_to_kind (KindSig k)    = Just k
-res_sig_to_kind (TyVarSig tvb) = tvb_kind_maybe tvb
+res_sig_to_kind (TyVarSig tvb) = extractTvbKind_maybe tvb
 
 whenAlt :: Alternative f => Bool -> f a -> f a
 whenAlt b fa = if b then fa else empty
