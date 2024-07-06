@@ -107,6 +107,7 @@ module Language.Haskell.TH.Desugar (
   unboxedSumNameDegree_maybe, unboxedTupleNameDegree_maybe,
   isTypeKindName, typeKindName, bindIP,
   mkExtraDKindBinders, dTyVarBndrToDType, changeDTVFlags,
+  mapDTVName, mapDTVKind,
   toposortTyVarsOf, toposortKindVarsOfTvbs,
 
   -- ** 'FunArgs' and 'VisFunArg'

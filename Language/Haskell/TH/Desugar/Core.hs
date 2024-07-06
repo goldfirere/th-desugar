@@ -1889,6 +1889,16 @@ dtvbFlag :: DTyVarBndr flag -> flag
 dtvbFlag (DPlainTV _ flag)    = flag
 dtvbFlag (DKindedTV _ flag _) = flag
 
+-- | Map over the 'Name' of a 'DTyVarBndr'.
+mapDTVName :: (Name -> Name) -> DTyVarBndr flag -> DTyVarBndr flag
+mapDTVName f (DPlainTV name flag) = DPlainTV (f name) flag
+mapDTVName f (DKindedTV name flag kind) = DKindedTV (f name) flag kind
+
+-- | Map over the 'DKind' of a 'DTyVarBndr'.
+mapDTVKind :: (DKind -> DKind) -> DTyVarBndr flag -> DTyVarBndr flag
+mapDTVKind _ tvb@(DPlainTV{}) = tvb
+mapDTVKind f (DKindedTV name flag kind) = DKindedTV name flag (f kind)
+
 -- @mk_qual_do_name mb_mod orig_name@ will simply return @orig_name@ if
 -- @mb_mod@ is Nothing. If @mb_mod@ is @Just mod_@, then a new 'Name' will be
 -- returned that uses @mod_@ as the new module prefix. This is useful for

@@ -31,6 +31,8 @@ Version 1.18 [????.??.??]
   `\(type a) (x :: a) -> x :: a`) and invisible type patterns (e.g.,
   `\ @a (x :: a) -> x :: a`).
 * Add a `Quote` instance for `DsM`.
+* Add `mapDTVName` and `mapDTVKind` functions, which allow mapping over the
+  `Name` and `DKind` of a `DTyVarBndr`, respectively.
 * Export `substTyVarBndr` from `Language.Haskell.TH.Desugar.Subst`.
 * Add a `Language.Haskell.TH.Desugar.Subst.Capturing` module. This exposes
   mostly the same API as `Language.Haskell.TH.Desugar.Subst`, except that the
