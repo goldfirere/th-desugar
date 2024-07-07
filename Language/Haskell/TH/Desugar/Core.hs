@@ -827,12 +827,25 @@ dsDataDec :: DsMonad q
           -> Maybe Kind -> [Con] -> [DerivingClause] -> q [DDec]
 dsDataDec nd cxt n tvbs mk cons derivings = do
   tvbs' <- mapM dsTvbVis tvbs
-  let h98_tvbs = case mk of
-                   -- If there's an explicit return kind, we're dealing with a
-                   -- GADT, so this argument goes unused in dsCon.
-                   Just {} -> unusedArgument
-                   Nothing -> tvbs'
-      h98_return_type = nonFamilyDataReturnType n tvbs'
+  h98_tvbs <-
+    case mk of
+      -- If there's an explicit return kind, we're dealing with a
+      -- GADT, so this argument goes unused in dsCon.
+      Just {} -> pure unusedArgument
+      -- If there is no explicit return kind, we're dealing with a
+      -- Haskell98-style data type, so we must compute the type variable
+      -- binders to use in the types of the data constructors.
+      --
+      -- Rather than just returning `tvbs'` here, we propagate kind information
+      -- from the data type's standalone kind signature (if one exists) to make
+      -- the kinds more precise.
+      Nothing -> do
+        mb_sak <- dsReifyType n
+        let tvbSpecs = changeDTVFlags SpecifiedSpec tvbs'
+        pure $ maybe tvbSpecs dtvbForAllTyFlagsToSpecs $ do
+          sak <- mb_sak
+          dMatchUpSAKWithDecl sak tvbs'
+  let h98_return_type = nonFamilyDataReturnType n tvbs'
   (:[]) <$> (DDataD nd <$> dsCxt cxt <*> pure n
                        <*> pure tvbs' <*> mapM dsType mk
                        <*> concatMapM (dsCon h98_tvbs h98_return_type) cons
@@ -847,7 +860,7 @@ dsDataInstDec nd cxt n mtvbs tys mk cons derivings = do
   tys'   <- mapM dsTypeArg tys
   let lhs' = applyDType (DConT n) tys'
       h98_tvbs =
-        changeDTVFlags defaultBndrFlag $
+        changeDTVFlags SpecifiedSpec $
         case (mk, mtvbs') of
           -- If there's an explicit return kind, we're dealing with a
           -- GADT, so this argument goes unused in dsCon.
@@ -997,10 +1010,10 @@ dsTopLevelLetDec = fmap (map DLetDec . fst) . dsLetDec
 -- we require passing these as arguments. (If we desugar an actual GADT
 -- constructor, these arguments are ignored.)
 dsCon :: DsMonad q
-      => [DTyVarBndrVis] -- ^ The universally quantified type variables
-                         --   (used if desugaring a non-GADT constructor).
-      -> DType           -- ^ The original data declaration's type
-                         --   (used if desugaring a non-GADT constructor).
+      => [DTyVarBndrSpec] -- ^ The universally quantified type variables
+                          --   (used if desugaring a non-GADT constructor).
+      -> DType            -- ^ The original data declaration's type
+                          --   (used if desugaring a non-GADT constructor).
       -> Con -> q [DCon]
 dsCon univ_dtvbs data_type con = do
   dcons' <- dsCon' con
@@ -1008,8 +1021,7 @@ dsCon univ_dtvbs data_type con = do
     case m_gadt_type of
       Nothing ->
         let ex_dtvbs   = dtvbs
-            expl_dtvbs = changeDTVFlags SpecifiedSpec univ_dtvbs ++
-                         ex_dtvbs
+            expl_dtvbs = univ_dtvbs ++ ex_dtvbs
             impl_dtvbs = changeDTVFlags SpecifiedSpec $
                          toposortKindVarsOfTvbs expl_dtvbs in
         DCon (impl_dtvbs ++ expl_dtvbs) dcxt n fields data_type

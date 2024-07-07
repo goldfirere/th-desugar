@@ -52,6 +52,40 @@ Version 1.18 [????.??.??]
   * Also add `matchUpSAKWithDecl`, `tvbForAllTyFlagsToSpecs`, and
     `tvbForAllTyFlagsToBndrVis` functions, which work over `TyVarBndr` instead
     of `DTyVarBndr`.
+* Local reifying the type of a data constructor or class method now yields type
+  signatures with more precise type variable information, as `th-desugar` now
+  incorporates information from the standalone kind signature (if any) for the
+  parent data type or class, respectively. For instance, consider the following
+  data type declaration:
+
+  ```hs
+  type P :: forall {k}. k -> Type
+  data P (a :: k) = MkP
+  ```
+
+  In previous versions of `th-desugar`, locally reifying `MkP` would yield the
+  following type:
+
+  ```hs
+  MkP :: forall k (a :: k). P a
+  ```
+
+  This was subtly wrong, as `k` is marked as specified (i.e., eligible for
+  visible type application), not inferred. In `th-desugar-1.18`, however, the
+  locally reified type will mark `k` as inferred, as expected:
+
+  ```hs
+  MkP :: forall {k} (a :: k). P a
+  ```
+
+  Similarly, desugaring `MkP` from Template Haskell to `th-desugar` results
+  in a data constructor with the expected type above.
+  * As a result of these changes, the type of `dsCon` has changed slightly:
+
+    ```diff
+    -dsCon :: DsMonad q => [DTyVarBndrUnit] -> DType -> Con -> q [DCon]
+    +dsCon :: DsMonad q => [DTyVarBndrSpec] -> DType -> Con -> q [DCon]
+    ```
 
 Version 1.17 [2024.05.12]
 -------------------------
