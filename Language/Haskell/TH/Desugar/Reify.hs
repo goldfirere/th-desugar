@@ -53,6 +53,7 @@ import Language.Haskell.TH.Datatype ( freeVariables, freeVariablesWellScoped
 import Language.Haskell.TH.Datatype.TyVarBndr
 import Language.Haskell.TH.Instances ()
 import Language.Haskell.TH.Syntax hiding ( lift )
+import qualified Language.Haskell.TH.Syntax.Compat as Compat ( Quote )
 
 import Language.Haskell.TH.Desugar.Util as Util
 
@@ -202,7 +203,8 @@ instance DsMonad IO where
 -- | A convenient implementation of the 'DsMonad' class. Use by calling
 -- 'withLocalDeclarations'.
 newtype DsM q a = DsM (ReaderT [Dec] q a)
-  deriving ( Functor, Applicative, Monad, MonadTrans, Quasi, Fail.MonadFail
+  deriving ( Functor, Applicative, Monad, MonadTrans, Fail.MonadFail
+           , Quasi, Compat.Quote
 #if __GLASGOW_HASKELL__ >= 803
            , MonadIO
 #endif

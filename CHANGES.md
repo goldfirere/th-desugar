@@ -30,6 +30,7 @@ Version 1.18 [????.??.??]
 * Add support for desugaring higher-order uses of embedded type patterns (e.g.,
   `\(type a) (x :: a) -> x :: a`) and invisible type patterns (e.g.,
   `\ @a (x :: a) -> x :: a`).
+* Add a `Quote` instance for `DsM`.
 
 Version 1.17 [2024.05.12]
 -------------------------
