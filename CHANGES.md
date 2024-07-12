@@ -13,7 +13,7 @@ Version 1.18 [????.??.??]
 
   ```diff
   -dsMatches :: DsMonad q => Name         -> [Match] -> q [DMatch]
-  -dsMatches :: DsMonad q => MatchContext -> [Match] -> q [DMatch]
+  +dsMatches :: DsMonad q => MatchContext -> [Match] -> q [DMatch]
   ```
 
   In particular:
