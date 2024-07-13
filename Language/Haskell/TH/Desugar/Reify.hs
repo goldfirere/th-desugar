@@ -285,14 +285,25 @@ reifyInDec n _ dec@(TypeDataD n' _ _ _) | n `nameMatches` n' = Just (n', TyConI 
 #endif
 
 reifyInDec n decs (DataD _ ty_name tvbs _mk cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map tyVarBndrVisToTypeArgWithSig tvbs) cons
+  | Just info <- maybeReifyCon n decs ty_name
+                   (matchUpSAKWithTvbsSpec decs ty_name tvbs)
+                   (applyType (ConT ty_name) (map tyVarBndrVisToTypeArg tvbs))
+                   cons
   = Just info
 reifyInDec n decs (NewtypeD _ ty_name tvbs _mk con _)
-  | Just info <- maybeReifyCon n decs ty_name (map tyVarBndrVisToTypeArgWithSig tvbs) [con]
+  | Just info <- maybeReifyCon n decs ty_name
+                   (matchUpSAKWithTvbsSpec decs ty_name tvbs)
+                   (applyType (ConT ty_name) (map tyVarBndrVisToTypeArg tvbs))
+                   [con]
   = Just info
-reifyInDec n _decs (ClassD _ ty_name tvbs _ sub_decs)
+reifyInDec n decs (ClassD _ cls_name cls_tvbs _ sub_decs)
   | Just (n', ty) <- findType n sub_decs
-  = Just (n', ClassOpI n (quantifyClassMethodType ty_name tvbs True ty) ty_name)
+  = Just (n', ClassOpI n
+                (quantifyClassMethodType
+                  (matchUpSAKWithTvbsSpec decs cls_name cls_tvbs)
+                  (applyType (ConT cls_name) (map tyVarBndrVisToTypeArg cls_tvbs))
+                  True ty)
+                cls_name)
 reifyInDec n decs (ClassD _ _ _ _ sub_decs)
   | Just info <- firstMatch (reifyInDec n decs) sub_decs
                  -- Important: don't pass (sub_decs ++ decs) to reifyInDec
@@ -312,32 +323,66 @@ reifyInDec n decs (PatSynD pat_syn_name args _ _)
   = Just (n', VarI n full_sel_ty Nothing)
 #endif
 #if __GLASGOW_HASKELL__ >= 807
-reifyInDec n decs (DataInstD _ _ lhs _ cons _)
+reifyInDec n decs (DataInstD _ mtvbs lhs _ cons _)
   | (ConT ty_name, tys) <- unfoldType lhs
-  , Just info <- maybeReifyCon n decs ty_name tys cons
+  , Just info <- maybeReifyCon n decs ty_name
+                   (dataFamInstH98ConTvbs mtvbs tys)
+                   -- Why do we reapply `ty_name` to `tys` here instead of just
+                   -- reusing `lhs`? See Note [Apply data family type
+                   -- constructors in prefix form in local reification].
+                   (applyType (ConT ty_name) tys)
+                   cons
   = Just info
-reifyInDec n decs (NewtypeInstD _ _ lhs _ con _)
+reifyInDec n decs (NewtypeInstD _ mtvbs lhs _ con _)
   | (ConT ty_name, tys) <- unfoldType lhs
-  , Just info <- maybeReifyCon n decs ty_name tys [con]
+  , Just info <- maybeReifyCon n decs ty_name
+                   (dataFamInstH98ConTvbs mtvbs tys)
+                   -- Why do we reapply `ty_name` to `tys` here instead of just
+                   -- reusing `lhs`? See Note [Apply data family type
+                   -- constructors in prefix form in local reification].
+                   (applyType (ConT ty_name) tys)
+                   [con]
   = Just info
 #else
 reifyInDec n decs (DataInstD _ ty_name tys _ cons _)
-  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) cons
+  | Just info <- maybeReifyCon n decs ty_name
+                   (dataFamInstH98ConTvbsNoInstTvbs tys)
+                   (applyType (ConT ty_name) (map TANormal tys))
+                   cons
   = Just info
 reifyInDec n decs (NewtypeInstD _ ty_name tys _ con _)
-  | Just info <- maybeReifyCon n decs ty_name (map TANormal tys) [con]
+  | Just info <- maybeReifyCon n decs ty_name
+                   (dataFamInstH98ConTvbsNoInstTvbs tys)
+                   (applyType (ConT ty_name) (map TANormal tys))
+                   [con]
   = Just info
 #endif
 #if __GLASGOW_HASKELL__ >= 906
 reifyInDec n decs (TypeDataD ty_name tvbs _mk cons)
-  | Just info <- maybeReifyCon n decs ty_name (map tyVarBndrVisToTypeArgWithSig tvbs) cons
+  | Just info <- maybeReifyCon n decs ty_name
+                   (matchUpSAKWithTvbsSpec decs ty_name tvbs)
+                   (applyType (ConT ty_name) (map tyVarBndrVisToTypeArg tvbs))
+                   cons
   = Just info
 #endif
 
 reifyInDec _ _ _ = Nothing
 
-maybeReifyCon :: Name -> [Dec] -> Name -> [TypeArg] -> [Con] -> Maybe (Named Info)
-maybeReifyCon n _decs ty_name ty_args cons
+maybeReifyCon ::
+     Name
+  -> [Dec]
+  -> Name
+  -> [TyVarBndrSpec]
+     -- ^ The universally quantified type variables, derived from the parent
+     -- data declaration. This is only used if reifying a Haskell98-style data
+     -- constructor.
+  -> Type
+     -- ^ The data constructor's return type, derived from the parent data
+     -- declaration. This is only used if reifying a Haskell98-style data
+     -- constructor.
+  -> [Con]
+  -> Maybe (Named Info)
+maybeReifyCon n _decs ty_name h98_tvbs h98_res_ty cons
   | Just (n', con) <- findCon n cons
     -- See Note [Use unSigType in maybeReifyCon]
   , let full_con_ty = unSigType $ con_to_type h98_tvbs h98_res_ty con
@@ -357,7 +402,10 @@ maybeReifyCon n _decs ty_name ty_args cons
     extract_rec_sel_info rec_sel_info =
       case rec_sel_info of
         RecSelH98 sel_ty ->
-          ( changeTVFlags SpecifiedSpec h98_tvbs
+          let -- All of the type variables bound by the data type, with any
+              -- implicitly quantified kind variables made explicit.
+              all_h98_tvbs = quantifyAllTvbsSpec h98_tvbs in
+          ( all_h98_tvbs
           , sel_ty
           , h98_res_ty
           )
@@ -376,11 +424,7 @@ maybeReifyCon n _decs ty_name ty_args cons
           , con_res_ty
           )
 
-    h98_tvbs   = freeVariablesWellScoped $
-                 map probablyWrongUnTypeArg ty_args
-    h98_res_ty = applyType (ConT ty_name) ty_args
-
-maybeReifyCon _ _ _ _ _ = Nothing
+maybeReifyCon _ _ _ _ _ _ = Nothing
 
 #if __GLASGOW_HASKELL__ >= 801
 -- | Attempt to reify the type of a pattern synonym record selector @n@.
@@ -539,10 +583,36 @@ Then the type of unD will be reified as:
 
 This is contrast to GHC's own reification, which will produce `D a`
 (without the explicit kind signature) as the type of the first argument.
+
+Note [Apply data family type constructors in prefix form in local reification]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Suppose we wish to locally reify the type of `MkD` below:
+
+  data family a :&: b
+  data instance a :&: b = MkD a b
+
+You might be tempted to think that the return type should be:
+
+  MkD :: a -> b -> a :&: b
+
+However, keep in mind that local reification tries its best to mimic GHC's
+behavior when reifying global declarations using Template Haskell. As it turns
+out, if `MkD` were defined globally, then Template Haskell would reify it as:
+
+  MkD :: a -> b -> (:&:) a b
+
+Note that `(:&:)` is applied prefix, not infix! This is somewhat surprising,
+but nevertheless valid code. We mimic this surprising behavior when locally
+reifying data family instances such as (:&:). This means that we cannot just
+reuse the type `a :&: b` in the return type of `MkD`. Instead, we must
+decompose `a :&: b` into its type arguments and apply (:&:) (in prefix form) to
+the type arguments.
+
+The R40 test case checks for this property.
 -}
 
 -- Reverse-engineer the type of a data constructor.
-con_to_type :: [TyVarBndrUnit] -- The type variables bound by a data type head.
+con_to_type :: [TyVarBndrSpec] -- The type variables bound by a data type head.
                                -- Only used for Haskell98-style constructors.
             -> Type            -- The constructor result type.
                                -- Only used for Haskell98-style constructors.
@@ -550,9 +620,7 @@ con_to_type :: [TyVarBndrUnit] -- The type variables bound by a data type head.
 con_to_type h98_tvbs h98_result_ty con =
   case go con of
     (is_gadt, ty) | is_gadt   -> ty
-                  | otherwise -> maybeForallT
-                                   (changeTVFlags SpecifiedSpec h98_tvbs)
-                                   [] ty
+                  | otherwise -> maybeForallT all_h98_tvbs [] ty
   where
     -- Note that we deliberately ignore linear types and use (->) everywhere.
     -- See [Gracefully handling linear types] in L.H.TH.Desugar.Core.
@@ -563,6 +631,11 @@ con_to_type h98_tvbs h98_result_ty con =
     go (ForallC bndrs cxt c)  = liftSnd (ForallT bndrs cxt) (go c)
     go (GadtC _ stys rty)     = (True, mkArrows (map snd    stys)  rty)
     go (RecGadtC _ vstys rty) = (True, mkArrows (map thdOf3 vstys) rty)
+
+    -- All of the type variables bound by the data type, with any implicitly
+    -- quantified kind variables made explicit.
+    all_h98_tvbs :: [TyVarBndrSpec]
+    all_h98_tvbs = quantifyAllTvbsSpec h98_tvbs
 
 mkVarI :: Name -> [Dec] -> Info
 mkVarI n decs = mkVarITy n (maybe (no_type n) snd $ findType n decs)
@@ -712,7 +785,11 @@ quantifyClassDecMethods (ClassD cxt cls_name cls_tvbs fds sub_decs)
     sub_decs' = mapMaybe go sub_decs
     go (SigD n ty) =
       Just $ SigD n
-           $ quantifyClassMethodType cls_name cls_tvbs prepend_cls ty
+           $ quantifyClassMethodType
+               (changeTVFlags SpecifiedSpec cls_tvbs)
+               (applyType (ConT cls_name) (map tyVarBndrVisToTypeArg cls_tvbs))
+               prepend_cls
+               ty
     go d@(TySynInstD {})      = Just d
     go d@(OpenTypeFamilyD {}) = Just d
     go d@(DataFamilyD {})     = Just d
@@ -733,8 +810,8 @@ quantifyClassDecMethods dec = dec
 --   [d| class C a where
 --         method :: a -> b -> a |]
 --
--- If one invokes `quantifyClassMethodType C [a] prepend (a -> b -> a)`, then
--- the output will be:
+-- If one invokes `quantifyClassMethodType [a] (C a) prepend (a -> b -> a)`,
+-- then the output will be:
 --
 -- 1. `forall a. C a => forall b. a -> b -> a` (if `prepend` is True)
 -- 2.                  `forall b. a -> b -> a` (if `prepend` is False)
@@ -746,21 +823,18 @@ quantifyClassDecMethods dec = dec
 -- a single class method, like `method`, then one needs the class context to
 -- appear in the reified type, so `True` is appropriate.
 quantifyClassMethodType
-  :: Name           -- ^ The class name.
-  -> [TyVarBndrVis] -- ^ The class's type variable binders.
-  -> Bool           -- ^ If 'True', prepend a class predicate.
-  -> Type           -- ^ The method type.
+  :: [TyVarBndrSpec] -- ^ The class's type variable binders.
+  -> Pred            -- ^ The class context.
+  -> Bool            -- ^ If 'True', prepend a class predicate.
+  -> Type            -- ^ The method type.
   -> Type
-quantifyClassMethodType cls_name cls_tvbs prepend meth_ty =
+quantifyClassMethodType cls_tvbs cls_pred prepend meth_ty =
   add_cls_cxt quantified_meth_ty
   where
     add_cls_cxt :: Type -> Type
     add_cls_cxt
-      | prepend   = ForallT (changeTVFlags SpecifiedSpec all_cls_tvbs) cls_cxt
+      | prepend   = ForallT all_cls_tvbs [cls_pred]
       | otherwise = id
-
-    cls_cxt :: Cxt
-    cls_cxt = [applyType (ConT cls_name) (map tyVarBndrVisToTypeArg cls_tvbs)]
 
     quantified_meth_ty :: Type
     quantified_meth_ty
@@ -772,13 +846,15 @@ quantifyClassMethodType cls_name cls_tvbs prepend meth_ty =
       = ForallT meth_tvbs [] meth_ty
 
     meth_tvbs :: [TyVarBndrSpec]
-    meth_tvbs = changeTVFlags SpecifiedSpec $
-                List.deleteFirstsBy ((==) `on` tvName)
-                  (freeVariablesWellScoped [meth_ty]) all_cls_tvbs
+    meth_tvbs = List.deleteFirstsBy ((==) `on` tvName)
+                  (changeTVFlags SpecifiedSpec
+                     (freeVariablesWellScoped [meth_ty]))
+                  all_cls_tvbs
 
-    -- Explicitly quantify any kind variables bound by the class, if any.
-    all_cls_tvbs :: [TyVarBndrUnit]
-    all_cls_tvbs = freeVariablesWellScoped $ map tvbToTypeWithSig cls_tvbs
+    -- All of the type variables bound by the class, with any implicitly
+    -- quantified kind variables made explicit.
+    all_cls_tvbs :: [TyVarBndrSpec]
+    all_cls_tvbs = quantifyAllTvbsSpec cls_tvbs
 
 stripInstanceDec :: Dec -> Dec
 stripInstanceDec (InstanceD over cxt ty _) = InstanceD over cxt ty []
@@ -875,6 +951,64 @@ findRecSelector n = firstMatch (match_con Nothing)
       filter (\tvb -> tvName tvb `Set.member` ret_fvs)
       where
         ret_fvs = Set.fromList $ freeVariables [ret_ty]
+
+-- | Match up the type variable binders from a data type or class declaration
+-- with its standalone kind signature (if any) to produce a list of
+-- 'TyVarBndrSpec's, which can then be used in the types of data constructors or
+-- class methods. This makes the kinds more precise.
+matchUpSAKWithTvbsSpec ::
+     [Dec]
+     -- ^ The local declarations currently in scope.
+  -> Name
+     -- ^ The name of the data type or class declaration.
+  -> [TyVarBndrVis]
+     -- ^ The data type or class declaration's type variable binders.
+  -> [TyVarBndrSpec]
+matchUpSAKWithTvbsSpec decs ty_name tvbs =
+  fromMaybe (changeTVFlags SpecifiedSpec tvbs) $ do
+    sak <- findKind False ty_name decs
+    tvbForAllTyFlagsToSpecs <$> matchUpSAKWithDecl sak tvbs
+
+-- | Compute the type variable binders to use in the type of a Haskell98-style
+-- data constructor for a data family instance. If the data family instance
+-- comes equipped with explicit type variable binders, this is easy. If not,
+-- we must compute the type variable binders from the list of type arguments to
+-- the data family instance.
+dataFamInstH98ConTvbs :: Maybe [TyVarBndrUnit] -> [TypeArg] -> [TyVarBndrSpec]
+dataFamInstH98ConTvbs mtvbs tys =
+  case mtvbs of
+    Just tvbs ->
+      changeTVFlags SpecifiedSpec tvbs
+    Nothing ->
+      dataFamInstH98ConTvbsNoInstTvbs $
+      map probablyWrongUnTypeArg tys
+
+-- | Compute the type variable binders to use in the type of a Haskell98-style
+-- data constructor for a data family instance where the instance lacks explicit
+-- type variable binders. To compute these binders, we must reverse engineer
+-- them from the list of type arguments to the data family instance.
+dataFamInstH98ConTvbsNoInstTvbs :: [Type] -> [TyVarBndrSpec]
+dataFamInstH98ConTvbsNoInstTvbs tys =
+  changeTVFlags SpecifiedSpec $
+  freeVariablesWellScoped tys
+
+-- | Explicitly quantify all type variable binders in the type of a
+-- Haskell98-style data constructor or class method. This is sometimes required
+-- in order to ensure that kind variables are all explicitly quantified, e.g.,
+--
+-- @
+-- -- NB: No standalone kind signature for `T`
+-- data T (a :: k) = MkT
+-- @
+--
+-- We want the type of @MkT@ to be @forall k (a :: k). T a@, but we are only
+-- given @(a :: k)@. We must call 'quantifyAllTvbsSpec' on @(a :: k)@ to obtain
+-- @[k, a :: k]@. If we don't, we might accidentally end up with
+-- @forall (a :: k). T a@ as the type of @MkT@, which is ill-scoped.
+quantifyAllTvbsSpec :: [TyVarBndrSpec] -> [TyVarBndrSpec]
+quantifyAllTvbsSpec h98_tvbs =
+  let h98_kvbs = freeKindVariablesWellScoped h98_tvbs in
+  changeTVFlags SpecifiedSpec h98_kvbs ++ h98_tvbs
 
 ---------------------------------
 -- Reifying fixities
@@ -987,7 +1121,7 @@ match_kind_sig n decs (ClassD _ n' tvbs _ sub_decs)
         cls_tvb_kind_map   =
           Map.fromList [ (tvName tvb, tvb_kind)
                        | (tvb, mb_vis_arg_ki) <- zip tvbs mb_vis_arg_kis
-                       , Just tvb_kind <- [mb_vis_arg_ki <|> tvb_kind_maybe tvb]
+                       , Just tvb_kind <- [mb_vis_arg_ki <|> extractTvbKind_maybe tvb]
                        ]
   = firstMatch (find_assoc_type_kind n cls_tvb_kind_map) sub_decs
 match_kind_sig n _ dec = find_kind_sig n dec
@@ -1029,7 +1163,7 @@ match_cusk n (ClassD _ n' tvbs _ sub_decs)
     all tvb_is_kinded tvbs
   , let cls_tvb_kind_map = Map.fromList [ (tvName tvb, tvb_kind)
                                         | tvb <- tvbs
-                                        , Just tvb_kind <- [tvb_kind_maybe tvb]
+                                        , Just tvb_kind <- [extractTvbKind_maybe tvb]
                                         ]
   = firstMatch (find_assoc_type_kind n cls_tvb_kind_map) sub_decs
 #if __GLASGOW_HASKELL__ >= 906
@@ -1165,13 +1299,10 @@ build_kind arg_kinds res_kind =
 #endif
 
 tvb_is_kinded :: TyVarBndr_ flag -> Bool
-tvb_is_kinded = isJust . tvb_kind_maybe
-
-tvb_kind_maybe :: TyVarBndr_ flag -> Maybe Kind
-tvb_kind_maybe = elimTV (\_ -> Nothing) (\_ k -> Just k)
+tvb_is_kinded = isJust . extractTvbKind_maybe
 
 vis_arg_kind_maybe :: VisFunArg -> Maybe Kind
-vis_arg_kind_maybe (VisFADep tvb) = tvb_kind_maybe tvb
+vis_arg_kind_maybe (VisFADep tvb) = extractTvbKind_maybe tvb
 vis_arg_kind_maybe (VisFAAnon k)  = Just k
 
 default_tvb :: TyVarBndr_ flag -> TyVarBndr_ flag
@@ -1183,7 +1314,7 @@ default_res_ki = fromMaybe StarT
 res_sig_to_kind :: FamilyResultSig -> Maybe Kind
 res_sig_to_kind NoSig          = Nothing
 res_sig_to_kind (KindSig k)    = Just k
-res_sig_to_kind (TyVarSig tvb) = tvb_kind_maybe tvb
+res_sig_to_kind (TyVarSig tvb) = extractTvbKind_maybe tvb
 
 whenAlt :: Alternative f => Bool -> f a -> f a
 whenAlt b fa = if b then fa else empty

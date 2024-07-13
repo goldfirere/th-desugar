@@ -72,6 +72,7 @@ import qualified Data.Map as M
 import Data.Proxy
 
 #if __GLASGOW_HASKELL__ >= 900
+import Data.Kind (Constraint)
 import Prelude as P
 #endif
 
@@ -696,6 +697,46 @@ test_t188 =
   toposortKindVarsOfTvbs [DKindedTV a1 () (DVarT a2), DKindedTV a2 () (DVarT a1)]
     == [DPlainTV a2 ()]
 
+#if __GLASGOW_HASKELL__ >= 900
+-- A regression test for #199, which ensures that a locally reified data
+-- constructor is given a type signature that takes into account the fact that
+-- its parent data type's standalone kind signature marks `k` as inferred.
+test_t199 :: [Bool]
+test_t199 =
+  $(do decs <- [d| type P :: forall {k}. k -> Type
+                   data P (a :: k) = MkP |]
+
+       withLocalDeclarations decs $ do
+         let k    = mkName "k"
+             a    = mkName "a"
+             kTvb = DPlainTV k InferredSpec
+             aTvb = DKindedTV a SpecifiedSpec (DVarT k)
+             p    = mkName "P"
+             mkP  = mkName "MkP"
+             pTy  = DConT p `DAppT` DVarT a
+         mbPInfo <- dsReify p
+         let b1 =
+               case mbPInfo of
+                 Just (DTyConI (DDataD _ _ _ _ _ [conActual] _) _) ->
+                   let conExpected =
+                         DCon [kTvb, aTvb] [] mkP (DNormalC False []) pTy in
+                   conExpected `eqTH` conActual
+                 _ ->
+                   False
+
+         mbMkPInfo <- dsReify mkP
+         let b2 =
+               case mbMkPInfo of
+                 Just (DVarI _ conTyActual _) ->
+                   let conTyExpected =
+                         DForallT (DForallInvis [kTvb, aTvb]) pTy in
+                   conTyExpected `eqTH` conTyActual
+                 _ ->
+                   False
+
+         [| [b1, b2] |])
+#endif
+
 -- Unit tests for unboxedTupleNameDegree_maybe and unboxedSumNameDegree_maybe.
 -- These also act as a regression test for #213.
 test_t213 :: [Bool]
@@ -738,6 +779,36 @@ test_t213 =
     , (''FakeSums.Sum4#,     Nothing)
 #endif
     ]
+#endif
+
+#if __GLASGOW_HASKELL__ >= 900
+-- A regression test for #220, which ensures that a locally reified class method
+-- is given a type signature that takes into account the fact that its parent
+-- class's standalone kind signature marks `k` as inferred.
+test_t220 :: Bool
+test_t220 =
+  $(do decs <- [d| type C :: forall {k}. k -> Constraint
+                   class C (a :: k) where
+                     m :: Proxy a |]
+
+       withLocalDeclarations decs $ do
+         let k    = mkName "k"
+             a    = mkName "a"
+             kTvb = DPlainTV k InferredSpec
+             aTvb = DKindedTV a SpecifiedSpec (DVarT k)
+             c    = mkName "C"
+             m    = mkName "m"
+             cTy  = DConT c `DAppT` DVarT a
+         mbMInfo <- dsReify m
+         case mbMInfo of
+           Just (DVarI _ mTyActual _) ->
+             let mTyExpected =
+                   DForallT (DForallInvis [kTvb, aTvb]) $
+                   DConstrainedT [cTy] $
+                   DConT ''Proxy `DAppT` DVarT a in
+             mTyExpected `eqTHSplice` mTyActual
+           _ ->
+             [| False |])
 #endif
 
 -- Unit tests for functions that compute free variables (e.g., fvDType)
@@ -979,8 +1050,17 @@ main = hspec $ do
 
     it "computes free kind variables correctly in a telescope that uses shadowing" $ test_t188
 
+#if __GLASGOW_HASKELL__ >= 900
+    zipWithM (\b n -> it ("correctly reifies the type of a data constructor with an inferred type variable binder " ++ show n) b)
+      test_t199 [1..]
+#endif
+
     zipWithM (\b n -> it ("recognizes unboxed {tuple,sum} names with unboxed{Tuple,Sum}Degree_maybe correctly " ++ show n) b)
       test_t213 [1..]
+
+#if __GLASGOW_HASKELL__ >= 900
+    it "correctly reifies the type of a class method with an inferred type variable binder" $ test_t220
+#endif
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')

@@ -66,6 +66,7 @@ library
                       Language.Haskell.TH.Desugar.OMap.Strict
                       Language.Haskell.TH.Desugar.OSet
                       Language.Haskell.TH.Desugar.Subst
+                      Language.Haskell.TH.Desugar.Subst.Capturing
                       Language.Haskell.TH.Desugar.Sweeten
   other-modules:      Language.Haskell.TH.Desugar.AST
                       Language.Haskell.TH.Desugar.Core
