@@ -811,6 +811,21 @@ test_t220 =
              [| False |])
 #endif
 
+-- A regression test for #228, which ensures that dMatchUpSAKWithDecl behaves
+-- as expected on code that looks like this:
+--
+-- @
+-- type D :: forall (a :: Type). Type
+-- data D
+-- @
+test_t228 :: Bool
+test_t228 =
+  let sak = DForallT (DForallInvis [DKindedTV (mkName "a") SpecifiedSpec (DConT ''Type)]) (DConT ''Type)
+      expected_bndrs = [DKindedTV (mkName "a") (Invisible SpecifiedSpec) (DConT ''Type)] in
+  case dMatchUpSAKWithDecl sak [] of
+    Nothing -> False
+    Just actual_bndrs -> expected_bndrs `eqTH` actual_bndrs
+
 -- Unit tests for functions that compute free variables (e.g., fvDType)
 test_fvs :: [Bool]
 test_fvs =
@@ -1061,6 +1076,8 @@ main = hspec $ do
 #if __GLASGOW_HASKELL__ >= 900
     it "correctly reifies the type of a class method with an inferred type variable binder" $ test_t220
 #endif
+
+    it "correctly matches up an invisible forall without a corresponding @-binder" $ test_t228
 
     -- Remove map pprints here after switch to th-orphans
     zipWithM (\t t' -> it ("can do Type->DType->Type of " ++ t) $ t == t')

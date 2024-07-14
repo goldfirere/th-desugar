@@ -2154,7 +2154,7 @@ dMatchUpSigWithDecl = go_fun_args M.empty
       -> DFunArgs -> [DTyVarBndrVis] -> q [DTyVarBndr ForAllTyFlag]
     go_fun_args _ DFANil [] =
       pure []
-    -- This should not happen, per the function's precondition
+    -- This should not happen, per precondition (1).
     go_fun_args _ DFANil decl_bndrs =
       fail $ "dMatchUpSigWithDecl.go_fun_args: Too many binders: " ++ show decl_bndrs
     -- GHC now disallows kind-level constraints, per this GHC proposal:
@@ -2170,19 +2170,31 @@ dMatchUpSigWithDecl = go_fun_args M.empty
       go_invis_tvbs subst tvbs sig_args decl_bndrs
     go_fun_args subst (DFAForalls (DForallVis tvbs) sig_args) decl_bndrs =
       go_vis_tvbs subst tvbs sig_args decl_bndrs
-    go_fun_args subst (DFAAnon anon sig_args) (decl_bndr:decl_bndrs) = do
-      let decl_bndr_name = dtvbName decl_bndr
-          mb_decl_bndr_kind = extractTvbKind decl_bndr
-          anon' = SC.substTy subst anon
+    go_fun_args subst (DFAAnon anon sig_args) (decl_bndr:decl_bndrs) =
+      case dtvbFlag decl_bndr of
+        -- If the next decl_bndr is required, then we must match its kind (if
+        -- one is provided) against the anonymous kind argument.
+        BndrReq -> do
+          let decl_bndr_name = dtvbName decl_bndr
+              mb_decl_bndr_kind = extractTvbKind decl_bndr
+              anon' = SC.substTy subst anon
 
-          anon'' =
-            case mb_decl_bndr_kind of
-              Nothing -> anon'
-              Just decl_bndr_kind ->
-                let mb_match_subst = matchTy NoIgnore decl_bndr_kind anon' in
-                maybe decl_bndr_kind (`SC.substTy` decl_bndr_kind) mb_match_subst
-      sig_args' <- go_fun_args subst sig_args decl_bndrs
-      pure $ DKindedTV decl_bndr_name Required anon'' : sig_args'
+              anon'' =
+                case mb_decl_bndr_kind of
+                  Nothing -> anon'
+                  Just decl_bndr_kind ->
+                    let mb_match_subst = matchTy NoIgnore decl_bndr_kind anon' in
+                    maybe decl_bndr_kind (`SC.substTy` decl_bndr_kind) mb_match_subst
+          sig_args' <- go_fun_args subst sig_args decl_bndrs
+          pure $ DKindedTV decl_bndr_name Required anon'' : sig_args'
+        -- We have a visible, anonymous argument in the kind, but an invisible
+        -- @-binder as the next decl_bndr. This is ill kinded, so throw an
+        -- error.
+        --
+        -- This should not happen, per precondition (2).
+        BndrInvis ->
+          fail $ "dMatchUpSigWithDecl.go_fun_args: Expected visible binder, encountered invisible binder: "
+              ++ show decl_bndr
     -- This should not happen, per precondition (1).
     go_fun_args _ _ [] =
       fail "dMatchUpSigWithDecl.go_fun_args: Too few binders"
@@ -2190,31 +2202,34 @@ dMatchUpSigWithDecl = go_fun_args M.empty
     go_invis_tvbs :: DSubst -> [DTyVarBndrSpec] -> DFunArgs -> [DTyVarBndrVis] -> q [DTyVarBndr ForAllTyFlag]
     go_invis_tvbs subst [] sig_args decl_bndrs =
       go_fun_args subst sig_args decl_bndrs
-    -- This should not happen, per precondition (2).
-    go_invis_tvbs _ (_:_) _ [] =
-      fail $ "dMatchUpSigWithDecl.go_invis_tvbs: Too few binders"
-    go_invis_tvbs subst (invis_tvb:invis_tvbs) sig_args decl_bndrss@(decl_bndr:decl_bndrs) =
-      case dtvbFlag decl_bndr of
-        -- If the next decl_bndr is required, then we have a invisible forall in
-        -- the kind without a corresponding invisible @-binder, which is
-        -- allowed. In this case, we simply apply the substitution and recurse.
-        BndrReq -> do
+    go_invis_tvbs subst (invis_tvb:invis_tvbs) sig_args decl_bndrss =
+      case decl_bndrss of
+        [] -> skip_invis_bndr
+        decl_bndr:decl_bndrs ->
+          case dtvbFlag decl_bndr of
+            BndrReq -> skip_invis_bndr
+            -- If the next decl_bndr is an invisible @-binder, then we must match it
+            -- against the invisible forall–bound variable in the kind.
+            BndrInvis -> do
+              let (subst', sig_tvb) = match_tvbs subst invis_tvb decl_bndr
+              sig_args' <- go_invis_tvbs subst' invis_tvbs sig_args decl_bndrs
+              pure (fmap Invisible sig_tvb : sig_args')
+      where
+        -- There is an invisible forall in the kind without a corresponding
+        -- invisible @-binder, which is allowed. In this case, we simply apply
+        -- the substitution and recurse.
+        skip_invis_bndr :: q [DTyVarBndr ForAllTyFlag]
+        skip_invis_bndr = do
           let (subst', invis_tvb') = SC.substTyVarBndr subst invis_tvb
           sig_args' <- go_invis_tvbs subst' invis_tvbs sig_args decl_bndrss
           pure $ fmap Invisible invis_tvb' : sig_args'
-        -- If the next decl_bndr is an invisible @-binder, then we must match it
-        -- against the invisible forall–bound variable in the kind.
-        BndrInvis -> do
-          let (subst', sig_tvb) = match_tvbs subst invis_tvb decl_bndr
-          sig_args' <- go_invis_tvbs subst' invis_tvbs sig_args decl_bndrs
-          pure (fmap Invisible sig_tvb : sig_args')
 
     go_vis_tvbs :: DSubst -> [DTyVarBndrUnit] -> DFunArgs -> [DTyVarBndrVis] -> q [DTyVarBndr ForAllTyFlag]
     go_vis_tvbs subst [] sig_args decl_bndrs =
       go_fun_args subst sig_args decl_bndrs
     -- This should not happen, per precondition (1).
     go_vis_tvbs _ (_:_) _ [] =
-      fail $ "dMatchUpSigWithDecl.go_vis_tvbs: Too few binders"
+      fail "dMatchUpSigWithDecl.go_vis_tvbs: Too few binders"
     go_vis_tvbs subst (vis_tvb:vis_tvbs) sig_args (decl_bndr:decl_bndrs) = do
       case dtvbFlag decl_bndr of
         -- If the next decl_bndr is required, then we must match it against the
@@ -2225,6 +2240,8 @@ dMatchUpSigWithDecl = go_fun_args M.empty
           pure ((Required <$ sig_tvb) : sig_args')
         -- We have a visible forall in the kind, but an invisible @-binder as
         -- the next decl_bndr. This is ill kinded, so throw an error.
+        --
+        -- This should not happen, per precondition (2).
         BndrInvis ->
           fail $ "dMatchUpSigWithDecl.go_vis_tvbs: Expected visible binder, encountered invisible binder: "
               ++ show decl_bndr
