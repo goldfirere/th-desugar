@@ -44,8 +44,6 @@ import Language.Haskell.TH.Datatype.TyVarBndr
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.OSet (OSet)
 import Language.Haskell.TH.Instances ()
-import Language.Haskell.TH.Ppr ( PprFlag(..) )
-import qualified Language.Haskell.TH.PprLib as Ppr
 import Language.Haskell.TH.Syntax
 
 import qualified Control.Monad.Fail as Fail
@@ -62,6 +60,11 @@ import Data.Traversable
 import GHC.Classes ( IP )
 import GHC.Generics ( Generic )
 import Unsafe.Coerce ( unsafeCoerce )
+
+#if __GLASGOW_HASKELL__ >= 900
+import Language.Haskell.TH.Ppr ( PprFlag(..) )
+import qualified Language.Haskell.TH.PprLib as Ppr
+#endif
 
 #if __GLASGOW_HASKELL__ >= 906
 import GHC.Tuple ( Solo(MkSolo) )
@@ -693,7 +696,7 @@ matchUpSigWithDecl = go_fun_args Map.empty
       -> FunArgs -> [TyVarBndrVis] -> q [TyVarBndr_ ForAllTyFlag]
     go_fun_args _ FANil [] =
       pure []
-    -- This should not happen, per the function's precondition
+    -- This should not happen, per precondition (1).
     go_fun_args _ FANil decl_bndrs =
       fail $ "matchUpSigWithDecl.go_fun_args: Too many binders: " ++ show decl_bndrs
     -- GHC now disallows kind-level constraints, per this GHC proposal:
@@ -709,19 +712,31 @@ matchUpSigWithDecl = go_fun_args Map.empty
       go_invis_tvbs subst tvbs sig_args decl_bndrs
     go_fun_args subst (FAForalls (ForallVis tvbs) sig_args) decl_bndrs =
       go_vis_tvbs subst tvbs sig_args decl_bndrs
-    go_fun_args subst (FAAnon anon sig_args) (decl_bndr:decl_bndrs) = do
-      let decl_bndr_name = tvName decl_bndr
-          mb_decl_bndr_kind = extractTvbKind_maybe decl_bndr
-          anon' = applySubstitution subst anon
+    go_fun_args subst (FAAnon anon sig_args) (decl_bndr:decl_bndrs) =
+      case tvFlag decl_bndr of
+        -- If the next decl_bndr is required, then we must match its kind (if
+        -- one is provided) against the anonymous kind argument.
+        BndrReq -> do
+          let decl_bndr_name = tvName decl_bndr
+              mb_decl_bndr_kind = extractTvbKind_maybe decl_bndr
+              anon' = applySubstitution subst anon
 
-          anon'' =
-            case mb_decl_bndr_kind of
-              Nothing -> anon'
-              Just decl_bndr_kind -> do
-                let mb_match_subst = matchTy decl_bndr_kind anon'
-                maybe decl_bndr_kind (`applySubstitution` decl_bndr_kind) mb_match_subst
-      sig_args' <- go_fun_args subst sig_args decl_bndrs
-      pure $ kindedTVFlag decl_bndr_name Required anon'' : sig_args'
+              anon'' =
+                case mb_decl_bndr_kind of
+                  Nothing -> anon'
+                  Just decl_bndr_kind -> do
+                    let mb_match_subst = matchTy decl_bndr_kind anon'
+                    maybe decl_bndr_kind (`applySubstitution` decl_bndr_kind) mb_match_subst
+          sig_args' <- go_fun_args subst sig_args decl_bndrs
+          pure $ kindedTVFlag decl_bndr_name Required anon'' : sig_args'
+        -- We have a visible, anonymous argument in the kind, but an invisible
+        -- @-binder as the next decl_bndr. This is ill kinded, so throw an
+        -- error.
+        --
+        -- This should not happen, per precondition (2).
+        BndrInvis ->
+          fail $ "dMatchUpSigWithDecl.go_fun_args: Expected visible binder, encountered invisible binder: "
+              ++ show decl_bndr
     -- This should not happen, per precondition (1).
     go_fun_args _ _ [] =
       fail "matchUpSigWithDecl.go_fun_args: Too few binders"
@@ -734,24 +749,27 @@ matchUpSigWithDecl = go_fun_args Map.empty
       -> q [TyVarBndr_ ForAllTyFlag]
     go_invis_tvbs subst [] sig_args decl_bndrs =
       go_fun_args subst sig_args decl_bndrs
-    -- This should not happen, per precondition (2).
-    go_invis_tvbs _ (_:_) _ [] =
-      fail $ "matchUpSigWithDecl.go_invis_tvbs: Too few binders"
-    go_invis_tvbs subst (invis_tvb:invis_tvbs) sig_args decl_bndrss@(decl_bndr:decl_bndrs) =
-      case tvFlag decl_bndr of
-        -- If the next decl_bndr is required, then we have a invisible forall in
-        -- the kind without a corresponding invisible @-binder, which is
-        -- allowed. In this case, we simply apply the substitution and recurse.
-        BndrReq -> do
+    go_invis_tvbs subst (invis_tvb:invis_tvbs) sig_args decl_bndrss =
+      case decl_bndrss of
+        [] -> skip_invis_bndr
+        decl_bndr:decl_bndrs ->
+          case tvFlag decl_bndr of
+            BndrReq -> skip_invis_bndr
+            -- If the next decl_bndr is an invisible @-binder, then we must match it
+            -- against the invisible forall–bound variable in the kind.
+            BndrInvis -> do
+              let (subst', sig_tvb) = match_tvbs subst invis_tvb decl_bndr
+              sig_args' <- go_invis_tvbs subst' invis_tvbs sig_args decl_bndrs
+              pure (mapTVFlag Invisible sig_tvb : sig_args')
+      where
+        -- There is an invisible forall in the kind without a corresponding
+        -- invisible @-binder, which is allowed. In this case, we simply apply
+        -- the substitution and recurse.
+        skip_invis_bndr :: q [TyVarBndr_ ForAllTyFlag]
+        skip_invis_bndr = do
           let (subst', invis_tvb') = substTvb subst invis_tvb
           sig_args' <- go_invis_tvbs subst' invis_tvbs sig_args decl_bndrss
           pure $ mapTVFlag Invisible invis_tvb' : sig_args'
-        -- If the next decl_bndr is an invisible @-binder, then we must match it
-        -- against the invisible forall–bound variable in the kind.
-        BndrInvis -> do
-          let (subst', sig_tvb) = match_tvbs subst invis_tvb decl_bndr
-          sig_args' <- go_invis_tvbs subst' invis_tvbs sig_args decl_bndrs
-          pure (mapTVFlag Invisible sig_tvb : sig_args')
 
     go_vis_tvbs ::
          Map Name Type
@@ -763,7 +781,7 @@ matchUpSigWithDecl = go_fun_args Map.empty
       go_fun_args subst sig_args decl_bndrs
     -- This should not happen, per precondition (1).
     go_vis_tvbs _ (_:_) _ [] =
-      fail $ "matchUpSigWithDecl.go_vis_tvbs: Too few binders"
+      fail "matchUpSigWithDecl.go_vis_tvbs: Too few binders"
     go_vis_tvbs subst (vis_tvb:vis_tvbs) sig_args (decl_bndr:decl_bndrs) = do
       case tvFlag decl_bndr of
         -- If the next decl_bndr is required, then we must match it against the
@@ -774,6 +792,8 @@ matchUpSigWithDecl = go_fun_args Map.empty
           pure (mapTVFlag (const Required) sig_tvb : sig_args')
         -- We have a visible forall in the kind, but an invisible @-binder as
         -- the next decl_bndr. This is ill kinded, so throw an error.
+        --
+        -- This should not happen, per precondition (2).
         BndrInvis ->
           fail $ "matchUpSigWithDecl.go_vis_tvbs: Expected visible binder, encountered invisible binder: "
               ++ show decl_bndr
@@ -958,6 +978,7 @@ data ForAllTyFlag
 instance DefaultBndrFlag ForAllTyFlag where
   defaultBndrFlag = Required
 
+#if __GLASGOW_HASKELL__ >= 900
 instance PprFlag ForAllTyFlag where
   pprTyVarBndr (PlainTV nm vis) =
     pprForAllTyFlag vis (ppr nm)
@@ -968,6 +989,7 @@ pprForAllTyFlag :: ForAllTyFlag -> Ppr.Doc -> Ppr.Doc
 pprForAllTyFlag (Invisible SpecifiedSpec) d = Ppr.char '@' Ppr.<> d
 pprForAllTyFlag (Invisible InferredSpec)  d = Ppr.braces d
 pprForAllTyFlag Required                  d = d
+#endif
 
 -- | Convert a list of @'TyVarBndr' 'ForAllTyFlag'@s to a list of
 -- 'TyVarBndrSpec's, which is suitable for use in an invisible @forall@.
