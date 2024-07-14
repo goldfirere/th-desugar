@@ -43,6 +43,9 @@ import Language.Haskell.TH.Datatype
 import Language.Haskell.TH.Datatype.TyVarBndr
 import qualified Language.Haskell.TH.Desugar.OSet as OS
 import Language.Haskell.TH.Desugar.OSet (OSet)
+import Language.Haskell.TH.Instances ()
+import Language.Haskell.TH.Ppr ( PprFlag(..) )
+import qualified Language.Haskell.TH.PprLib as Ppr
 import Language.Haskell.TH.Syntax
 
 import qualified Control.Monad.Fail as Fail
@@ -950,6 +953,21 @@ data ForAllTyFlag
     -- Haskell (e.g., @\@{a}@).
   | Required
     -- ^ The binder is required to appear in source Haskell (e.g., @a@).
+  deriving (Show, Eq, Ord, Data, Generic, Lift)
+
+instance DefaultBndrFlag ForAllTyFlag where
+  defaultBndrFlag = Required
+
+instance PprFlag ForAllTyFlag where
+  pprTyVarBndr (PlainTV nm vis) =
+    pprForAllTyFlag vis (ppr nm)
+  pprTyVarBndr (KindedTV nm vis k) =
+    pprForAllTyFlag vis (Ppr.parens (ppr nm Ppr.<+> Ppr.dcolon Ppr.<+> ppr k))
+
+pprForAllTyFlag :: ForAllTyFlag -> Ppr.Doc -> Ppr.Doc
+pprForAllTyFlag (Invisible SpecifiedSpec) d = Ppr.char '@' Ppr.<> d
+pprForAllTyFlag (Invisible InferredSpec)  d = Ppr.braces d
+pprForAllTyFlag Required                  d = d
 
 -- | Convert a list of @'TyVarBndr' 'ForAllTyFlag'@s to a list of
 -- 'TyVarBndrSpec's, which is suitable for use in an invisible @forall@.
