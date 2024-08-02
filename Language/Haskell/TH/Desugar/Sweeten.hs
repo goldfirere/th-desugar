@@ -134,6 +134,20 @@ expToTH (DTypeE ty)          = TypeE (typeToTH ty)
 expToTH (DTypeE {})          =
   error "Embedded type expressions supported only in GHC 9.10+"
 #endif
+#if __GLASGOW_HASKELL__ >= 911
+expToTH (DForallE tele exp)  =
+  case tele of
+    DForallInvis tvbs -> ForallE    (map tvbToTH tvbs) exp'
+    DForallVis   tvbs -> ForallVisE (map tvbToTH tvbs) exp'
+  where
+    exp' = expToTH exp
+expToTH (DConstrainedE cxt exp) = ConstrainedE (map expToTH cxt) (expToTH exp)
+#else
+expToTH (DForallE {})        =
+  error "Embedded `forall`s supported only in GHC 9.12+"
+expToTH (DConstrainedE {})   =
+  error "Embedded constraints supported only in GHC 9.12+"
+#endif
 
 matchToTH :: DMatch -> Match
 matchToTH (DMatch pat exp) = Match (patToTH pat) (NormalB (expToTH exp)) []

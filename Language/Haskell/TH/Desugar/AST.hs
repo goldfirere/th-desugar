@@ -54,6 +54,8 @@ data DExp = DVarE Name
           | DTypedBracketE DExp
           | DTypedSpliceE DExp
           | DTypeE DType
+          | DForallE DForallTelescope DExp
+          | DConstrainedE [DExp] DExp
           deriving (Eq, Show, Data, Generic, Lift)
 
 -- | A 'DLamCasesE' value with exactly one 'DClause' where all 'DPat's are
