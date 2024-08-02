@@ -363,10 +363,12 @@ potentially recognize this and perform a more sophisticated analysis to detect
 and remove such matches when desugaring guards, but it currently doesn't do
 such an analysis.
 
-## No support for view patterns
+## No support for view patterns or Or-patterns
 
-`th-desugar` does not support desugaring view patterns. An alternative to using
-view patterns in the patterns of a function is to use pattern guards.
+`th-desugar` does not support desugaring view patterns or Or-patterns. An
+alternative to using view patterns or Or-patterns in the patterns of a function
+is to use pattern guards.
+
 Currently, there is not a viable workaround for using view patterns in pattern
 synonym definitions—see [this `th-desugar`
 issue](https://github.com/goldfirere/th-desugar/issues/174).

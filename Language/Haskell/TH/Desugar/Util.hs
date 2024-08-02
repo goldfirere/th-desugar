@@ -1113,6 +1113,9 @@ extractBoundNamesPat (UnboxedSumP pat _ _) = extractBoundNamesPat pat
 extractBoundNamesPat (TypeP _)             = OS.empty
 extractBoundNamesPat (InvisP _)            = OS.empty
 #endif
+#if __GLASGOW_HASKELL__ >= 911
+extractBoundNamesPat (OrP pats)            = foldMap extractBoundNamesPat pats
+#endif
 
 ----------------------------------------
 -- General utility

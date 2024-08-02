@@ -3,6 +3,7 @@
 
 Version 1.18 [????.??.??]
 -------------------------
+* Support GHC 9.12.
 * The `DLamE` and `DCaseE` data constructors (as well as the related
   `mkDLamEFromDPats` function) are now deprecated in favor of the new
   `DLamCasesE` data constructor. `DLamE`, `DCaseE`, and `mkDLamEFromDPats` will
