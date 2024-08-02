@@ -464,6 +464,23 @@ test69_invis_type_pat_cases =
   [| aux (\cases @a (x :: a) -> x :: a) @Bool True |]
 #endif
 
+#if __GLASGOW_HASKELL__ >= 911
+test70_embedded_forall_invis =
+  [| let idv :: forall a -> a -> a
+         idv _ x = x
+     in idv (forall a. a -> a) id True |]
+
+test71_embedded_forall_vis =
+  [| let idv :: forall a -> a -> a
+         idv _ x = x
+     in idv (forall a -> a -> a) idv Bool True |]
+
+test72_embedded_constraint =
+  [| let idv :: forall a -> a -> a
+         idv _ x = x
+     in idv (forall a. (a ~ Bool) => a -> a) (\x -> not x) False |]
+#endif
+
 type family TFExpand x
 type instance TFExpand Int = Bool
 type instance TFExpand (Maybe a) = [a]
@@ -941,5 +958,10 @@ test_exprs = [ test1_sections
              , test67_embedded_types_cases_no_keyword
              , test68_invis_type_pat_lambda
              , test69_invis_type_pat_cases
+#endif
+#if __GLASGOW_HASKELL__ >= 911
+             , test70_embedded_forall_invis
+             , test71_embedded_forall_vis
+             , test72_embedded_constraint
 #endif
              ]

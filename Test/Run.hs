@@ -42,6 +42,10 @@ rae@cs.brynmawr.edu
 {-# LANGUAGE RequiredTypeArguments #-}
 #endif
 
+#if __GLASGOW_HASKELL__ >= 911
+{-# LANGUAGE ImpredicativeTypes #-}
+#endif
+
 module Main where
 
 import Prelude hiding ( exp )
@@ -202,6 +206,11 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "embedded_types_cases_no_keyword" ~: $test67_embedded_types_cases_no_keyword @=? $(dsSplice test67_embedded_types_cases_no_keyword)
              , "invis_type_pat_lambda" ~: $test68_invis_type_pat_lambda @=? $(dsSplice test68_invis_type_pat_lambda)
              , "invis_type_pat_cases" ~: $test69_invis_type_pat_cases @=? $(dsSplice test69_invis_type_pat_cases)
+#endif
+#if __GLASGOW_HASKELL__ >= 911
+             , "embedded_forall_invis" ~: $(test70_embedded_forall_invis) @=? $(dsSplice test70_embedded_forall_invis)
+             , "embedded_forall_vis" ~: $(test71_embedded_forall_vis) @=? $(dsSplice test71_embedded_forall_vis)
+             , "embedded_constraint" ~: $(test72_embedded_constraint) @=? $(dsSplice test72_embedded_constraint)
 #endif
              ]
 
