@@ -694,6 +694,10 @@ dsPat (InvisP ty) = DInvisP <$> dsType ty
 #endif
 dsPat (ViewP _ _) =
   fail "View patterns are not supported in th-desugar. Use pattern guards instead."
+#if __GLASGOW_HASKELL__ >= 911
+dsPat (OrP _) =
+  fail "Or-patterns are not supported in th-desugar."
+#endif
 
 -- | Convert a 'DPat' to a 'DExp'. Fails on 'DWildP' and 'DInvisP'.
 dPatToDExp :: DPat -> DExp

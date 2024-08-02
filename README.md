@@ -371,6 +371,13 @@ Currently, there is not a viable workaround for using view patterns in pattern
 synonym definitions—see [this `th-desugar`
 issue](https://github.com/goldfirere/th-desugar/issues/174).
 
+## No support for or-patterns
+
+`th-desugar` does not support desugaring
+[or-patterns](https://github.com/ghc-proposals/ghc-proposals/blob/c9401f037cb22d1661931b2ec621925101052997/proposals/0522-or-patterns.rst).
+See [this `th-desugar`
+issue](https://github.com/goldfirere/th-desugar/issues/232).
+
 ## No support for `ApplicativeDo`
 
 `th-desugar` does not take the `ApplicativeDo` extension into account when
