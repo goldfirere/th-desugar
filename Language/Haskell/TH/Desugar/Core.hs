@@ -255,6 +255,14 @@ dsExp (TypedSpliceE exp)  = DTypedSpliceE <$> dsExp exp
 #if __GLASGOW_HASKELL__ >= 909
 dsExp (TypeE ty) = DTypeE <$> dsType ty
 #endif
+#if __GLASGOW_HASKELL__ >= 911
+dsExp (ForallE tvbs exp) =
+  DForallE <$> (DForallInvis <$> mapM dsTvbSpec tvbs) <*> dsExp exp
+dsExp (ForallVisE tvbs exp) =
+  DForallE <$> (DForallVis <$> mapM dsTvbUnit tvbs) <*> dsExp exp
+dsExp (ConstrainedE preds exp) =
+  DConstrainedE <$> mapM dsExp preds <*> dsExp exp
+#endif
 
 #if __GLASGOW_HASKELL__ >= 809
 dsTup :: DsMonad q => (Int -> Name) -> [Maybe Exp] -> q DExp
