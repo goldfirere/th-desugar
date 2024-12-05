@@ -1,1 +1,12 @@
 packages: .
+
+tests: True
+
+if impl (ghc >= 9.12)
+  allow-newer:
+    , splitmix:base
+    , th-abstraction:template-haskell
+    , th-compat:template-haskell
+    , th-expand-syns:template-haskell
+    , th-lift:template-haskell
+    , th-orphans:template-haskell
