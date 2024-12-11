@@ -57,11 +57,11 @@ Version 1.18 [????.??.??]
   * Also add `matchUpSAKWithDecl`, `tvbForAllTyFlagsToSpecs`, and
     `tvbForAllTyFlagsToBndrVis` functions, which work over `TyVarBndr` instead
     of `DTyVarBndr`.
-* Local reifying the type of a data constructor or class method now yields type
-  signatures with more precise type variable information, as `th-desugar` now
-  incorporates information from the standalone kind signature (if any) for the
-  parent data type or class, respectively. For instance, consider the following
-  data type declaration:
+* Locally reifying the type of a data constructor or class method now yields
+  type signatures with more precise type variable information, as `th-desugar`
+  now incorporates information from the standalone kind signature (if any) for
+  the parent data type or class, respectively. For instance, consider the
+  following data type declaration:
 
   ```hs
   type P :: forall {k}. k -> Type
