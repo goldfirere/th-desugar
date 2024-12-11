@@ -1,7 +1,7 @@
 `th-desugar` release notes
 ==========================
 
-Version 1.18 [????.??.??]
+Version 1.18 [2024.12.11]
 -------------------------
 * Support GHC 9.12.
 * Add further support for embedded types in terms. The `DExp` type now has a
