@@ -369,6 +369,17 @@ pragmaToTH (DSCCP nm mstr) = SCCP nm mstr
 #else
 pragmaToTH (DSCCP {}) = error "SCCP pragmas only supported in GHC 9.10+"
 #endif
+#if __GLASGOW_HASKELL__ >= 913
+pragmaToTH (DSpecialiseEP mTyBndrs tmBndrs specE mInline phases) =
+  SpecialiseEP
+    (fmap (fmap tvbToTH) mTyBndrs)
+    (map ruleBndrToTH tmBndrs)
+    (expToTH specE)
+    mInline
+    phases
+#else
+pragmaToTH (DSpecialiseEP {}) = error "DSpecialiseEP pragmas only supported in GHC 9.14+"
+#endif
 
 ruleBndrToTH :: DRuleBndr -> RuleBndr
 ruleBndrToTH (DRuleVar n) = RuleVar n

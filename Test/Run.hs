@@ -212,6 +212,9 @@ tests = test [ "sections" ~: $test1_sections  @=? $(dsSplice test1_sections)
              , "embedded_forall_vis" ~: $(test71_embedded_forall_vis) @=? $(dsSplice test71_embedded_forall_vis)
              , "embedded_constraint" ~: $(test72_embedded_constraint) @=? $(dsSplice test72_embedded_constraint)
 #endif
+#if __GLASGOW_HASKELL__ >= 913
+             , "specialise_exp_pragma" ~: $(test73_specialise_exp_pragma) @=? $(dsSplice test73_specialise_exp_pragma)
+#endif
              ]
 
 test35a = $test35_expand
