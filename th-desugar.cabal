@@ -50,7 +50,7 @@ library
   build-depends:
       base >= 4.9 && < 5,
       ghc-prim,
-      template-haskell >= 2.11 && < 2.24,
+      template-haskell >= 2.11 && < 2.25,
       containers >= 0.5,
       mtl >= 2.1 && < 2.4,
       ordered-containers >= 0.2.2,

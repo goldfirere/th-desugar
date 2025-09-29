@@ -442,7 +442,7 @@ data DForeign = DImportF Callconv Safety String Name DType
 
 -- | Corresponds to TH's @Pragma@ type.
 data DPragma = DInlineP Name Inline RuleMatch Phases
-             | DSpecialiseP Name DType (Maybe Inline) Phases
+             | DSpecialiseEP (Maybe [DTyVarBndr ()]) [DRuleBndr] DExp (Maybe Inline) Phases
              | DSpecialiseInstP DType
              | DRuleP String (Maybe [DTyVarBndrUnit]) [DRuleBndr] DExp DExp Phases
              | DAnnP AnnTarget DExp
@@ -451,6 +451,12 @@ data DPragma = DInlineP Name Inline RuleMatch Phases
              | DOpaqueP Name
              | DSCCP Name (Maybe String)
              deriving (Eq, Show, Data, Generic, Lift)
+
+-- | Old-form specialise pragma @{ {\-\# SPECIALISE [INLINE] [phases] (var :: ty) #-} }@.
+--
+-- Subsumed by the more general 'DSpecialiseEP' constructor.
+pattern DSpecialiseP :: Name -> DType -> Maybe Inline -> Phases -> DPragma
+pattern DSpecialiseP nm ty inl phases = DSpecialiseEP Nothing [] (DSigE (DVarE nm) ty) inl phases
 
 -- | Corresponds to TH's @RuleBndr@ type.
 data DRuleBndr = DRuleVar Name

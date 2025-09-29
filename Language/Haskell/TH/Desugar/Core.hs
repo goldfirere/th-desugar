@@ -1131,6 +1131,15 @@ dsPragma (OpaqueP n)                     = return $ DOpaqueP n
 #if __GLASGOW_HASKELL__ >= 909
 dsPragma (SCCP nm mstr)                  = return $ DSCCP nm mstr
 #endif
+#if __GLASGOW_HASKELL__ >= 913
+dsPragma (SpecialiseEP mTyBndrs tmBndrs specE mInline phases) =
+  DSpecialiseEP
+    <$> mapM (mapM dsTvbUnit) mTyBndrs
+    <*> mapM dsRuleBndr tmBndrs
+    <*> dsExp specE
+    <*> pure mInline
+    <*> pure phases
+#endif
 
 -- | Desugar a @RuleBndr@.
 dsRuleBndr :: DsMonad q => RuleBndr -> q DRuleBndr

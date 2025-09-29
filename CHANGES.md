@@ -1,6 +1,14 @@
 `th-desugar` release notes
 ==========================
 
+Version 1.19 [????.??.??]
+-------------------------
+* Support GHC 9.14.
+* Support specialising expressions in `SPECIALISE` pragmas. As part of these
+  changes, a `DSpecialiseEP` data constructor has been added to `DPragma`, and
+  the existing `DSpecialiseP` data constructor has been converted to a pattern
+  synonym defined in terms of `DSpecialiseEP`.
+
 Version 1.18 [2024.12.11]
 -------------------------
 * Support GHC 9.12.

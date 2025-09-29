@@ -43,7 +43,7 @@ module Language.Haskell.TH.Desugar (
   DCon(..), DConFields(..), DDeclaredInfix, DBangType, DVarBangType,
   Bang(..), SourceUnpackedness(..), SourceStrictness(..),
   DForeign(..),
-  DPragma(..), DRuleBndr(..), DTySynEqn(..), DInfo(..), DInstanceDec,
+  DPragma(DSpecialiseP, ..), DRuleBndr(..), DTySynEqn(..), DInfo(..), DInstanceDec,
   Role(..), AnnTarget(..),
 
   -- * The 'Desugar' class

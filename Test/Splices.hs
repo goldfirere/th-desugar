@@ -481,6 +481,14 @@ test72_embedded_constraint =
      in idv (forall a. (a ~ Bool) => a -> a) (\x -> not x) False |]
 #endif
 
+#if __GLASGOW_HASKELL__ >= 913
+test73_specialise_exp_pragma =
+  [| let {-# SPECIALISE f @() #-}
+         f :: forall a. Show a => a -> String
+         f = show
+     in f () |]
+#endif
+
 type family TFExpand x
 type instance TFExpand Int = Bool
 type instance TFExpand (Maybe a) = [a]
@@ -963,5 +971,8 @@ test_exprs = [ test1_sections
              , test70_embedded_forall_invis
              , test71_embedded_forall_vis
              , test72_embedded_constraint
+#endif
+#if __GLASGOW_HASKELL__ >= 913
+             , test73_specialise_exp_pragma
 #endif
              ]
