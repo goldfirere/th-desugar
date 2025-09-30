@@ -1675,6 +1675,11 @@ mkTupleDPat :: [DPat] -> DPat
 mkTupleDPat [pat] = pat
 mkTupleDPat pats = DConP (tupleDataName (length pats)) [] pats
 
+-- | Make a tuple 'DType' from a list of 'DType's. Avoids using a 1-tuple.
+mkTupleDType :: [DType] -> DType
+mkTupleDType [ty] = ty
+mkTupleDType tys  = foldl DAppT (DConT $ tupleTypeName (length tys)) tys
+
 -- | Is this pattern guaranteed to match?
 isUniversalPattern :: DsMonad q => DPat -> q Bool
 isUniversalPattern (DLitP {}) = return False
