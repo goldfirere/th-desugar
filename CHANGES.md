@@ -8,6 +8,9 @@ Version 1.19 [????.??.??]
   changes, a `DSpecialiseEP` data constructor has been added to `DPragma`, and
   the existing `DSpecialiseP` data constructor has been converted to a pattern
   synonym defined in terms of `DSpecialiseEP`.
+* Add `mkTupleDType :: [DType] -> DType`, which offers functionality similar to
+  the existing `mkTupleD{Exp,Pat}` functions, but for types instead of
+  expressions or patterns.
 
 Version 1.18 [2024.12.11]
 -------------------------
