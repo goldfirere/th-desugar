@@ -1,7 +1,7 @@
 `th-desugar` release notes
 ==========================
 
-Version 1.19 [????.??.??]
+Version 1.19 [2026.01.10]
 -------------------------
 * Support GHC 9.14.
 * Support specialising expressions in `SPECIALISE` pragmas. As part of these
