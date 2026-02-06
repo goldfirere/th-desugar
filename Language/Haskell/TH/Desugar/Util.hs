@@ -8,10 +8,10 @@ Utility functions for th-desugar package.
 
 {-# LANGUAGE CPP, DeriveDataTypeable, DeriveGeneric, DeriveLift, RankNTypes,
              ScopedTypeVariables, TupleSections, AllowAmbiguousTypes,
-             TemplateHaskellQuotes, TypeApplications, MagicHash #-}
+             TemplateHaskellQuotes, TypeApplications, MagicHash, BangPatterns #-}
 
 module Language.Haskell.TH.Desugar.Util (
-  newUniqueName,
+  newUniqueName, nextUnique, UniqueCounter(..),
   impossible,
   nameOccursIn, allNamesIn, mkTypeName, mkDataName, mkNameWith, isDataName,
   stripVarP_maybe, extractBoundNamesStmt,
@@ -57,6 +57,7 @@ import Data.Map ( Map )
 import Data.Maybe
 import qualified Data.Set as Set
 import Data.Traversable
+import Data.Word ( Word64 )
 import GHC.Classes ( IP )
 import GHC.Generics ( Generic )
 import Unsafe.Coerce ( unsafeCoerce )
@@ -85,13 +86,36 @@ import GHC.Types ( Solo#, Sum2#, Tuple0#, Unit# )
 -- TH manipulations
 ----------------------------------------
 
+newtype UniqueCounter = UniqueCounter Word64
+  deriving (Eq, Ord, Show, Typeable)
+
+incrementUniqueCounter :: UniqueCounter -> UniqueCounter
+incrementUniqueCounter (UniqueCounter idx) = UniqueCounter $! (idx + 1)
+
+-- | Get the next value of the 'UniqueCounter' which is stored in the dynamic
+-- TH state. This is used by 'newUniqueName' in order to generate deterministic
+-- fresh names.
+nextUnique :: Quasi q => q UniqueCounter
+nextUnique = do
+  mCounter <- qGetQ
+  let uniq = maybe (UniqueCounter 0) id mCounter
+      !next_uniq = incrementUniqueCounter uniq
+  qPutQ next_uniq
+  pure uniq
+
 -- | Like newName, but even more unique (unique across different splices),
--- and with unique @nameBase@s. Precondition: the string is a valid Haskell
--- alphanumeric identifier (could be upper- or lower-case).
+-- and with deterministic @nameBase@s. Precondition: the string is a valid
+-- Haskell alphanumeric identifier (could be upper- or lower-case).
 newUniqueName :: Quasi q => String -> q Name
 newUniqueName str = do
-  n <- qNewName str
-  qNewName $ show n
+  (UniqueCounter idx) <- nextUnique
+  -- Use the module name as well, since the counter is only unique per module.
+  Loc { loc_module = modu } <- qLocation
+  pure $ mkName (str ++ "_" ++ map sanitize modu ++ "_" ++ show idx)
+  where
+    sanitize '.'  = '_'
+    sanitize '\'' = '_'
+    sanitize c    = c
 
 -- | @mkNameWith lookup_fun mkName_fun str@ looks up the exact 'Name' of @str@
 -- using the function @lookup_fun@. If it finds 'Just' the 'Name', meaning

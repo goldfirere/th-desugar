@@ -100,7 +100,7 @@ module Language.Haskell.TH.Desugar (
   dPatToDExp, removeWilds,
   getDataD, dataConNameToDataName, dataConNameToCon,
   nameOccursIn, allNamesIn, flattenDValD, getRecordSelectors,
-  mkTypeName, mkDataName, newUniqueName,
+  mkTypeName, mkDataName, newUniqueName, nextUnique, UniqueCounter(..),
   mkTupleDExp, mkTupleDPat, mkTupleDType,
   maybeDLetE, maybeDCaseE, maybeDCasesE,
   dCaseE, dCasesE, dLamE, dLamCaseE, mkDLamEFromDPats,
