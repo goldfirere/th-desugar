@@ -86,6 +86,14 @@ import GHC.Types ( Solo#, Sum2#, Tuple0#, Unit# )
 -- TH manipulations
 ----------------------------------------
 
+-- | A unique counter that is stored dynamically in the Template Haskell state
+-- using the 'Quasi' class. Use 'nextUnique' to return the current counter value
+-- and then increment the counter. This function is used by 'newUniqueName' to
+-- generate deterministic fresh 'Name's that are unique across TH splices.
+--
+-- This is backed by a 'Word64' under the hood, which should provide enough
+-- unique values for most use cases. This library will not warn you if you
+-- increment the counter enough times to overflow it, so beware!
 newtype UniqueCounter = UniqueCounter Word64
   deriving (Eq, Ord, Show, Typeable)
 
@@ -94,7 +102,7 @@ incrementUniqueCounter (UniqueCounter idx) = UniqueCounter $! (idx + 1)
 
 -- | Get the next value of the 'UniqueCounter' which is stored in the dynamic
 -- TH state. This is used by 'newUniqueName' in order to generate deterministic
--- fresh names.
+-- fresh 'Name's that are unique across splices.
 nextUnique :: Quasi q => q UniqueCounter
 nextUnique = do
   mCounter <- qGetQ
