@@ -95,7 +95,7 @@ import GHC.Types ( Solo#, Sum2#, Tuple0#, Unit# )
 -- unique values for most use cases. This library will not warn you if you
 -- increment the counter enough times to overflow it, so beware!
 newtype UniqueCounter = UniqueCounter Word64
-  deriving (Eq, Ord, Show, Typeable)
+  deriving (Eq, Ord, Show)
 
 incrementUniqueCounter :: UniqueCounter -> UniqueCounter
 incrementUniqueCounter (UniqueCounter idx) = UniqueCounter $! (idx + 1)
